@@ -17,6 +17,7 @@ local codec = dofile("src/meta/codec.lua")
 local encode = dofile("generator/encode.lua")
 local normalize = dofile("src/meta/normalize.lua")
 local emulator = dofile("emulator/metadata.lua")
+local client = dofile("emulator/client.lua")
 local config = dofile("src/config.lua")
 
 --------------------------------------------------------------------------------------------
@@ -294,6 +295,142 @@ suite("negative-controls", function()
   else
     check(false, "no chunked value found to corrupt")
   end
+
+  os.remove(".out/corrupt/" .. sourceToc)
+end)
+
+--------------------------------------------------------------------------------------------
+-- Frozen values
+--------------------------------------------------------------------------------------------
+
+suite("freeze", function()
+  local flavor = config.flavorByName.Vanilla
+  local tocPath = config.tocPath(flavor)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP freeze: ", tocPath, " not generated\n")
+    return
+  end
+
+  local freezeLib = dofile("emulator/freeze.lua")
+
+  -- The substitute itself.
+  local plain = { 1, 2, { 3 } }
+  freezeLib.freeze(plain)
+  check(freezeLib.isFrozen(plain), "freeze marks the table")
+  check(not pcall(function() plain[4] = 9 end), "writing a new key to a frozen table must raise")
+  equal(plain[1], 1, "reads through a frozen table are unaffected")
+  check(freezeLib.freeze(plain) == plain, "re-freezing is harmless and returns the same table")
+
+  -- `__newindex` fires only for absent keys in Lua 5.1, so an overwrite or a `= nil` deletion
+  -- slips past prevention. The audit is what covers it — and the audit is the half that has to
+  -- work, because `GetQuest`'s `creatureObjective[3] = nil` is exactly an existing-key write.
+  equal(select(1, freezeLib.audit()), 0, "a untouched frozen table audits clean")
+  rawset(plain, 1, 9)
+  equal(select(1, freezeLib.audit()), 1, "the audit catches an overwrite __newindex cannot see")
+  freezeLib.reset()
+  local nilled = { 1, 2, 3 }
+  freezeLib.freeze(nilled)
+  rawset(nilled, 3, nil)
+  equal(select(1, freezeLib.audit()), 1, "the audit catches a `= nil` deletion")
+  freezeLib.reset()
+
+  local function loadFrozen(path, clientOpts)
+    client.reset()
+    client.install(clientOpts or {})
+    if path == config.addonName .. ".toc" then
+      -- source mode needs no metadata
+    else
+      emulator.install(config.addonName, emulator.parse(path))
+    end
+    local Lib = emulator.loadAddon(path, config.addonName)
+    freezeLib.install(Lib)
+    return Lib
+  end
+
+  -- Baked mode: a returned table is frozen, and mutating it raises.
+  local baked = loadFrozen(tocPath)
+  check(baked.shared.canFreeze, "freeze capability is detected once a substitute is installed")
+  local startedBy = baked.Quest.Get(2, "startedBy")
+  check(type(startedBy) == "table", "quest 2 startedBy is a table")
+  check(baked.shared.IsFrozen(startedBy), "baked mode returns a frozen table")
+  check(not pcall(function() startedBy[99] = true end), "mutating a baked table value must raise")
+  -- The `creatureObjective[3] = nil` shape: prevention cannot see it offline, the audit can.
+  -- Delete a key the table actually has — quest 2's startedBy is sparse.
+  local presentKey = next(startedBy)
+  rawset(startedBy, presentKey, nil)
+  check(select(1, freezeLib.audit()) >= 1, "the audit catches a deletion inside a returned table")
+
+  -- Nested tables are frozen too, which is the case a shallow freeze would miss.
+  local spawns = baked.Npc.Get(30, "spawns")
+  check(type(spawns) == "table", "npc 30 spawns is a table")
+  local zone = next(spawns)
+  check(baked.shared.IsFrozen(spawns[zone]), "nested tables are frozen")
+
+  -- Scalars are cached without freezing, because strings and numbers cannot be mutated.
+  equal(baked.Quest.Get(2, "name"), "Sharptalon's Claw", "scalar reads still work under freezing")
+  equal(baked.Quest.Get(2, "name"), baked.Quest.Get(2, "name"), "scalar reads are stable")
+
+  -- Source mode: base data is frozen after load, so a correction or a consumer cannot corrupt it.
+  local source = loadFrozen(config.addonName .. ".toc", { expansion = "Classic" })
+  local sourceStartedBy = source.Quest.Get(2, "startedBy")
+  check(source.shared.IsFrozen(sourceStartedBy), "source mode returns a frozen table")
+  check(not pcall(function() sourceStartedBy[99] = true end), "mutating source base data must raise")
+  freezeLib.audit() -- absorb the deliberate mutation above
+
+  local base = source.read.source.entities.Quest
+  check(source.shared.IsFrozen(base), "source mode base data itself is frozen")
+  check(not pcall(function() base[999999] = {} end), "writing a new entity into base data must raise")
+
+  -- No frozen table may carry a redirecting __newindex. Offline the metatable *is* the
+  -- mechanism and its __newindex raises; what must never happen is a metamethod that
+  -- swallows the write.
+  local meta = getmetatable(startedBy)
+  if meta then
+    check(type(meta.__newindex) == "function", "a frozen table's __newindex must exist to raise")
+    check(not pcall(rawget(meta, "__newindex"), startedBy, 1, 1), "__newindex must raise, not redirect")
+  end
+
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
+-- Equivalence negative control
+--------------------------------------------------------------------------------------------
+
+suite("equivalence-control", function()
+  local flavor = config.flavorByName.Vanilla
+  local sourceToc = config.tocPath(flavor)
+  if not lib.fileExists(sourceToc) then
+    io.write("  SKIP equivalence-control: ", sourceToc, " not generated\n")
+    return
+  end
+
+  lib.mkdirp(".out/corrupt")
+  local original = lib.readAll(sourceToc)
+
+  local function runEquivalence(content, label)
+    lib.writeAll(".out/corrupt/" .. sourceToc, content)
+    local ok = os.execute("lua5.1 equivalence.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1")
+    local failed
+    if type(ok) == "number" then failed = ok ~= 0 else failed = not ok end
+    check(failed, "equivalence accepted a divergence: " .. label)
+  end
+
+  -- A changed baked value must diverge from source.
+  local changed = original:gsub("## X%-Npc%-30%-1: [^\n]*", "## X-Npc-30-1: Not A Forest Spider", 1)
+  check(changed ~= original, "corruption fixture did not apply (changed npc name)")
+  runEquivalence(changed, "changed npc name")
+
+  -- The predicted failure mode: a table field that reads nil on one side and {} on the other.
+  local emptied = original:gsub("## X%-Quest%-2%-2: [^\n]*", "## X-Quest-2-2: {}", 1)
+  check(emptied ~= original, "corruption fixture did not apply (empty table)")
+  runEquivalence(emptied, "nil versus empty table")
+
+  -- And the healthy case still passes, so the control is not just always-fails.
+  local runEquivalenceOk = os.execute("lua5.1 equivalence.lua Vanilla --sample=200 --quiet >/dev/null 2>&1")
+  local passed
+  if type(runEquivalenceOk) == "number" then passed = runEquivalenceOk == 0 else passed = runEquivalenceOk == true end
+  check(passed, "equivalence failed on an uncorrupted artifact")
 
   os.remove(".out/corrupt/" .. sourceToc)
 end)

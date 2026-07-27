@@ -64,6 +64,12 @@ function LibQuestieDB.InvalidateCache(datatype, id)
   if entity then entity.InvalidateCache(id) end
 end
 
+--- Mode must be unmistakable in-game, so the indicator comes up as part of loading rather
+--- than waiting for a consumer to ask for it.
+if LibQuestieDB.ModeIndicator then
+  LibQuestieDB.ModeIndicator.Initialize()
+end
+
 _G.LibQuestieDB = LibQuestieDB
 
 return LibQuestieDB

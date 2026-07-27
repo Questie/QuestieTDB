@@ -22,6 +22,7 @@ local loader = dofile("generator/loader.lua")
 local schema = dofile("generator/schema.lua")
 local encode = dofile("generator/encode.lua")
 local emulator = dofile("emulator/metadata.lua")
+local freezeLib = dofile("emulator/freeze.lua")
 
 local MAX_REPORTED = 12
 
@@ -43,6 +44,8 @@ local function parseArgs(argv)
       opts.sample = tonumber(val)
     elseif key == "toc-dir" then
       opts.tocDir = val
+    elseif value == "--freeze" then
+      opts.freeze = true
     elseif value == "--quiet" then
       opts.quiet = true
     elseif value:sub(1, 2) == "--" then
@@ -90,6 +93,7 @@ local function verifyFlavor(flavor, opts)
   local map, header = emulator.parse(tocPath)
   emulator.install(config.addonName, map)
   local LibQuestieDB = emulator.loadAddon(tocPath, config.addonName)
+  if opts.freeze then freezeLib.install(LibQuestieDB) end
 
   if header["X-Flavor"] ~= flavor.name then
     io.write(("  HEADER %s: X-Flavor is %s, expected %s\n"):format(tocPath, tostring(header["X-Flavor"]), flavor.name))
@@ -201,6 +205,15 @@ local function verifyFlavor(flavor, opts)
       io.write(("  ORPHANS %s: %d stored keys no read path reaches\n"):format(tocPath, orphans))
       report.errors = report.errors + orphans
     end
+  end
+
+  if opts.freeze then
+    local changed = freezeLib.audit()
+    if changed > 0 then
+      io.write(("  MUTATION %s: %d frozen tables were modified during the run\n"):format(tocPath, changed))
+      report.errors = report.errors + changed
+    end
+    freezeLib.reset()
   end
 
   say(("[%s] %s: %d entities, %d fields, %d chunked values, %d errors, %.1fs")

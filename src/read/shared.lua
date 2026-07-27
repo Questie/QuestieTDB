@@ -27,14 +27,21 @@ local type, rawget, setmetatable, ipairs = type, rawget, setmetatable, ipairs
 -- metamethod instead of failing, which is exactly the trap the prototypes' `EMPTY` sentinel
 -- fell into.
 
-local freeze = rawget(_G, "table") and rawget(table, "freeze")
+local luaTable = rawget(_G, "table")
+local freeze = luaTable and rawget(luaTable, "freeze")
+local isFrozen = luaTable and rawget(luaTable, "isfrozen")
 
 shared.canFreeze = freeze ~= nil
 
 --- Deep-freeze a value the database owns. Measured on Classic Era 1.15.9 at 0 KiB allocated
 --- against CopyTable's ~357 KiB, and 8-20% faster — see docs/table.freeze.md.
+---
+--- Re-freezing must be harmless: a table field is frozen when the base data loads and again
+--- when a read caches it, and the Correction Overlay produces fresh objects on every
+--- recomposition.
 function shared.Freeze(value)
   if not freeze or type(value) ~= "table" then return value end
+  if isFrozen and isFrozen(value) then return value end
   for _, inner in pairs(value) do
     if type(inner) == "table" then shared.Freeze(inner) end
   end
@@ -42,10 +49,19 @@ function shared.Freeze(value)
 end
 
 --- Install a freeze implementation. Used by the offline harness to make the guard present in
---- CI rather than silently absent.
+--- CI rather than silently absent — see emulator/freeze.lua.
 function shared.SetFreezeImplementation(implementation)
   freeze = implementation
   shared.canFreeze = implementation ~= nil
+end
+
+function shared.SetIsFrozenImplementation(implementation)
+  isFrozen = implementation
+end
+
+function shared.IsFrozen(value)
+  if not isFrozen then return false end
+  return isFrozen(value) == true
 end
 
 --------------------------------------------------------------------------------------------

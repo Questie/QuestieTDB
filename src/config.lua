@@ -91,7 +91,7 @@ config.l10nMetaPrefix = "l10n-"
 -- plus, for Source mode, the raw entity data.
 
 config.runtimeFiles = {
-  shared = {
+  head = {
     "src/config.lua",
     "src/meta/normalize.lua",
     "src/meta/codec.lua",
@@ -106,9 +106,61 @@ config.runtimeFiles = {
     "src/read/shared.lua",
     "src/corrections/registry.lua",
     "src/l10n/overlay.lua",
+    "src/ui/modeIndicator.lua",
     "src/api.lua",
   },
 }
+
+--- The raw entity data block, only present in the base TOC. Each expansion's files are
+--- preceded by a marker naming it, so the loader shim in src/read/source.lua can discard the
+--- four expansions the running client does not need; `_end.lua` closes the block.
+function config.sourceDataFiles()
+  local files = {}
+  for _, flavor in ipairs(config.flavors) do
+    files[#files + 1] = config.paths.data .. "/" .. flavor.expansion .. "/_flavor.lua"
+    for _, entityType in ipairs(config.entityTypes) do
+      files[#files + 1] = config.dataPath(flavor, entityType)
+    end
+  end
+  files[#files + 1] = config.paths.data .. "/_end.lua"
+  return files
+end
+
+--- Files a generated flavour TOC lists, in load order.
+function config.bakedFileList()
+  local files = {}
+  for _, file in ipairs(config.runtimeFiles.head) do files[#files + 1] = file end
+  files[#files + 1] = config.runtimeFiles.bakedReader
+  for _, file in ipairs(config.runtimeFiles.tail) do files[#files + 1] = file end
+  return files
+end
+
+--- Files the committed base TOC lists, in load order. The reader has to come before the data
+--- so its shim is in place when the payload assignments happen.
+function config.sourceFileList()
+  local files = {}
+  for _, file in ipairs(config.runtimeFiles.head) do files[#files + 1] = file end
+  files[#files + 1] = config.runtimeFiles.sourceReader
+  for _, file in ipairs(config.sourceDataFiles()) do files[#files + 1] = file end
+  for _, file in ipairs(config.runtimeFiles.tail) do files[#files + 1] = file end
+  return files
+end
+
+--- Every interface version QuestieTDB supports, for the base TOC. A single comma-separated
+--- list is what lets one committed TOC load on any supported client, which is what source mode
+--- needs — a fresh clone has no suffixed TOC to match.
+function config.allInterfaceVersions()
+  local seen, parts = {}, {}
+  for _, flavor in ipairs(config.flavors) do
+    for version in flavor.interface:gmatch("%d+") do
+      if not seen[version] then
+        seen[version] = true
+        parts[#parts + 1] = version
+      end
+    end
+  end
+  return table.concat(parts, ", ")
+end
 
 --------------------------------------------------------------------------------------------
 -- Paths (offline generation only)

@@ -308,3 +308,151 @@ difference is that l10n is not in yet (ticket 14), which `DESIGN.md` sizes at ~7
   TOCs carry correct Interface lines, but which one a given client picks is unverified here.
 
 ---
+
+## 06 — Source mode ✅ (one criterion needs a client)
+
+**Built**
+
+* `src/read/source.lua` — flavor detection, the loader shim, and `readField`/`getAllIds` over
+  raw tables.
+* `data/<Exp>/_flavor.lua` × 5 and `data/_end.lua` — markers bracketing each expansion's block.
+* `src/ui/modeIndicator.lua` — the permanent in-game indicator.
+* `QuestieTDB.toc` — the committed base TOC, written by `lua generate.lua toc`.
+
+**Decision — how one base TOC serves five clients without loading five databases**
+
+The base TOC has to work on any client, so it lists all twenty data files: 78 MB of Lua. The
+naive reading of that is unacceptable.
+
+`src/read/source.lua` loads *before* the data block and installs a `QuestieLoader` shim. Each
+expansion's files are preceded by a marker naming it, and the shim discards a payload
+assignment whose expansion is not the running client's. A discarded chunk's string constant
+becomes collectable the moment that file returns, so peak cost is one file rather than twenty.
+`data/_end.lua` closes the block and hands `QuestieLoader` back to whoever owned it, so the
+consumer's own loader is untouched.
+
+Measured offline, loading the base TOC as a Classic client:
+
+```
+loaded base TOC in 0.34s
+mode: source   expansion: Classic
+QuestieLoader after load: nil          (handed back)
+payloads still retained: none          (four expansions dropped)
+lua memory: 37.8 MB
+QuestDB.name(2) = Sharptalon's Claw
+NpcDB.spawns(30)[12][1][1] = 36.43
+```
+
+`## Interface:` on the base TOC lists every supported version
+(`11508, 11509, 20506, 38000, 38001, 40402, 50503, 50504`) so a fresh clone loads on any
+client without the out-of-date prompt.
+
+**Decision — where the mode indicator lives**
+
+`DESIGN.md` puts it "on the map or in Questie's settings", which is the consumer's surface.
+QuestieTDB therefore publishes `LibQuestieDB.ModeIndicator.GetText()` / `.GetStatus()` for a
+consumer to render properly, *and* draws its own small movable frame as a fallback, so the
+guarantee does not depend on a consumer existing. In Baked mode `GetText()` returns nil and no
+frame is created.
+
+**NEEDS YOU**
+
+* The indicator's appearance and placement in a live client. It is built and wired but has only
+  been exercised against a stubbed `CreateFrame`.
+* *"Deleting a Static Correction is observable in source mode"* — the mechanism is in place
+  (`source.materialize` applies corrections to base data before freezing, through the same
+  entry point Generation uses) but there are no corrections to delete until ticket 09.
+
+---
+
+## 07 — Source/baked equivalence test ✅
+
+**Built** — `equivalence.lua`. Stands up both readers in one process over the real `src/`
+files and compares every entity and every field.
+
+**Verification passed**
+
+```
+$ lua5.1 equivalence.lua                    # 50s total
+[PASS] Vanilla:  35897 entities,  589308 fields, 0 divergences,  3.2s
+[PASS] TBC:      59101 entities,  975840 fields, 0 divergences,  5.5s
+[PASS] Wrath:    88398 entities, 1449856 fields, 0 divergences,  8.0s
+[PASS] Cata:    140812 entities, 2350178 fields, 0 divergences, 13.5s
+[PASS] Mists:   177724 entities, 2953767 fields, 0 divergences, 15.7s
+```
+
+**8.3 million field comparisons across both read modes, zero divergences.** 50 seconds for the
+full matrix is comfortably inside a per-commit CI budget, so no subset split was needed;
+`--sample=N` exists anyway for a faster local loop.
+
+Nil-versus-empty-table is classified separately from every other divergence, since that is the
+predicted failure mode — the whole `EMPTY`-sentinel argument turns on it. A run reports counts
+per kind (`NIL-VS-EMPTY-TABLE`, `TYPE`, `NUMBER`, `STRING`, `VALUE`) rather than one number.
+
+Why equivalence holds by construction rather than by luck: both modes route through
+`src/meta/normalize.lua`, and Generation encodes through the same function. Source mode
+normalizes a raw value on read; Generation normalized the same value on write. There is no
+second opinion about nil semantics anywhere in the system.
+
+**Proven able to fail.** Two corruptions of the baked artifact each make `equivalence.lua`
+exit non-zero — a changed NPC name, and a table field forced to `{}` so it reads nil on one
+side and empty on the other — and an uncorrupted run in the same test passes, so the control
+is not merely always-failing.
+
+---
+
+## 08 — Frozen values ✅ (with a documented Lua 5.1 gap, covered by an audit)
+
+**Built** — `emulator/freeze.lua`, plus capability detection and `IsFrozen` in
+`src/read/shared.lua`. `verify.lua --freeze` and `equivalence.lua --freeze` run under it.
+
+**The gap, and why it needed more than a metatable**
+
+`table.freeze` in the client is a VM-level flag: every write raises, including one that
+overwrites a key the table already has. Standard Lua 5.1 has no such flag, and `__newindex`
+fires **only when the key is absent**. So a metatable substitute catches
+`frozen[newKey] = v` but not `frozen[existingKey] = v` — and the missed case is the important
+one, because `QuestieDB.GetQuest`'s `creatureObjective[3] = nil` is an existing-key write.
+A prevention-only substitute would have reported a clean run over exactly the mutation
+freezing is supposed to surface.
+
+A proxy table would intercept everything, but `pairs`, `next` and `#` do not route through
+`__index` in Lua 5.1, so every frozen table would look empty to any consumer that iterates it.
+That trades a real hole for a much larger one.
+
+So the harness does both:
+
+* `__newindex` **prevents** new-key writes, raising at the call site.
+* `freeze.audit()` **detects** overwrites and deletions, by fingerprinting each table when it
+  is frozen and re-walking at the end of a run.
+
+Together these cover what the client covers; offline, the overwrite case is reported at the end
+of the run rather than at the moment it happens. Both halves are tested, including that the
+audit catches a `= nil` deletion that `__newindex` demonstrably does not.
+
+**Verification passed**
+
+```
+$ lua5.1 test.lua              # includes the freeze suite
+[PASS] freeze             22 checks, 0 failed
+144 checks, 0 failed
+
+$ lua5.1 verify.lua Vanilla --freeze
+[PASS] Vanilla: 35897 entities, 589308 fields, 0 errors, 9.2s
+
+$ lua5.1 equivalence.lua Vanilla --freeze
+[PASS] Vanilla: 35897 entities, 589308 fields, 0 divergences, 13.3s
+```
+
+Both `--freeze` runs report **zero mutations**, so nothing in the read path writes to a value
+it hands out. That is the mutation audit `DESIGN.md` asks for, running clean on QuestieTDB's
+own code; the volume on Questie's side stays unknown until the consumer is pointed at this.
+
+Covered by tests: table values from *both* read modes are frozen, nested tables too, source
+mode's base data is frozen after load, scalars are cached without freezing, no frozen table
+carries a *redirecting* `__newindex`, and mutation raises.
+
+`--freeze` is opt-in rather than always on: one metatable and one fingerprint per frozen table
+costs about 2× wall clock offline, against the client's measured 0 KiB and 8–20% *faster*.
+
+---
