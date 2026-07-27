@@ -96,12 +96,22 @@ function shared.CreateEntity(meta, backend)
   local overlay = {}
   entity.overlay = overlay
 
+  --- Swap in a freshly composed overlay and drop every cached value, because any of them could
+  --- have been decided by the layer being replaced.
+  function entity.SetOverlay(composed)
+    overlay = composed or {}
+    entity.overlay = overlay
+    entity.InvalidateCache(nil)
+  end
+
   local function readRaw(id, fieldIndex)
     local layer = overlay[id]
     if layer ~= nil then
       local value = layer[fieldIndex]
       if value ~= nil then
-        if value == NIL then return nil end
+        -- The registry's sentinel for "this Correction sets the field to nil", which a plain
+        -- nil in the overlay table cannot express.
+        if value == LibQuestieDB.Corrections.NIL then return nil end
         return value
       end
     end

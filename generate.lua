@@ -23,6 +23,13 @@ local loader = dofile("generator/loader.lua")
 local schema = dofile("generator/schema.lua")
 local encode = dofile("generator/encode.lua")
 local corrections = dofile("generator/corrections.lua")
+local flavorLoader = dofile("generator/flavor.lua")
+
+-- The correction manifest drives which files each TOC lists. It is optional: a bare data
+-- round-trip works before any corrections are ported.
+if lib.fileExists("src/corrections/manifest.lua") then
+  config.correctionManifest = dofile("src/corrections/manifest.lua")
+end
 
 local generate = {}
 
@@ -187,33 +194,23 @@ end
 --------------------------------------------------------------------------------------------
 
 --- Load every entity type for one flavor, apply Static Corrections, and return the tables.
+--- Shared with verify.lua so both see identical corrected data.
 function generate.loadFlavor(flavor, typeFilter, applyCorrections)
-  local loaded = {}
-  for _, entityType in ipairs(config.entityTypes) do
-    if not typeFilter or typeFilter[entityType.name] then
-      local path = config.dataPath(flavor, entityType)
-      local entities, keys = loader.loadEntityData(path, entityType)
-      local meta = schema.loadMaterialized(entityType)
-      schema.checkKeys(meta, keys, path)
-      schema.assertNoDataBeyondKeys(meta, entities, keys, path)
-      loaded[entityType.name] = { meta = meta, entities = entities, path = path }
-    end
-  end
-
-  if applyCorrections ~= false then
-    corrections.applyStatic(loaded, flavor)
-  end
-
-  return loaded
+  return flavorLoader.load(flavor, typeFilter, applyCorrections)
 end
 
 function generate.flavor(flavor, opts)
   local started = os.clock()
-  local loaded = generate.loadFlavor(flavor, opts.types)
+  local loaded, stats = generate.loadFlavor(flavor, opts.types)
+  if stats.applied > 0 then
+    say(string.format("  corrections: %d values from %d registered functions across %d files",
+      stats.applied, stats.corrections and stats.corrections.registered or 0,
+      stats.corrections and stats.corrections.files or 0))
+  end
 
   local tocPath = config.tocPath(flavor)
   local out = assert(io.open(tocPath, "wb"), "Cannot write " .. tocPath)
-  writeHeader(out, flavor, config.bakedFileList())
+  writeHeader(out, flavor, config.bakedFileList(flavor))
 
   local totals = { entities = 0, fields = 0, lines = 0 }
   for _, entityType in ipairs(config.entityTypes) do

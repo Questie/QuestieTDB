@@ -1,0 +1,133 @@
+-- src/corrections/register.lua
+--
+-- Turns loaded correction files into registry entries.
+--
+-- The correction files themselves are verbatim copies of Questie's and know nothing about
+-- QuestieTDB; `src/corrections/manifest.lua` says which functions each one provides and
+-- whether each is Static or Dynamic. That classification is **declared, never inferred** —
+-- folder names are not a reliable signal, as the prototype's `Sod/static/…` file registering
+-- dynamic demonstrates.
+
+local _, LibQuestieDB = ...
+
+local register = {}
+
+local registry = LibQuestieDB.Corrections
+local compat = LibQuestieDB.CorrectionCompat
+
+--- Wrap one function from a correction module into something the registry can apply.
+---
+--- Two shapes have to work. Most functions return the correction table. A few — Questie's
+--- `LoadMissingQuests` and the `InsertMissing*Ids` helpers called from inside `Load` — instead
+--- write straight into `QuestieDB.questData[id]` to make the database emit a row at all. The
+--- compat shim captures those writes, and both contributions are merged here, direct writes
+--- first so a returned value wins.
+local function wrap(module, functionName, datatype)
+  return function()
+    compat.BeginCapture()
+    local returned = module[functionName](module)
+    local captured = compat.EndCapture(datatype)
+
+    local merged = {}
+    for id, fields in pairs(captured) do
+      local row = {}
+      for key, value in pairs(fields) do row[key] = value end
+      merged[id] = row
+    end
+    if type(returned) == "table" then
+      for id, fields in pairs(returned) do
+        local row = merged[id]
+        if not row then row = {}; merged[id] = row end
+        for key, value in pairs(fields) do row[key] = value end
+      end
+    end
+    return merged
+  end
+end
+
+--- Register everything the manifest describes, for one flavor.
+---
+--- The generator runs offline with only QuestieTDB present, so it can only ever bake
+--- corrections owned by QuestieTDB. Anything registered by Questie or a third party is Dynamic
+--- by definition; the owner recorded here makes that enforceable rather than conventional.
+---@param flavor table? An entry from config.flavors; nil registers everything
+---@param moduleFor fun(name: string): table? Resolves a module name to its loaded table
+---@return number registered
+---@return number skipped
+function register.FromManifest(flavor, moduleFor)
+  local manifest = LibQuestieDB.CorrectionManifest
+  if not manifest then return 0, 0 end
+
+  local order = registry.loadOrder
+  local expansionOrder = registry.expansionOrder
+  local registered, skipped = 0, 0
+
+  for index, spec in ipairs(manifest) do
+    local applies = true
+    if flavor then
+      if spec.expansions and not spec.expansions[flavor.expansion] then applies = false end
+      if spec.minExpansionOrder and (expansionOrder[flavor.expansion] or 0) < spec.minExpansionOrder then
+        applies = false
+      end
+    end
+
+    local module = applies and moduleFor(spec.module) or nil
+    if not module then
+      if applies then skipped = skipped + 1 end
+    else
+      -- Load-order constants, not literal numbers. The prototype's SoD files passed a literal
+      -- 70 rather than SoDBaseDynamicOrder, so despite the comment "Sod will always load last"
+      -- they applied *before* Era's faction fixes at 120. Deriving the window from the file's
+      -- own expansion makes that class of mistake unrepresentable.
+      local window = spec.window or register.WindowFor(spec)
+
+      for offset, functionName in ipairs(spec.static or {}) do
+        if type(module[functionName]) == "function" then
+          local entry = registry.RegisterCorrection(registry.OWNER, spec.datatype,
+            spec.file .. ":" .. functionName,
+            wrap(module, functionName, spec.datatype),
+            order[window .. "Static"] + (spec.generated and 1 or 10) + offset)
+          entry.expansions = spec.expansions
+          entry.minExpansionOrder = spec.minExpansionOrder
+          entry.options = spec.options
+          registered = registered + 1
+        end
+      end
+
+      for offset, functionName in ipairs(spec.dynamic or {}) do
+        if type(module[functionName]) == "function" then
+          local entry = registry.RegisterRuntimeCorrection(registry.OWNER, spec.datatype,
+            spec.file .. ":" .. functionName,
+            wrap(module, functionName, spec.datatype),
+            order[window .. "Dynamic"] + (spec.generated and 1 or 10) + offset)
+          entry.expansions = spec.expansions
+          entry.minExpansionOrder = spec.minExpansionOrder
+          entry.options = spec.options
+          registered = registered + 1
+        end
+      end
+    end
+    manifest[index].loaded = module ~= nil
+  end
+
+  return registered, skipped
+end
+
+--- Which load-order window a manifest entry belongs to.
+---
+--- Season of Discovery is the interesting one: it is a Dynamic Correction set over the Era
+--- database rather than a separate database, and it must apply *after* Era's own fixes. The
+--- SoD window sits above Era's for exactly that reason.
+function register.WindowFor(spec)
+  if spec.file:find("^Sod/") then return "SoD" end
+  if spec.file:find("^Era/") then return "Era" end
+  if spec.file:find("^Tbc/") then return "Tbc" end
+  if spec.file:find("^Wotlk/") then return "Wotlk" end
+  if spec.file:find("^Cata/") then return "Cata" end
+  if spec.file:find("^MoP/") then return "MoP" end
+  return "Era" -- Shared/, which applies to every flavor
+end
+
+LibQuestieDB.CorrectionRegister = register
+
+return register

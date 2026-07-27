@@ -456,3 +456,139 @@ carries a *redirecting* `__newindex`, and mutation raises.
 costs about 2× wall clock offline, against the client's measured 0 KiB and 8–20% *faster*.
 
 ---
+
+## 09 — Corrections registry and Static Corrections ✅
+## 10 — Dynamic Corrections and the Correction Overlay ✅
+## 11 — Remaining correction sets ✅
+
+Landed together, because the port is manifest-driven: once Era worked, the other four
+expansions and Season of Discovery were entries in a table rather than new code.
+
+**Built**
+
+* `src/corrections/registry.lua` — registration, load-order namespaces, collision reporting,
+  owner-scoped application, recomposition, provenance.
+* `src/corrections/compat.lua` — the module surface Questie's correction files expect.
+* `src/corrections/register.lua` — turns loaded correction modules into registry entries.
+* `src/corrections/_begin.lua` / `_end.lua` — bracket the correction block in a TOC.
+* `src/corrections/enum/constants.lua` — 19 constant tables, generated.
+* `src/corrections/manifest.lua` — 30 files, generated, with the Static/Dynamic classification.
+* `tools/port-corrections.lua` — the one-shot port, re-runnable to re-sync.
+* `generator/runtime.lua`, `generator/flavor.lua` — the generator stands up the *shipped*
+  registry rather than a parallel one.
+
+### D8 — Correction files are byte-identical copies, not rewrites
+
+Questie's correction files are ~10 MB of hand-curated data behind a thin preamble. Rewriting
+that preamble by hand would be 10 MB of chances to introduce a transcription error, and would
+fork them from upstream permanently.
+
+They are copied **verbatim** instead, and `src/corrections/compat.lua` supplies the
+`QuestieLoader` / `QuestieDB` / `ZoneDB` / `QuestieProfessions` / `Phasing` / `l10n` surface
+they import. Re-syncing with upstream is `lua tools/port-corrections.lua ../Questie`.
+
+The test suite asserts this mechanically: **all 30 ported files are byte-identical to
+Questie's**, checked on every run when a Questie checkout sits alongside.
+
+The shim is scoped — installed for the correction block, removed immediately after — with one
+deliberate exception. `Questie.ICON_TYPE_*` and `Questie.Is*` are read from the *global at
+apply time*, not captured at load time, so tearing that table down would leave every Dynamic
+Correction reading a nil global the moment it ran. The `Questie` stub is therefore augmented in
+place and left installed, and only ever writes fields that are missing, so the consumer's own
+definitions win the moment it loads.
+
+### D9 — Constants are extracted, not transcribed
+
+`tools/port-corrections.lua` executes Questie's own sources under the mocked environment and
+dumps 19 constant tables — `questKeys`, `raceKeys`, `classKeys`, `sortKeys`, `specialFlags`,
+`factionIDs`, `zoneIDs`, `professionKeys`, `specializationKeys`, `rankNames`, `phases`,
+`waypointPresets`, `iconTypes`, and the rest. Same discipline as the schema, for the same
+reason. `Database/QuestieDB.lua` is 94 KB of runtime behaviour around three of those tables, so
+those are sliced by exact assignment marker and the extractor **fails loudly** if a marker
+moves.
+
+### D10 — The prototype's SoD load-order defect is fixed
+
+`GetterDB`'s `Sod/base/*.lua` passed a literal `70` rather than `SoDBaseDynamicOrder` (300), so
+despite the comment "Sod will always load last" it applied *before* Era's faction fixes at 120.
+The load-order window is now derived from the file's own expansion, which makes that class of
+mistake unrepresentable, and a test asserts SoD's dynamic order exceeds Era's. Measured on the
+Vanilla registry: Era dynamic 111, SoD base 302, SoD fixes 311–312.
+
+### D11 — A collision no longer displaces the sitting entry
+
+The prototype resolved a duplicate load order by probing upward until a free slot appeared.
+That cascades: the displaced entry can take the slot the *next* registrant wanted, silently
+reordering things. Entries are now kept in a list and sorted by `(loadOrder, registration
+sequence)`, so a collision is reported and both entries keep their intended position.
+
+### D12 — What ships, and what does not
+
+Static Correction files are build-time input and are excluded from baked artifacts. A file that
+provides *both* — Questie's `classicQuestFixes.lua` has `Load` (static) beside
+`LoadFactionFixes` (dynamic) — ships, because the two live in one upstream file and splitting
+them would fork it. Purely static files (`classicQuestReputationFixes.lua` 351 KB,
+`itemStartFixes.lua` 99 KB) are excluded, and a test asserts no static-only file appears in a
+baked file list.
+
+**Classification** (from the recon in `.scratch/questietdb-buildout/recon/04-*.md`, applying
+DESIGN.md's boundary rule):
+
+| | Where it went |
+| --- | --- |
+| `Load`, `LoadMissingQuests`, `LoadAutomatics`, `LoadAutomaticQuestStarts`, `classicQuestReputationFixes` | **Static** — data truth, knowable offline |
+| `LoadFactionFixes`, `LoadTitanReforgedFixes`, `LoadContentPhaseFixes`, all Season of Discovery | **Dynamic** — faction, realm flag, season |
+| blacklists, `ContentPhases/`, `Holidays/`, `BlacklistFilter` | **Stays in Questie** — hiding is consumer policy, not a database fact |
+
+**Verification passed**
+
+```
+$ lua5.1 generate.lua all                # 32s
+Vanilla  corrections:  9831 values, 20 functions, 14 files  ->  35944 entities,  9.1 MB
+TBC      corrections:  6131 values,  9 functions,  5 files  ->  59291 entities, 14.9 MB
+Wrath    corrections: 12855 values, 21 functions,  9 files  ->  88658 entities, 21.4 MB
+Cata     corrections: 24181 values, 29 functions, 13 files  -> 141203 entities, 34.8 MB
+Mists    corrections: 33928 values, 39 functions, 17 files  -> 178366 entities, 41.9 MB
+
+$ lua5.1 verify.lua                      # 89s — 5/5 PASS, 8.35M fields, 0 errors
+$ lua5.1 equivalence.lua                 # 54s — 5/5 PASS, 8.35M fields, 0 divergences
+$ lua5.1 test.lua                        # 307 checks, 0 failed
+```
+
+Corrections add 47,000 entities and 87,000 fields across the five flavors, and every one of
+them round-trips and reads identically in both modes.
+
+`verify.lua` now reads through `GetRaw`, which bypasses the Correction Overlay: Dynamic
+Corrections are applied at runtime in both modes and are not part of what the artifact stores.
+The composed path is what `equivalence.lua` covers.
+
+**Overlay behaviour, all covered by tests** — reads resolve through the overlay and fall back
+to base data; base data is never written to at runtime; re-applying is idempotent; a withdrawn
+correction disappears; precedence is last-applied-wins across owners and load order within one;
+cached values are invalidated when the composed view changes; debug mode reports
+`owner "AddonB" overrode "AddonA" on Quest 3 field requiredLevel`.
+
+**NEEDS YOU / OPEN**
+
+* **A true differential against Questie's live pipeline was not run.** What *is* proven: the
+  correction files are byte-identical to Questie's, the merge semantics match
+  `_LoadCorrections` (including `{}`-as-delete and `= nil`-as-no-op), and the ordering is
+  explicit and tested. What is *not* proven: that running Questie's own
+  `QuestieCorrections:Initialize()` produces the same tables. Doing that needs Questie's full
+  runtime stood up, which is a bigger harness than tonight allowed. This is the single largest
+  remaining correctness gap.
+* **`LoadDarkmoonFixes` is not registered.** It exists in `classicNPCFixes.lua` and
+  `tbcNPCFixes.lua`, and takes a parameter (`isInMulgore`, `isInTerokkar`) rather than reading
+  global state — so it does not fit `func()` with no arguments. It is calendar-driven and
+  overlaps `QuestieEvent`, which stays in Questie. Recorded in the manifest as `parameterized`
+  and left unregistered. **A parameterized Correction is a genuine API gap** and needs a
+  decision: either the registry grows a variant-argument mechanism, or these move to Questie
+  as Dynamic Corrections it registers itself.
+* **Dynamic Corrections do not contribute IDs to `GetAllIds`.** `sodBase*.lua` introduces
+  ~10,000 SoD-only entities through the overlay; they are readable by ID but do not appear in
+  the enumeration. That is fine for Era but wrong for a SoD client. Needs either overlay-aware
+  ID enumeration or a decision that SoD entities are ID-addressable only.
+* Faction-conditional corrections were exercised with a fixed Alliance/Warrior/Human player.
+  The Horde branch is registered and applies, but the *values* it produces are unverified.
+
+---

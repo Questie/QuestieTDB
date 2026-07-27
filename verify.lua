@@ -22,6 +22,8 @@ local loader = dofile("generator/loader.lua")
 local schema = dofile("generator/schema.lua")
 local encode = dofile("generator/encode.lua")
 local emulator = dofile("emulator/metadata.lua")
+local client = dofile("emulator/client.lua")
+local flavorLoader = dofile("generator/flavor.lua")
 local freezeLib = dofile("emulator/freeze.lua")
 
 local MAX_REPORTED = 12
@@ -91,6 +93,8 @@ local function verifyFlavor(flavor, opts)
   -- Install the emulator before loading the addon: src/read/baked.lua captures
   -- GetAddOnMetadata at load time, exactly as it does in a client.
   local map, header = emulator.parse(tocPath)
+  client.reset()
+  client.install({ expansion = flavor.expansion })
   emulator.install(config.addonName, map)
   local LibQuestieDB = emulator.loadAddon(tocPath, config.addonName)
   if opts.freeze then freezeLib.install(LibQuestieDB) end
@@ -112,11 +116,15 @@ local function verifyFlavor(flavor, opts)
   local normalize = LibQuestieDB.Meta.normalize
   local seenKeys = {}
 
+  -- The same corrected tables the generator wrote, so this checks the storage round trip
+  -- rather than accidentally re-checking whether corrections were applied.
+  local loadedFlavor = flavorLoader.load(flavor, opts.types)
+
   for _, entityType in ipairs(config.entityTypes) do
     if not opts.types or opts.types[entityType.name] then
       local entity = LibQuestieDB[entityType.name]
       local meta = LibQuestieDB.Meta[entityType.name]
-      local sourceEntities = loader.loadEntityData(config.dataPath(flavor, entityType), entityType)
+      local sourceEntities = loadedFlavor[entityType.name].entities
 
       -- The ID list must round-trip in both forms consumers build from it.
       local sourceIds = lib.sortedIds(sourceEntities)
@@ -149,16 +157,20 @@ local function verifyFlavor(flavor, opts)
         for fieldIndex = 1, meta.fieldCount do
          if not opts.fields or opts.fields[meta.names[fieldIndex]] then
           local expected = normalize.field(meta, fieldIndex, row[fieldIndex])
-          local actual = entity.Get(id, fieldIndex)
+          -- GetRaw bypasses the Correction Overlay: Dynamic Corrections are applied at
+          -- runtime in both modes and are not part of what the artifact stores. Equivalence
+          -- covers the composed path.
+          local actual = entity.GetRaw(id, fieldIndex)
           report.fields = report.fields + 1
           if not lib.deepEqual(expected, actual) then
             reportMismatch(report, entityType.name, id, fieldIndex, meta.names[fieldIndex], expected, actual)
           end
-          -- Named getter and generic getter must agree.
+          -- Named getter and generic getter must agree, both through the overlay.
           local named = entity[meta.names[fieldIndex]](id)
-          if not lib.deepEqual(actual, named) then
+          local generic = entity.Get(id, fieldIndex)
+          if not lib.deepEqual(generic, named) then
             reportMismatch(report, entityType.name, id, fieldIndex,
-              meta.names[fieldIndex] .. " (named getter)", actual, named)
+              meta.names[fieldIndex] .. " (named vs generic getter)", generic, named)
           end
           if encode.field(meta, fieldIndex, row[fieldIndex]) ~= nil then
             seenKeys["X-" .. meta.metaPrefix .. id .. "-" .. fieldIndex] = true
@@ -171,7 +183,7 @@ local function verifyFlavor(flavor, opts)
       local absentId = sourceIds[#sourceIds] + 1000000
       for fieldIndex = 1, meta.fieldCount do
        if not opts.fields or opts.fields[meta.names[fieldIndex]] then
-        local value = entity.Get(absentId, fieldIndex)
+        local value = entity.GetRaw(absentId, fieldIndex)
         local expectedAbsent = normalize.default(meta, fieldIndex)
         if value ~= expectedAbsent then
           io.write(("  MISMATCH %s unknown id %d field %d: expected %s, got %s\n")

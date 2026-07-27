@@ -49,6 +49,21 @@ function client.install(opts)
 
   _G.WOW_PROJECT_ID = client.projectIds[opts.expansion or "Classic"]
 
+  -- Dynamic Corrections branch on these at apply time — faction fixes are the whole reason
+  -- the category exists. Fixed values rather than random ones, so two loads in one process
+  -- (source and baked, in equivalence.lua) see the same player and any divergence is a real
+  -- divergence.
+  local faction = opts.faction or "Alliance"
+  _G.UnitFactionGroup = function() return faction end
+  _G.UnitClassBase = function() return opts.classFile or "WARRIOR", opts.classId or 1 end
+  _G.UnitClass = function() return opts.className or "Warrior", opts.classFile or "WARRIOR", opts.classId or 1 end
+  _G.UnitRace = function() return opts.raceName or "Human", opts.raceFile or "Human", opts.raceId or 1 end
+  _G.UnitLevel = function() return opts.level or 60 end
+  _G.UnitName = function() return "QuestieTDBTester" end
+  _G.GetRealmName = function() return opts.realm or "TestRealm" end
+  _G.IsSpellKnown = function() return false end
+  _G.GetCurrentRegion = function() return 3 end
+
   _G.UIParent = _G.UIParent or stubFrame()
   _G.CreateFrame = function() return stubFrame() end
   _G.GetLocale = function() return opts.locale or "enUS" end
@@ -69,6 +84,10 @@ function client.reset()
   _G.QuestDB, _G.NpcDB, _G.ItemDB, _G.ObjectDB = nil, nil, nil, nil
   _G.LibQuestieDB = nil
   _G.QuestieLoader = nil
+  -- The correction compat shim leaves a `Questie` stub installed on purpose, so Dynamic
+  -- Corrections can read `Questie.IsSoD` at apply time. Clear it between loads or a stub built
+  -- for one expansion would answer questions asked by the next.
+  _G.Questie = nil
   _G.QuestieTDBSourceModeIndicator = nil
 end
 

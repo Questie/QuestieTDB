@@ -64,6 +64,23 @@ function LibQuestieDB.InvalidateCache(datatype, id)
   if entity then entity.InvalidateCache(id) end
 end
 
+--------------------------------------------------------------------------------------------
+-- Own corrections
+--------------------------------------------------------------------------------------------
+
+--- QuestieTDB applies its own layer at load, so base data is queryable immediately and
+--- correctly — step 1 of the initialization order in DESIGN.md. A consumer then registers its
+--- policy Corrections and calls `ApplyRegisteredCorrections("<its own name>")` in its staged
+--- init; recomposition always includes every live layer, so QuestieTDB's stays visible.
+LibQuestieDB.ApplyRegisteredCorrections = LibQuestieDB.Corrections.ApplyRegisteredCorrections
+LibQuestieDB.RegisterCorrection = LibQuestieDB.Corrections.RegisterCorrection
+LibQuestieDB.RegisterRuntimeCorrection = LibQuestieDB.Corrections.RegisterRuntimeCorrection
+LibQuestieDB.GetRegistrar = LibQuestieDB.Corrections.GetRegistrar
+LibQuestieDB.GetProvenance = LibQuestieDB.Corrections.GetProvenance
+LibQuestieDB.GetOwners = LibQuestieDB.Corrections.GetOwners
+
+LibQuestieDB.Corrections.ApplyRegisteredCorrections(LibQuestieDB.Corrections.OWNER)
+
 --- Mode must be unmistakable in-game, so the indicator comes up as part of loading rather
 --- than waiting for a consumer to ask for it.
 if LibQuestieDB.ModeIndicator then

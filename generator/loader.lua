@@ -101,6 +101,38 @@ end
 -- Loading
 --------------------------------------------------------------------------------------------
 
+--- Make every unknown global resolve to a permissive stub instead of nil.
+---
+--- Only for one-shot extraction tooling, where the goal is to reach a constant table inside a
+--- file that also does a lot of runtime work. It is deliberately *not* used by Generation:
+--- there, a nil global is a real error and swallowing it would hide a broken input.
+function loader.installPermissiveGlobals()
+  local stubs = {}
+  local function makeStub(name)
+    local stub
+    stub = setmetatable({}, {
+      __index = function(_, key)
+        if type(key) ~= "string" then return nil end
+        stub[key] = makeStub(name .. "." .. key)
+        return stub[key]
+      end,
+      __call = function() return makeStub(name .. "()") end,
+      __tostring = function() return "<stub " .. name .. ">" end,
+      __concat = function() return "" end,
+    })
+    return stub
+  end
+
+  setmetatable(_G, {
+    __index = function(_, key)
+      if type(key) ~= "string" then return nil end
+      stubs[key] = stubs[key] or makeStub(key)
+      return stubs[key]
+    end,
+  })
+  return function() setmetatable(_G, nil) end
+end
+
 --- Execute a Lua source file inside the mocked environment, passing WoW's addon varargs.
 ---@param path string
 ---@param addonName string?

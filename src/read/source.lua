@@ -54,6 +54,10 @@ for _, flavor in ipairs(config.flavors) do
   if flavor.expansion == source.expansion then source.flavor = flavor end
 end
 
+-- Published for the correction block, which loads after this file and needs to know which
+-- expansion's corrections apply.
+LibQuestieDB.flavor = source.flavor
+
 --------------------------------------------------------------------------------------------
 -- Payload capture
 --------------------------------------------------------------------------------------------

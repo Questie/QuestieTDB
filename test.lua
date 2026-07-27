@@ -288,6 +288,8 @@ suite("negative-controls", function()
   end
   if chunkKey then
     map[chunkKey .. "-2"] = nil
+    client.reset()
+    client.install({ expansion = "Classic" })
     emulator.install(config.addonName, map)
     local addon = emulator.loadAddon(sourceToc, config.addonName)
     local ok = pcall(addon.read.baked.getStored, chunkKey)
@@ -297,6 +299,246 @@ suite("negative-controls", function()
   end
 
   os.remove(".out/corrupt/" .. sourceToc)
+end)
+
+--------------------------------------------------------------------------------------------
+-- Corrections
+--------------------------------------------------------------------------------------------
+
+suite("corrections", function()
+  local runtime = dofile("generator/runtime.lua")
+  local flavor = config.flavorByName.Vanilla
+
+  local Lib = runtime.build()
+  check(Lib.CorrectionManifest ~= nil, "the correction manifest loaded")
+  if not Lib.CorrectionManifest then return end
+
+  local registry = Lib.Corrections
+  runtime.loadCorrections(Lib, flavor)
+
+  local entries = registry.Select({})
+  check(#entries > 0, "corrections registered")
+
+  -- Every registration carries an owner, a datatype, a name and a load order.
+  for _, entry in ipairs(entries) do
+    check(entry.owner == registry.OWNER, "entry has an owner: " .. tostring(entry.name))
+    check(type(entry.datatype) == "string", "entry has a datatype: " .. tostring(entry.name))
+    check(type(entry.name) == "string", "entry has a name")
+    check(type(entry.loadOrder) == "number", "entry has a load order: " .. tostring(entry.name))
+    check(type(entry.func) == "function",
+      "correction data is held behind a function, not materialised at load: " .. tostring(entry.name))
+  end
+
+  -- Season of Discovery must apply *after* Era's faction fixes. The prototype passed a literal
+  -- 70 instead of SoDBaseDynamicOrder, so despite the comment "Sod will always load last" it
+  -- applied first. Load-order constants make that unrepresentable; this asserts it.
+  local eraDynamic, sodDynamic
+  for _, entry in ipairs(entries) do
+    if entry.name:find("^Era/") and entry.dynamic then eraDynamic = entry.loadOrder end
+    if entry.name:find("^Sod/") and entry.dynamic then sodDynamic = sodDynamic or entry.loadOrder end
+  end
+  if eraDynamic and sodDynamic then
+    check(sodDynamic > eraDynamic,
+      ("SoD dynamic corrections must apply after Era's (SoD %s, Era %s)")
+        :format(tostring(sodDynamic), tostring(eraDynamic)))
+  end
+
+  -- Load-order collisions are reported, not silently overwritten, and both entries survive.
+  local before = #registry.Select({ datatype = "Quest", dynamic = false })
+  registry.RegisterCorrection("TestOwner", "Quest", "collide-a", function() return {} end, 42)
+  registry.RegisterCorrection("TestOwner", "Quest", "collide-b", function() return {} end, 42)
+  local after = #registry.Select({ datatype = "Quest", dynamic = false })
+  equal(after, before + 2, "a load-order collision keeps both entries")
+  local ordered = registry.Select({ owner = "TestOwner", datatype = "Quest", dynamic = false })
+  equal(ordered[1].name, "collide-a", "a collision breaks ties on registration order")
+  equal(ordered[2].name, "collide-b", "the second registrant applies second")
+
+  -- Withdrawing a correction actually removes it, which the previous merge-only approach
+  -- could not do.
+  check(registry.UnregisterCorrection("TestOwner", "Quest", "collide-a"), "withdrawal reports success")
+  equal(#registry.Select({ owner = "TestOwner", datatype = "Quest", dynamic = false }), 1,
+    "a withdrawn correction is gone from the registry")
+
+  -- Deleting a correction and regenerating removes its effect. Applying to a scratch table
+  -- with and without one entry is the same observation without a 30-second regeneration.
+  local scratch = {}
+  registry.RegisterCorrection("TestOwner", "Quest", "scratch", function()
+    return { [999001] = { [1] = "Injected Quest" } }
+  end, 43)
+  registry.ApplyStaticToEntities("Quest", scratch, flavor, "TestOwner")
+  equal(scratch[999001] and scratch[999001][1], "Injected Quest", "a Static Correction reaches base data")
+
+  local scratch2 = {}
+  registry.UnregisterCorrection("TestOwner", "Quest", "scratch")
+  registry.ApplyStaticToEntities("Quest", scratch2, flavor, "TestOwner")
+  equal(scratch2[999001], nil, "deleting the correction removes its effect")
+
+  -- The delete idiom: an empty table reads back as nil, so writing {} clears a field.
+  local meta = Lib.Meta.Quest
+  equal(Lib.Meta.normalize.field(meta, meta.keys.preQuestSingle, {}), nil,
+    "a correction setting a table field to {} clears it")
+
+  -- Static-only correction files are excluded from the shipped artifact.
+  local baked = config.bakedFileList(flavor)
+  local bakedSet = {}
+  for _, file in ipairs(baked) do bakedSet[file] = true end
+  local staticOnly, shipped = 0, 0
+  for _, spec in ipairs(Lib.CorrectionManifest) do
+    if not (spec.dynamic and #spec.dynamic > 0) then
+      staticOnly = staticOnly + 1
+      if bakedSet["src/corrections/" .. spec.file] then shipped = shipped + 1 end
+    end
+  end
+  check(staticOnly > 0, "there are static-only correction files to exclude")
+  equal(shipped, 0, "no static-only correction file is listed in a baked artifact")
+end)
+
+--------------------------------------------------------------------------------------------
+-- Correction Overlay
+--------------------------------------------------------------------------------------------
+
+suite("overlay", function()
+  local tocPath = config.tocPath(config.flavorByName.Vanilla)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP overlay: ", tocPath, " not generated\n")
+    return
+  end
+
+  client.reset()
+  client.install({ expansion = "Classic" })
+  emulator.install(config.antiCollision or config.addonName, emulator.parse(tocPath))
+  local Lib = emulator.loadAddon(tocPath, config.addonName)
+  local registry = Lib.Corrections
+  local Quest = Lib.Quest
+
+  local id = Quest.GetAllIds()[1]
+  local baseName = Quest.GetRaw(id, "name")
+  check(type(baseName) == "string", "picked a quest with a name")
+
+  -- Reads resolve through the overlay first and fall back to base data.
+  registry.RegisterRuntimeCorrection("AddonA", "Quest", "rename",
+    function() return { [id] = { [1] = "Renamed by A" } } end, 10)
+  registry.ApplyRegisteredCorrections("AddonA")
+  equal(Quest.Get(id, "name"), "Renamed by A", "a Dynamic Correction wins over base data")
+  equal(Quest.GetRaw(id, "name"), baseName, "GetRaw bypasses the overlay")
+  equal(Quest.name(id), "Renamed by A", "the named getter resolves through the overlay too")
+
+  -- Cached values are invalidated when the composed view changes: the read above populated
+  -- the cache, and this one must not serve it.
+  registry.RegisterRuntimeCorrection("AddonA", "Quest", "rename2",
+    function() return { [id] = { [1] = "Renamed again" } } end, 11)
+  registry.ApplyRegisteredCorrections("AddonA")
+  equal(Quest.Get(id, "name"), "Renamed again", "re-applying invalidates the cached value")
+
+  -- Idempotent by construction: recomposition rebuilds from the registry rather than
+  -- accumulating into it.
+  registry.ApplyRegisteredCorrections("AddonA")
+  registry.ApplyRegisteredCorrections("AddonA")
+  equal(Quest.Get(id, "name"), "Renamed again", "re-applying repeatedly is idempotent")
+
+  -- Precedence: last applied wins across owners.
+  registry.RegisterRuntimeCorrection("AddonB", "Quest", "rename",
+    function() return { [id] = { [1] = "Renamed by B" } } end, 1)
+  registry.ApplyRegisteredCorrections("AddonB")
+  equal(Quest.Get(id, "name"), "Renamed by B",
+    "last applied wins across owners, regardless of load order within them")
+  equal(registry.GetProvenance("Quest", id, "name"), "AddonB", "provenance names the winning owner")
+
+  -- Applying one owner does not disturb another: A's other field survives B's apply.
+  registry.RegisterRuntimeCorrection("AddonA", "Quest", "level",
+    function() return { [id] = { [4] = 42 } } end, 12)
+  registry.ApplyRegisteredCorrections("AddonA")
+  equal(Quest.Get(id, "requiredLevel"), 42, "A's correction applies")
+  equal(Quest.Get(id, "name"), "Renamed again",
+    "A re-applying moves it last, so A's highest-load-order correction wins the contested field")
+  registry.ApplyRegisteredCorrections("AddonB")
+  equal(Quest.Get(id, "name"), "Renamed by B", "B re-applying takes the contested field back")
+  equal(Quest.Get(id, "requiredLevel"), 42, "B's apply did not disturb A's uncontested field")
+
+  -- Base data is never written to at runtime, in either read mode.
+  equal(Quest.GetRaw(id, "name"), baseName, "base data is untouched by the overlay")
+  equal(Quest.GetRaw(id, "requiredLevel"), Quest.GetRaw(id, "requiredLevel"),
+    "GetRaw is stable")
+
+  -- A withdrawn correction disappears on the next recomposition.
+  registry.UnregisterCorrection("AddonB", "Quest", "rename")
+  registry.ApplyRegisteredCorrections("AddonB")
+  equal(Quest.Get(id, "name"), "Renamed again", "withdrawing B's correction hands the field back to A")
+  registry.UnregisterCorrection("AddonA", "Quest", "rename")
+  registry.UnregisterCorrection("AddonA", "Quest", "rename2")
+  registry.ApplyRegisteredCorrections("AddonA")
+  equal(Quest.Get(id, "name"), baseName, "withdrawing every correction falls back to base data")
+
+  -- Within one owner, a later correction overrides an earlier one on the same field.
+  registry.RegisterRuntimeCorrection("AddonA", "Quest", "clear",
+    function() return { [id] = { [4] = 0 } } end, 13)
+  registry.ApplyRegisteredCorrections("AddonA")
+  equal(Quest.Get(id, "requiredLevel"), 0,
+    "a later correction within an owner overrides an earlier one")
+
+  -- Debug mode reports one owner overriding another.
+  local logged = {}
+  local realPrint = print
+  _G.print = function(message) logged[#logged + 1] = tostring(message) end
+  registry.debug = true
+  registry.RegisterRuntimeCorrection("AddonB", "Quest", "clash",
+    function() return { [id] = { [4] = 7 } } end, 1)
+  registry.ApplyRegisteredCorrections("AddonB")
+  registry.debug = false
+  _G.print = realPrint
+  local found = false
+  for _, message in ipairs(logged) do
+    if message:find('overrode') and message:find("AddonA") then found = true end
+  end
+  check(found, "debug mode reports when one owner overrides another on the same field")
+
+  -- Order within an owner: higher loadOrder applies later and wins.
+  registry.RegisterRuntimeCorrection("AddonC", "Quest", "low",
+    function() return { [id] = { [5] = 1 } } end, 1)
+  registry.RegisterRuntimeCorrection("AddonC", "Quest", "high",
+    function() return { [id] = { [5] = 2 } } end, 100)
+  registry.ApplyRegisteredCorrections("AddonC")
+  equal(Quest.Get(id, "questLevel"), 2, "within an owner, the higher load order wins")
+
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
+-- Ported correction files match Questie's
+--------------------------------------------------------------------------------------------
+
+suite("correction-fidelity", function()
+  local questie = "../Questie"
+  if not lib.fileExists(questie .. "/Database/Corrections/classicQuestFixes.lua") then
+    io.write("  SKIP correction-fidelity: no Questie checkout alongside this repo\n")
+    return
+  end
+
+  -- The correction files here are byte-identical copies of Questie's. That is the whole
+  -- argument for the compat shim: no transcription step means no transcription error, and
+  -- re-syncing is a file copy. Asserting it mechanically is what keeps that true.
+  local manifest = dofile("src/corrections/manifest.lua")
+  local sourceFor = {
+    ["Era/classicQuestReputationFixes.lua"] = "Automatic/classicQuestReputationFixes.lua",
+    ["Shared/itemStartFixes.lua"] = "Automatic/itemStartFixes.lua",
+    ["Sod/sodBaseQuests.lua"] = "Automatic/sodBaseQuests.lua",
+    ["Sod/sodBaseNPCs.lua"] = "Automatic/sodBaseNPCs.lua",
+    ["Sod/sodBaseItems.lua"] = "Automatic/sodBaseItems.lua",
+    ["Sod/sodBaseObjects.lua"] = "Automatic/sodBaseObjects.lua",
+  }
+
+  local compared = 0
+  for _, spec in ipairs(manifest) do
+    local ours = "src/corrections/" .. spec.file
+    local theirs = questie .. "/Database/Corrections/" ..
+      (sourceFor[spec.file] or spec.file:match("[^/]+$"))
+    if lib.fileExists(ours) and lib.fileExists(theirs) then
+      compared = compared + 1
+      check(lib.readAll(ours) == lib.readAll(theirs),
+        "ported copy diverges from Questie's: " .. spec.file)
+    end
+  end
+  check(compared >= 25, ("compared %d correction files, expected at least 25"):format(compared))
 end)
 
 --------------------------------------------------------------------------------------------

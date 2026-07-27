@@ -77,6 +77,11 @@ function baked.CreateBackend(meta)
   return backend
 end
 
+-- The artifact names its own flavor, so the correction block that loads after this file knows
+-- which expansion's Dynamic Corrections apply without asking the client.
+local flavorName = GetAddOnMetadata(ADDON_NAME, "X-Flavor")
+LibQuestieDB.flavor = flavorName and LibQuestieDB.config.flavorByName[flavorName] or nil
+
 LibQuestieDB.read = LibQuestieDB.read or {}
 LibQuestieDB.read.baked = baked
 LibQuestieDB.mode = "baked"
