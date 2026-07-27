@@ -1,0 +1,15 @@
+# Generated artifacts. Baked TOCs are never committed — CI publishes them, and a bootstrap
+# script installs them into this gitignored slot in a developer's clone.
+QuestieTDB_Vanilla.toc
+QuestieTDB_TBC.toc
+QuestieTDB_Wrath.toc
+QuestieTDB_Cata.toc
+QuestieTDB_Mists.toc
+
+# Diagnostic output retained as CI artifacts, not source.
+.out/
+*.log
+
+# Editor and OS noise
+.DS_Store
+*.swp

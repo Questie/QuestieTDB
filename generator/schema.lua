@@ -1,0 +1,346 @@
+-- generator/schema.lua
+--
+-- Derives QuestieTDB's field table from Questie's schema rather than hand-maintaining a copy.
+--
+-- A hand-written schema is a second version of someone else's schema, and it drifts — observed,
+-- not theoretical: the `Getters` prototype sits at 32 quest fields against Questie's 36, having
+-- gone stale during exactly this kind of development gap. Deriving turns drift into a build
+-- failure instead of a discovery months later.
+--
+-- Two halves of Questie's schema meet different fates:
+--
+--   *Keys           lives in Database/<entity>DB.lua AND duplicated inside each data file.
+--                   Survives Questie's phase 13, so it keeps deriving indefinitely.
+--   *CompilerTypes  lives in Database/<entity>DB.lua only. Dies with the compiler.
+--
+-- So the type map is *materialized* into src/meta/ and committed — a mechanism whose job is to
+-- capture something before it disappears. `schema.check()` compares the committed copy against
+-- a fresh derivation, which is how drift becomes a build failure.
+
+local serialize = dofile("generator/serialize.lua")
+local lib = dofile("generator/lib.lua")
+
+local schema = {}
+
+--------------------------------------------------------------------------------------------
+-- Compiler type map
+--------------------------------------------------------------------------------------------
+--
+-- Questie's compiler type names describe a byte stream. Most of that means nothing in a text
+-- store:
+--
+--   * Width is dead.        u8/u16/u24/u32/s8/s16/s24 all become the same decimal text.
+--   * Array width is dead.  u8u16array/u16u16array/u8u24array/u8s24array/u16u24array all
+--                           become one ID array.
+--   * Signedness is dead.   The stream offsets (`value - 32767`) exist only inside the
+--                           encoder. Generation reads raw data pre-compile, so no offset is
+--                           ever present.
+--
+-- Three things do not collapse: structure, nil semantics, and `faction`'s normalizer.
+--
+-- `storage`   is what the decoder does with the stored text: number | string | table.
+-- `structure` names the shape, for validators and for documentation. It does not select a
+--             serializer — one generic serializer handles every shape, see
+--             generator/serialize.lua.
+-- `emptyIsNil` marks table types whose "no content" form must read back as nil.
+-- `zeroPairIsNil` marks the pair types, where Questie's documented hack makes {0,0} read as
+--             nil.
+
+schema.compilerTypeMap = {
+  -- Numbers. Width and signedness are stream concerns only.
+  u8  = { storage = "number" },
+  u12 = { storage = "number" },
+  u16 = { storage = "number" },
+  u24 = { storage = "number" },
+  u32 = { storage = "number" },
+  s8  = { storage = "number" },
+  s16 = { storage = "number" },
+  s24 = { storage = "number" },
+
+  -- Strings.
+  u8string  = { storage = "string" },
+  u16string = { storage = "string" },
+  faction   = { storage = "string", normalize = "faction" },
+
+  -- ID arrays. Five stream types, one behaviour.
+  u8u16array  = { storage = "table", structure = "idarray", emptyIsNil = true },
+  u8u24array  = { storage = "table", structure = "idarray", emptyIsNil = true },
+  u8s24array  = { storage = "table", structure = "idarray", emptyIsNil = true },
+  u16u16array = { storage = "table", structure = "idarray", emptyIsNil = true },
+  u16u24array = { storage = "table", structure = "idarray", emptyIsNil = true },
+
+  -- String arrays.
+  u8u16stringarray = { storage = "table", structure = "stringarray", emptyIsNil = true },
+
+  -- Pairs. {0,0} reads back as nil — Questie's documented hack for coordinate-style pairs.
+  u12pair = { storage = "table", structure = "pair", emptyIsNil = true, zeroPairIsNil = true },
+  s24pair = { storage = "table", structure = "pair", emptyIsNil = true, zeroPairIsNil = true },
+
+  -- Lists of pairs.
+  u8s24pairs = { storage = "table", structure = "pairs", emptyIsNil = true },
+
+  -- Structured values. Each needs its own validator, not its own serializer.
+  questgivers     = { storage = "table", structure = "questgivers", emptyIsNil = true },
+  objectives      = { storage = "table", structure = "objectives", emptyIsNil = true },
+  spawnlist       = { storage = "table", structure = "spawnlist", emptyIsNil = true },
+  waypointlist    = { storage = "table", structure = "waypointlist", emptyIsNil = true },
+  trigger         = { storage = "table", structure = "trigger", emptyIsNil = true },
+  extraobjectives = { storage = "table", structure = "extraobjectives", emptyIsNil = true },
+}
+
+--------------------------------------------------------------------------------------------
+-- Localization coverage
+--------------------------------------------------------------------------------------------
+--
+-- Field coverage matches what Questie translates today, and no more.
+
+schema.l10nFieldNames = {
+  Quest  = { "name", "objectivesText" },
+  Npc    = { "name", "subName" },
+  Item   = { "name" },
+  Object = { "name" },
+}
+
+--------------------------------------------------------------------------------------------
+-- Derivation
+--------------------------------------------------------------------------------------------
+
+--- Build one entity type's field table from Questie's `*Keys` and `*CompilerTypes`.
+---
+--- An unrecognised compiler type fails the build rather than defaulting. A new Questie type is
+--- a decision, not a fallback.
+---@param entityType table An entry from config.entityTypes
+---@param keys table fieldName -> fieldIndex
+---@param compilerTypes table fieldName -> compiler type string
+---@return table meta
+function schema.derive(entityType, keys, compilerTypes)
+  local meta = {
+    entity = entityType.name,
+    metaPrefix = entityType.metaPrefix,
+    keys = {},
+    names = {},
+    types = {},
+    structures = {},
+    compilerTypes = {},
+    emptyIsNil = {},
+    zeroPairIsNil = {},
+    normalize = {},
+    fieldCount = 0,
+  }
+
+  local seenIndex = {}
+  for name, index in pairs(keys) do
+    if type(index) ~= "number" or index ~= math.floor(index) or index < 1 then
+      error(entityType.name .. ": field '" .. tostring(name) .. "' has a non-positional index " .. tostring(index), 0)
+    end
+    if seenIndex[index] then
+      error(entityType.name .. ": field index " .. index .. " claimed by both '" ..
+            seenIndex[index] .. "' and '" .. name .. "'", 0)
+    end
+    seenIndex[index] = name
+    if index > meta.fieldCount then meta.fieldCount = index end
+    meta.keys[name] = index
+    meta.names[index] = name
+  end
+
+  for index = 1, meta.fieldCount do
+    if not meta.names[index] then
+      error(entityType.name .. ": field index " .. index .. " has no name — the key enum has a hole", 0)
+    end
+  end
+
+  for index = 1, meta.fieldCount do
+    local name = meta.names[index]
+    local compilerType = compilerTypes[name]
+    if not compilerType then
+      error(entityType.name .. ": field '" .. name .. "' (index " .. index ..
+            ") has no entry in " .. entityType.typesField, 0)
+    end
+    local mapping = schema.compilerTypeMap[compilerType]
+    if not mapping then
+      error(entityType.name .. ": unrecognised compiler type '" .. compilerType .. "' on field '" ..
+            name .. "'. Add it to schema.compilerTypeMap — a new Questie type is a decision, " ..
+            "not a fallback.", 0)
+    end
+    meta.compilerTypes[index] = compilerType
+    meta.types[index] = mapping.storage
+    meta.structures[index] = mapping.structure
+    meta.emptyIsNil[index] = mapping.emptyIsNil or nil
+    meta.zeroPairIsNil[index] = mapping.zeroPairIsNil or nil
+    meta.normalize[index] = mapping.normalize
+  end
+
+  for name in pairs(compilerTypes) do
+    if not meta.keys[name] then
+      error(entityType.name .. ": " .. entityType.typesField .. " has '" .. name ..
+            "' which is absent from " .. entityType.keysField, 0)
+    end
+  end
+
+  meta.l10nFields = {}
+  for _, name in ipairs(schema.l10nFieldNames[entityType.name] or {}) do
+    local index = meta.keys[name]
+    if not index then
+      error(entityType.name .. ": localized field '" .. name .. "' is not in the key enum", 0)
+    end
+    meta.l10nFields[#meta.l10nFields + 1] = index
+  end
+  table.sort(meta.l10nFields)
+
+  return meta
+end
+
+--- Check a data file's own copy of the key enum against the derived schema.
+---
+--- `questKeys` is defined inside each data file, so a *disagreement* there means the data and
+--- the schema have drifted apart and generation must stop. A trailing *omission* is different
+--- and legitimate: a field can be added to the canonical enum before every expansion's data
+--- file is regenerated, and until then no row in that file carries the field. Two such
+--- omissions exist today — `itemKeys.teachesSpell` (16) is absent from all five item data
+--- files, and `objectKeys.waypoints` (7) is absent from MoP's.
+---
+---@return table omitted fieldName -> fieldIndex present in the schema but not in the data file
+function schema.checkKeys(meta, keys, where)
+  for name, index in pairs(keys) do
+    if meta.keys[name] == nil then
+      error(string.format("%s: key enum drift in %s — '%s' (index %s) is not in the derived schema. " ..
+        "Re-run `lua generate.lua meta` against a current Questie checkout.",
+        meta.entity, where, name, tostring(index)), 0)
+    end
+    if meta.keys[name] ~= index then
+      error(string.format("%s: key enum drift in %s — '%s' is %s there and %s in the derived schema",
+        meta.entity, where, name, tostring(index), tostring(meta.keys[name])), 0)
+    end
+  end
+
+  local omitted = {}
+  for name, index in pairs(meta.keys) do
+    if keys[name] == nil then omitted[name] = index end
+  end
+  return omitted
+end
+
+--- Fail if any row carries data in a field the data file's key enum never declared. This is
+--- what makes a trailing omission safe to tolerate rather than merely tolerated.
+function schema.assertNoDataBeyondKeys(meta, entities, keys, where)
+  local declared = 0
+  for _, index in pairs(keys) do
+    if index > declared then declared = index end
+  end
+  for id, row in pairs(entities) do
+    for index in pairs(row) do
+      if type(index) == "number" and index > declared then
+        error(string.format("%s: %s id %s carries data at field index %d, but its key enum " ..
+          "declares only %d fields", meta.entity, where, tostring(id), index, declared), 0)
+      end
+    end
+  end
+end
+
+--------------------------------------------------------------------------------------------
+-- Materialization
+--------------------------------------------------------------------------------------------
+
+local function emitIndexedTable(out, name, values, count, quoteValues)
+  out[#out + 1] = "  " .. name .. " = {"
+  local parts = {}
+  for index = 1, count do
+    local value = values[index]
+    if value ~= nil then
+      local encoded
+      if quoteValues then
+        encoded = serialize.quote(tostring(value))
+      elseif value == true then
+        encoded = "true"
+      else
+        encoded = serialize.value(value)
+      end
+      parts[#parts + 1] = "[" .. index .. "]=" .. encoded
+    end
+  end
+  out[#out + 1] = table.concat(parts, ", ")
+  out[#out + 1] = "  },"
+end
+
+--- Render one entity type's meta as a committable Lua source file.
+function schema.render(meta)
+  local out = {}
+  out[#out + 1] = "-- src/meta/" .. meta.entity:lower() .. "Meta.lua"
+  out[#out + 1] = "--"
+  out[#out + 1] = "-- GENERATED by `lua generate.lua meta`. Do not edit by hand."
+  out[#out + 1] = "--"
+  out[#out + 1] = "-- Derived from Questie's " .. meta.entity:lower() .. "Keys and " ..
+                  meta.entity:lower() .. "CompilerTypes. The key enum keeps deriving because"
+  out[#out + 1] = "-- each data file carries its own copy; the compiler-type column is"
+  out[#out + 1] = "-- materialized here because Questie's copy dies with the compiler."
+  out[#out + 1] = ""
+  out[#out + 1] = "local _, LibQuestieDB = ..."
+  out[#out + 1] = ""
+  out[#out + 1] = "local meta = {"
+  out[#out + 1] = "  entity = " .. serialize.quote(meta.entity) .. ","
+  out[#out + 1] = "  metaPrefix = " .. serialize.quote(meta.metaPrefix) .. ","
+  out[#out + 1] = "  fieldCount = " .. meta.fieldCount .. ","
+  out[#out + 1] = ""
+
+  out[#out + 1] = "  --- fieldName -> fieldIndex. The Database Key Enum."
+  out[#out + 1] = "  keys = {"
+  local names = {}
+  for index = 1, meta.fieldCount do names[index] = meta.names[index] end
+  local keyParts = {}
+  for index = 1, meta.fieldCount do
+    keyParts[#keyParts + 1] = string.format("    [%s] = %d,", serialize.quote(names[index]), index)
+  end
+  out[#out + 1] = table.concat(keyParts, "\n")
+  out[#out + 1] = "  },"
+  out[#out + 1] = ""
+
+  out[#out + 1] = "  --- fieldIndex -> fieldName"
+  emitIndexedTable(out, "names", meta.names, meta.fieldCount, true)
+  out[#out + 1] = ""
+  out[#out + 1] = "  --- fieldIndex -> storage type: number | string | table"
+  emitIndexedTable(out, "types", meta.types, meta.fieldCount, true)
+  out[#out + 1] = ""
+  out[#out + 1] = "  --- fieldIndex -> structural shape, for validators. nil for scalars."
+  emitIndexedTable(out, "structures", meta.structures, meta.fieldCount, true)
+  out[#out + 1] = ""
+  out[#out + 1] = "  --- fieldIndex -> Questie compiler type. Materialized provenance."
+  emitIndexedTable(out, "compilerTypes", meta.compilerTypes, meta.fieldCount, true)
+  out[#out + 1] = ""
+  out[#out + 1] = "  --- fieldIndex -> true when an empty table must read back as nil"
+  emitIndexedTable(out, "emptyIsNil", meta.emptyIsNil, meta.fieldCount, false)
+  out[#out + 1] = ""
+  out[#out + 1] = "  --- fieldIndex -> true when {0,0} must read back as nil"
+  emitIndexedTable(out, "zeroPairIsNil", meta.zeroPairIsNil, meta.fieldCount, false)
+  out[#out + 1] = ""
+  out[#out + 1] = "  --- fieldIndex -> named normalizer"
+  emitIndexedTable(out, "normalize", meta.normalize, meta.fieldCount, true)
+  out[#out + 1] = ""
+  out[#out + 1] = "  --- field indices carrying translations"
+  out[#out + 1] = "  l10nFields = " .. serialize.value(meta.l10nFields) .. ","
+  out[#out + 1] = "}"
+  out[#out + 1] = ""
+  out[#out + 1] = "if LibQuestieDB then"
+  out[#out + 1] = "  LibQuestieDB.Meta = LibQuestieDB.Meta or {}"
+  out[#out + 1] = "  LibQuestieDB.Meta[" .. serialize.quote(meta.entity) .. "] = meta"
+  out[#out + 1] = "end"
+  out[#out + 1] = ""
+  out[#out + 1] = "return meta"
+  out[#out + 1] = ""
+
+  return table.concat(out, "\n")
+end
+
+function schema.metaPath(entityType)
+  return "src/meta/" .. entityType.name:lower() .. "Meta.lua"
+end
+
+--- Load the committed meta for one entity type.
+function schema.loadMaterialized(entityType)
+  local path = schema.metaPath(entityType)
+  if not lib.fileExists(path) then
+    error("Missing materialized schema " .. path .. " — run `lua generate.lua meta`", 0)
+  end
+  return dofile(path)
+end
+
+return schema

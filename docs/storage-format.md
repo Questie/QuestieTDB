@@ -70,7 +70,25 @@ split:
 
 A reader distinguishes a chunk header from an ordinary value by matching `^~(%d+)~$`. Ordinary
 values that would match this pattern cannot occur, because every stored value is either a
-number, a Lua table literal (starting `{`), or a name.
+number, a Lua table literal (starting `{`), or a name — and a name that would collide is
+written in `~Q~` form instead, below.
+
+## Tilde markers
+
+Three markers share the `~…~` space, checked before a value is interpreted as its declared
+type:
+
+| Marker | Meaning |
+| --- | --- |
+| `~<N>~` | Chunked metadata value with N parts |
+| `~E~` | The empty string |
+| `~Q~<lua literal>` | A Lua string literal, for a value the line format cannot carry raw |
+
+`~E~` exists because an absent key already means nil, so `""` has no other way to distinguish
+itself. `~Q~` covers the two remaining cases: a string containing a control character or line
+break, which a line-oriented format cannot carry at all, and a string that would otherwise be
+mistaken for a marker. The encoder rewrites any raw string matching a marker into `~Q~` form,
+so collision is impossible by construction rather than by survey.
 
 ## ID list
 
@@ -92,8 +110,12 @@ Consumers build either form from it:
 Localized values are stored under their own prefixed keys:
 
 ```toc
-## X-<Type>-<id>-<fieldIndex>: <locale1>‡<locale2>‡...
+## X-l10n-<Type>-<id>-<fieldIndex>: <locale1>‡<locale2>‡...
 ```
+
+The `l10n-` prefix is load-bearing in the combined case, which is what QuestieTDB ships:
+without it `X-Quest-2-1` would be ambiguous between quest 2's name and Quest l10n id 2
+field 1.
 
 - The separator is **`‡`** (U+2021, UTF-8 `\226\128\161`).
 - Locale order is fixed and declared by the generator; the decoder captures the Nth segment.
@@ -144,9 +166,19 @@ Two consequences for implementation:
   failing — see `docs/table.freeze.md`.
 
 Empty strings need an explicit representation, since an absent key already means `nil`.
-Questie's compiler solves this with a literal `"nil"` sentinel in the opposite direction.
-**Verify against real data whether any entity field is genuinely an empty string** before
-choosing a marker; if none exist, absence-means-nil is sufficient and no marker is needed.
+Questie's compiler solves this with a literal `"nil"` sentinel in the opposite direction —
+`writers["u8string"]` emits `value or "nil"` and `readers["u8string"]` maps `"nil"` back to
+nil, which means a genuine string `"nil"` is lost. QuestieTDB instead marks the empty string
+explicitly with `~E~`, so nothing needs to be inferred from a survey and no legitimate value
+is unrepresentable.
+
+### Field-level, not nested
+
+The table above governs a *field's* value. Content nested inside a stored table is preserved
+verbatim. Questie's compiler additionally normalized some nested values — dropping a spawn
+phase of `0`, turning a nil objective text into `""`, quantizing coordinates — and a text
+store has no reason to. Those are enumerated in the buildout progress log; each is QuestieTDB
+being more faithful to the source, never less.
 
 ## Round-trip requirement
 

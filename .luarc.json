@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/sumneko/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.1",
+  "diagnostics.globals": [
+    "QuestieLoader",
+    "Questie",
+    "QuestDB",
+    "NpcDB",
+    "ItemDB",
+    "ObjectDB",
+    "LibQuestieDB",
+    "C_AddOns",
+    "C_Timer",
+    "C_Seasons",
+    "CreateFrame",
+    "GetAddOnMetadata",
+    "GetLocale",
+    "LibStub",
+    "Enum",
+    "wipe",
+    "tinsert",
+    "tremove",
+    "strsplit",
+    "hooksecurefunc",
+    "unpack",
+    "loadstring",
+    "setfenv",
+    "arg"
+  ],
+  "diagnostics.disable": [
+    "deprecated",
+    "lowercase-global"
+  ],
+  "workspace.checkThirdParty": false
+}
