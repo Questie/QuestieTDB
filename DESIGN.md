@@ -122,6 +122,60 @@ entity should not be shown is consumer policy. Quest 7462 genuinely exists in
 `quest_template`; that Questie hides it as a duplicate is Questie's decision, and another
 consumer may legitimately want it.
 
+## Schema
+
+**The schema is derived from Questie, not hand-written here.** Generation reads Questie's
+`*Keys` and `*CompilerTypes` and builds the field table from them.
+
+A hand-maintained copy is a second version of someone else's schema, and it drifts. That is
+observed, not theoretical: `Getters`' schema sits at 32 fields against Questie's 36, having
+gone stale during exactly this kind of development gap. Deriving turns drift into a build
+failure instead of a discovery months later.
+
+### Compiler types collapse, but not entirely
+
+Questie's compiler type names describe a byte stream. Most of that means nothing in a text
+store:
+
+- **Width is dead.** `u8`, `u16`, `u24`, `u32`, `s8`, `s16`, `s24` all become the same decimal
+  text. Seven types, one behaviour.
+- **Array width is dead.** `u8u16array`, `u16u16array`, `u8u24array`, `u8s24array`,
+  `u16u24array` all become one ID array. Five types, one behaviour.
+- **Signedness is dead**, and notably so: the stream offsets (`value - 32767`) exist only
+  inside the encoder. Generation reads Questie's **raw data, pre-compile**, so no offset is
+  ever present.
+
+Three things do not collapse and must be preserved:
+
+- **Structure** — `spawnlist`, `waypointlist`, `questgivers`, `objectives`,
+  `extraobjectives`, `trigger` each need a distinct serializer. This is why `DumpFunctions`
+  has `dumpCoordinates`, `dumpTriggerEnd`, and `dumpExtraObjectives` rather than one generic
+  dumper.
+- **Nil semantics** — pair types return `nil` when both components are zero; string types use
+  the `"nil"` sentinel to keep empty-string distinct from nil; zero-count arrays return `nil`.
+  Load-bearing, because the rule is to match Questie exactly.
+- **`faction`**, which has its own normalizer.
+
+So the mapping is compiler type → `{ storage, normalize }`, and **an unrecognised compiler
+type must fail the build** rather than defaulting. A new Questie type is a decision, not a
+fallback.
+
+### The type map has an expiry date
+
+The two halves of Questie's schema meet different fates at phase 13:
+
+| | Lives in | After phase 13 |
+| --- | --- | --- |
+| `*Keys` | `Database/<entity>DB.lua` **and** duplicated inside each data file | **Survives** — travels with the data into QuestieTDB |
+| `*CompilerTypes` | `Database/<entity>DB.lua` only | **Dies** with the compiler |
+
+Field names and ordering can therefore keep deriving indefinitely, because the data files
+carry their own copy of the keys. Only the **type map** loses its source.
+
+**Materialize the type map before phase 13** — generate it once, commit it, and retire the
+derivation. Same shape as the golden snapshot for the differential test: a mechanism whose
+job is to capture something before it disappears.
+
 ## The seam
 
 Questie's runtime database surface, by call-site count (raw grep, includes tests):
@@ -168,8 +222,26 @@ testing rather than trusted to review. Full detail in
 
 ## Two runtime modes
 
-The client searches for suffixed TOCs first and falls back to `AddonName.toc` only if none
-are found. That rule selects the mode automatically.
+The client searches for flavour-suffixed TOCs first and falls back to `AddonName.toc` **only
+if none are found**. That rule selects the mode automatically, at no cost — a generated
+artifact wins simply by existing.
+
+| Client | TOC |
+| --- | --- |
+| WoW Classic | `QuestieTDB_Vanilla.toc` |
+| Burning Crusade Classic, Classic Anniversary | `QuestieTDB_TBC.toc` |
+| Wrath Classic, **Titan Reforged** | `QuestieTDB_Wrath.toc` |
+| Cataclysm Classic | `QuestieTDB_Cata.toc` |
+| Mists of Pandaria Classic | `QuestieTDB_Mists.toc` |
+| none of the above present | `QuestieTDB.toc` → **source mode** |
+
+Use these modern underscore suffixes. `-WOTLKC` and `-BCC` are recognised legacy forms and
+are what the prototypes emit, but there is no reason to start on deprecated names.
+`_Classic` and `_Mainline` are lower-priority catch-alls and are deliberately unused — a
+`_Classic` TOC would lose to `_Vanilla` anyway.
+
+Note `_Wrath` serves Titan Reforged as well as Wrath Classic, which Questie distinguishes at
+runtime through its own flag rather than through separate data.
 
 | | Source mode | Baked mode |
 | --- | --- | --- |
@@ -547,11 +619,15 @@ preserved before the folder around it is removed. See phase 11.
 The ~22 `*Pointers` sites need checking to confirm they only test existence and iterate ids.
 `GetAllIds(true)` returns a real hashmap and is a drop-in *if* that holds.
 
-### 3. Schema drift
+### 3. Schema drift — mitigated by derivation
 
-`Getters`' schema is already stale — 32 fields against Questie's current 36, missing
-`availableUntilCompleted`, `availableStartingWith`, `requiredRanks`, `disabledByQuest`. Port
-from Questie, not from the prototype, and expect the schema to keep moving.
+`Getters`' schema is stale by four fields — `availableUntilCompleted`,
+`availableStartingWith`, `requiredRanks`, `disabledByQuest` — having gone out of date while
+sitting still. Questie will keep moving during this build.
+
+Deriving the schema (see Schema) converts this from a silent divergence into a build failure.
+The residual risk is narrower: an unrecognised **compiler type** halts generation and needs a
+storage decision, and the type map must be materialized before phase 13 removes its source.
 
 ### 4. Mutation audit
 
@@ -599,6 +675,12 @@ pull if the size gate is unfavourable.
 **Keeping raw data in Questie.** Rejected: the generator would need Questie checked out to
 build, and support-data validators such as
 `checkNpcSpawnAreaIds(npcs, npcKeys, getUiMapIdByAreaId)` could not run without it.
+
+**A hand-written schema in QuestieTDB.** Reads more cleanly than derived compiler-type names,
+and carries no dead width information. Rejected because it is a second copy of Questie's
+schema and would drift — which is precisely how `Getters` fell four fields behind. Derivation
+makes drift a build failure instead of a discovery. The translation map is needed either way,
+so hand-writing buys readability at the cost of the only mechanism that catches drift.
 
 ## Verified findings
 
@@ -648,9 +730,19 @@ removed last** — after the differential test runs clean and its golden snapsho
     `.retired` is reference material, never a build input. In particular, nothing may consume
     the prototypes' intermediate export format — see Generation inputs.
 12. Flip the default. Keep the compiler one release cycle.
-13. Remove `compiler.lua`, the raw data files, the SavedVariables database, and the SoD
-    parallel database. Questie is now a pure consumer.
+13. **Materialize the compiler-type map**, then remove `compiler.lua`, the raw data files, the
+    SavedVariables database, and the SoD parallel database. Questie is now a pure consumer.
+
+    Materialization comes first because `*CompilerTypes` is the map's only source and this step
+    deletes it. `*Keys` need no such treatment — the data files carry their own copy, so field
+    names and ordering keep deriving afterwards.
 
 Two independent retirements, easily confused: **step 11 removes the prototypes**
 (`Getters`, `toc-database`), and **step 13 removes Questie's compiler**. They gate on
 different things and must not be collapsed.
+
+**If QuestieTDB is merged only once step 13 is complete**, step 12 never ships and collapses
+into 13. That is a reasonable choice given how thoroughly the approach has been tested, but it
+removes the in-the-wild fallback: there is no released build where a user can flip back to the
+compiler. The golden snapshot from step 6 then becomes the only regression guard, so committing
+it stops being optional.
