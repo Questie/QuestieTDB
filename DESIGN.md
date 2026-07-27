@@ -535,9 +535,12 @@ substantially beyond today's size, but it is not currently needed.
 
 Consequence for the rest of the plan: **the prototypes' runtime behaviour is validated**, which
 raises the value of extracting their format precisely — see
-[`docs/storage-format.md`](./docs/storage-format.md). Nothing in the prototype chain needs
-preserving otherwise; `Getters/{Database}` and `Getters/data/` are untracked derived output and
-are disposable.
+[`docs/storage-format.md`](./docs/storage-format.md).
+
+Generated and intermediate data is disposable: `Getters/{Database}` and `Getters/data/` are
+untracked derived output. `Getters` and `toc-database` themselves are recoverable from their
+remotes. **`GetterDB` is not** — it is a nested repository with no remote, and must be
+preserved before the folder around it is removed. See phase 11.
 
 ### 2. `*Pointers` semantics — audit
 
@@ -631,10 +634,19 @@ removed last** — after the differential test runs clean and its golden snapsho
 8. Expose the public API; convert Questie's policy corrections to registered Dynamic Corrections.
 9. Move entity l10n to the overlay; delete the `dbCompiledLang` recompile trigger.
 10. Set up CI, release-backed bootstrap, and the pinned integration job.
-11. **Retire the prototypes.** Once the engine (step 2) and the corrections registry (step 7)
-    are ported, delete `Getters` and `toc-database`. Nothing else may depend on them by this
-    point — check the gate artifact is no longer needed and that `GetterDB`, which is its own
-    repository, is where any remaining reference material lives.
+11. **Retire the prototypes to `.retired`.** Once the engine (step 2) and the corrections
+    registry (step 7) are ported, move `Getters` and `toc-database` into a gitignored
+    `.retired` folder at the workspace root. They are moved, not deleted — retiring is
+    reversible, and nothing is removed from any remote.
+
+    **`GetterDB` still needs an off-machine copy.** It is a nested git repository with **no
+    remote**, holding the serializer and the corrections registry. `.retired` protects it from
+    the cleanup; it does not protect it from machine loss. Push it somewhere independently —
+    this is worth doing now rather than at phase 11, since it is the only irreversible failure
+    mode in the plan.
+
+    `.retired` is reference material, never a build input. In particular, nothing may consume
+    the prototypes' intermediate export format — see Generation inputs.
 12. Flip the default. Keep the compiler one release cycle.
 13. Remove `compiler.lua`, the raw data files, the SavedVariables database, and the SoD
     parallel database. Questie is now a pure consumer.
