@@ -114,15 +114,45 @@ end
 
 local serializeValue
 
---- Highest positive integer key. Sparse arrays keep their holes — `{{12676},nil,{16305}}` —
---- and the decoder relies on Lua's own table constructor semantics to restore them.
---- Trailing nils are not representable and are not observable, so they are dropped.
-local function maxArrayIndex(tbl)
-  local max = 0
-  for key in pairs(tbl) do
-    if isArrayIndex(key) and key > max then max = key end
+--- How many array slots to emit positionally before switching to explicit `[k]=v` form.
+---
+--- Both forms decode identically, so this is purely a size decision — and it matters, because
+--- the coordinate tables that dominate the artifact are keyed by zone ID. Serializing
+--- `{[1335]={{36.43,55.89}}}` as an array would emit 1334 `nil,` holes.
+---
+--- With integer keys k1 < k2 < ... < kn, emitting the array part up to kj costs 4 bytes per
+--- hole (`nil,`) and saves `#tostring(k) + 3` bytes per key it absorbs (`[k]=`). Scanning j
+--- from 0 to n with a running suffix sum finds the cheapest split in one pass, and never
+--- materialises a range it would not choose.
+local function arrayPrefixLength(sortedIntKeys)
+  local n = #sortedIntKeys
+  if n == 0 then return 0 end
+
+  local suffixCost = 0
+  for i = 1, n do
+    suffixCost = suffixCost + #tostring(sortedIntKeys[i]) + 3
   end
-  return max
+
+  local bestJ, bestCost = 0, suffixCost
+  for j = 1, n do
+    suffixCost = suffixCost - (#tostring(sortedIntKeys[j]) + 3)
+    local holes = sortedIntKeys[j] - j
+    local cost = holes * 4 + suffixCost
+    -- Ties go to the longer array prefix, which is the `{{12676},nil,{16305}}` spelling
+    -- docs/storage-format.md uses as its example.
+    if cost <= bestCost then
+      bestJ, bestCost = j, cost
+    end
+  end
+
+  if bestJ == 0 then return 0 end
+  return sortedIntKeys[bestJ]
+end
+
+local function encodeKey(key)
+  if type(key) == "number" then return serialize.number(key) end
+  if type(key) == "string" then return serialize.quote(key) end
+  error("serialize: unsupported table key type " .. type(key), 0)
 end
 
 local function serializeTable(value, depth)
@@ -130,32 +160,39 @@ local function serializeTable(value, depth)
     error("serialize: table nesting deeper than 32 levels, refusing to recurse", 0)
   end
 
-  local max = maxArrayIndex(value)
-  local parts = {}
-
-  for i = 1, max do
-    parts[#parts + 1] = serializeValue(value[i], depth + 1)
-  end
-
-  local hashKeys
+  local intKeys, otherKeys
   for key in pairs(value) do
-    if not (isArrayIndex(key) and key <= max) then
-      hashKeys = hashKeys or {}
-      hashKeys[#hashKeys + 1] = key
+    if isArrayIndex(key) then
+      intKeys = intKeys or {}
+      intKeys[#intKeys + 1] = key
+    else
+      otherKeys = otherKeys or {}
+      otherKeys[#otherKeys + 1] = key
     end
   end
-  if hashKeys then
-    sort(hashKeys, compareKeys)
-    for _, key in ipairs(hashKeys) do
-      local encodedKey
-      if type(key) == "number" then
-        encodedKey = serialize.number(key)
-      elseif type(key) == "string" then
-        encodedKey = serialize.quote(key)
-      else
-        error("serialize: unsupported table key type " .. type(key), 0)
+
+  local parts = {}
+
+  if intKeys then
+    sort(intKeys)
+    -- Sparse arrays keep their holes — `{{12676},nil,{16305}}` — and the decoder relies on
+    -- Lua's own table constructor semantics to restore them. Trailing nils are neither
+    -- representable nor observable, so they fall out naturally.
+    local arrayLength = arrayPrefixLength(intKeys)
+    for i = 1, arrayLength do
+      parts[#parts + 1] = serializeValue(value[i], depth + 1)
+    end
+    for _, key in ipairs(intKeys) do
+      if key > arrayLength then
+        parts[#parts + 1] = "[" .. encodeKey(key) .. "]=" .. serializeValue(value[key], depth + 1)
       end
-      parts[#parts + 1] = "[" .. encodedKey .. "]=" .. serializeValue(value[key], depth + 1)
+    end
+  end
+
+  if otherKeys then
+    sort(otherKeys, compareKeys)
+    for _, key in ipairs(otherKeys) do
+      parts[#parts + 1] = "[" .. encodeKey(key) .. "]=" .. serializeValue(value[key], depth + 1)
     end
   end
 

@@ -169,3 +169,142 @@ assuming it. A disagreement on any shared field still fails the build.
   the same `src/` files a client loads. The live-client read is unproven.
 
 ---
+
+## 02 — Metadata emulator and round-trip verification ✅
+
+**Built**
+
+* `emulator/metadata.lua` — parses a generated `.toc` into a key/value map, installs
+  `C_AddOns.GetAddOnMetadata`, and executes the Lua files the TOC lists inside a mocked addon
+  environment. Usable as a library; Questie's harness will consume the same file.
+* `verify.lua` — round-trip verification against the raw entity data, exiting non-zero on any
+  mismatch.
+* `test.lua` — dependency-free suite (plain Lua 5.1, no busted, no luarocks) covering the
+  serializer, codec, chunking, nil/empty semantics, the emulator, and the negative controls.
+
+**Decision — reassembly lives in the reader, not the emulator**
+
+Ticket 02 asks the emulator to reassemble Chunked metadata values transparently. It does
+expose that (`emulator.getValue`), but `emulator.install` deliberately returns exactly what is
+on the line, because that is what a live client returns. An emulator that silently joined
+chunks would hide the single code path most likely to be wrong. Reassembly is
+`src/read/baked.lua`'s job and is exercised through it — including a negative control that
+removes a chunk part and asserts the reader raises rather than returning a short string.
+
+**Verification passed**
+
+```
+$ lua5.1 test.lua
+[PASS] serialize          40 checks, 0 failed
+[PASS] codec              23 checks, 0 failed
+[PASS] chunking           11 checks, 0 failed
+[PASS] semantics          27 checks, 0 failed
+[PASS] negative-controls   7 checks, 0 failed
+[PASS] emulator            9 checks, 0 failed
+117 checks, 0 failed
+```
+
+The check is proven able to fail. Four independent corruptions of a generated artifact each
+make verification exit non-zero: a changed value, a deleted line, a truncated ID list, and a
+missing chunk part.
+
+**A real bug the suite caught immediately**
+
+The first serializer treated every positive integer key as an array index, so
+`{[1335]={{36.43,55.89}}}` — the shape of every spawn and coordinate table in the database —
+serialized as a 1335-element array of `nil` holes. `generator/serialize.lua` now picks the
+array/hash split by cost: 4 bytes per hole against `#tostring(k) + 3` per absorbed key,
+minimised in one pass over the sorted integer keys, ties going to the longer array prefix so
+`{{12676},nil,{16305}}` keeps the spelling `docs/storage-format.md` uses.
+
+---
+
+## 03 — Full Quest schema in baked mode ✅
+## 04 — Npc, Item, and Object entity types ✅
+
+Landed together: once the schema derivation and the shared getter layer were in place, the
+generator and reader are entity-agnostic, so widening from one field to 36 and from one type
+to four required no new code beyond dropping the tracer-bullet filters.
+
+**Verification passed — Vanilla, all four types, all fields**
+
+```
+$ lua5.1 generate.lua Vanilla
+  Quest     4244 entities     46851 fields
+  Npc      10119 entities     93356 fields
+  Item     14889 entities     78162 fields
+  Object    6645 entities     16877 fields
+Generated QuestieTDB_Vanilla.toc — 35897 entities, 235246 fields, 9.0 MB, 2.2s
+
+$ lua5.1 verify.lua Vanilla
+[PASS] Vanilla: 35897 entities, 589308 fields, 556 chunked values, 0 errors, 4.9s
+```
+
+Every one of those 589,308 comparisons checks three things: the generic getter against the
+expected read-back value, the named getter against the generic getter, and — separately, per
+field — that an unknown entity ID returns the field's default rather than a stray value.
+
+**Empty strings are real, and the marker was necessary**
+
+`docs/storage-format.md` left this open: *"Verify against real data whether any entity field is
+genuinely an empty string."* They exist — 81 in Vanilla, 94 in TBC, 877 in Wrath, 959 in Cata,
+961 in Mists. Absence-means-nil would have silently turned every one of them into nil. The
+`~E~` marker carries them. The `~Q~` marker is unused across all five flavors (no entity string
+contains a control character), and is kept as insurance since collision-freedom is then
+structural rather than dependent on that survey staying true.
+
+**Adding a fifth entity type needs no change to the shared getter layer** — `src/read/shared.lua`
+is driven entirely by `meta`, and `src/config.lua` is where a new type would be declared.
+
+**Note for later tickets**
+
+Quest fields 27–36, item fields 15–16, and object field 7 never appear in *raw* data — they are
+populated only by Questie's corrections. Their round-trip currently passes trivially. Ticket 09
+is what puts real values behind them, and re-running verification then is what actually
+exercises those fields.
+
+---
+
+## 05 — All five client flavors ✅ (one criterion needs a client)
+
+**Verification passed — every flavor, every type, every field**
+
+```
+$ lua5.1 generate.lua all          # 31s total
+Generated QuestieTDB_Vanilla.toc — 35897 entities,  235246 fields,  9.0 MB, 2.2s
+Generated QuestieTDB_TBC.toc     — 59101 entities,  390524 fields, 14.7 MB, 3.8s
+Generated QuestieTDB_Wrath.toc   — 88398 entities,  593745 fields, 21.1 MB, 5.3s
+Generated QuestieTDB_Cata.toc    — 140812 entities, 950079 fields, 34.3 MB, 8.4s
+Generated QuestieTDB_Mists.toc   — 177724 entities, 1149311 fields, 41.2 MB, 10.6s
+
+$ lua5.1 verify.lua                # 73s total
+[PASS] Vanilla: 35897 entities,  589308 fields,  556 chunked, 0 errors
+[PASS] TBC:     59101 entities,  975840 fields,  808 chunked, 0 errors
+[PASS] Wrath:   88398 entities, 1449856 fields,  898 chunked, 0 errors
+[PASS] Cata:   140812 entities, 2350178 fields, 1668 chunked, 0 errors
+[PASS] Mists:  177724 entities, 2953767 fields, 1907 chunked, 0 errors
+```
+
+**502,000 entities and 8.3 million field comparisons, zero mismatches.**
+
+Determinism holds across all five: regenerating with `SOURCE_DATE_EPOCH` set reproduces every
+artifact byte-identically (`md5sum -c`, 5/5 OK).
+
+Interface versions are taken from Questie's own per-flavor TOCs rather than recalled:
+`_Vanilla` 11508,11509 · `_TBC` 20506 · `_Wrath` 38000,38001 · `_Cata` 40402 ·
+`_Mists` 50503,50504. `_Wrath` at 38000 is the Titan Reforged / anniversary Wrath range, which
+is what Questie ships today, so one artifact serves both as intended.
+
+Modern underscore suffixes throughout — no `-BCC`, no `-WOTLKC`. All five are gitignored.
+
+Total raw artifact size 121 MB across the five, against `DESIGN.md`'s recorded 251 MB — the
+difference is that l10n is not in yet (ticket 14), which `DESIGN.md` sizes at ~72%.
+
+**NEEDS YOU**
+
+* *"Each client loads its own suffixed TOC, and a client with no matching suffix falls back to
+  the base TOC in source mode."* The suffix-precedence half of this is the client's own rule
+  and cannot be exercised offline. The base TOC exists and works (ticket 06) and the suffixed
+  TOCs carry correct Interface lines, but which one a given client picks is unverified here.
+
+---

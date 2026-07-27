@@ -30,7 +30,7 @@ local MAX_REPORTED = 12
 --------------------------------------------------------------------------------------------
 
 local function parseArgs(argv)
-  local opts = { flavors = {}, types = nil, fields = nil, sample = nil, quiet = false }
+  local opts = { flavors = {}, types = nil, fields = nil, sample = nil, quiet = false, tocDir = "." }
   for _, value in ipairs(argv or {}) do
     local key, val = value:match("^%-%-([%w%-]+)=(.*)$")
     if key == "types" then
@@ -41,6 +41,8 @@ local function parseArgs(argv)
       for name in val:gmatch("[^,]+") do opts.fields[name] = true end
     elseif key == "sample" then
       opts.sample = tonumber(val)
+    elseif key == "toc-dir" then
+      opts.tocDir = val
     elseif value == "--quiet" then
       opts.quiet = true
     elseif value:sub(1, 2) == "--" then
@@ -74,7 +76,7 @@ end
 
 --- Verify one flavor's generated TOC against the raw entity data it was generated from.
 local function verifyFlavor(flavor, opts)
-  local tocPath = config.tocPath(flavor)
+  local tocPath = (opts.tocDir or ".") .. "/" .. config.tocPath(flavor)
   if not lib.fileExists(tocPath) then
     say(("[SKIP] %s: %s not generated"):format(flavor.name, tocPath))
     return 0, true
@@ -179,8 +181,13 @@ local function verifyFlavor(flavor, opts)
 
   -- Orphan keys mean the generator wrote something no read will ever reach.
   if not opts.types and not opts.sample and not opts.fields then
+    local headerKeys = {
+      ["X-Contract-Version"] = true, ["X-Flavor"] = true, ["X-Mode"] = true,
+      ["X-BUILD-COMMIT"] = true, ["X-BUILD-TIME"] = true,
+    }
     local orphans = 0
     for key in pairs(map) do
+     if not headerKeys[key] then
       if not seenKeys[key] and not key:match("%-%d+$") then
         orphans = orphans + 1
       elseif not seenKeys[key] then
@@ -188,6 +195,7 @@ local function verifyFlavor(flavor, opts)
         local base = key:match("^(.*)%-%d+$")
         if not (base and seenKeys[base]) then orphans = orphans + 1 end
       end
+     end
     end
     if orphans > 0 then
       io.write(("  ORPHANS %s: %d stored keys no read path reaches\n"):format(tocPath, orphans))
