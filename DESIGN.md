@@ -139,12 +139,32 @@ being deleted.
 The replaceable surface is **12 functions**: `QuerySingle`, `Query`, and `pointers`, per
 entity type. Nothing above the seam changes.
 
-### Known semantic mismatch
+### Nil and empty semantics — match Questie exactly
 
-The compiler returns `nil` for empty tables — there is an explicit comment about this in
-`GetDBHandle`'s override path. TOC getters return sentinels and typed defaults. **Nil-vs-empty
-is the highest-risk class of bug in this migration** and must be pinned by exhaustive
-differential testing, not code review.
+**Decided: reproduce Questie's current compiler semantics precisely.** ~290 call sites have
+been written against them, so any deviation is a silent behaviour change.
+
+| Source value | Read back as |
+| --- | --- |
+| number `nil` | **`0`** — writers emit `value or 0`; lossy and deliberate |
+| string `nil` | `nil` |
+| string `""` | `""` — distinct from nil, must survive |
+| table `nil` **or** `{}` | **`nil`** — empty tables never come back |
+| pair `{0, 0}` | `nil` — Questie's documented hack |
+| unknown entity ID | `nil` |
+
+Two implementation consequences:
+
+- **Numeric getters default to `0`, never `nil`.** `0` is truthy in Lua, so consumers already
+  test `~= 0`; returning `nil` would change behaviour at every one of those sites.
+- **Table getters return `nil`, never an empty table.** The prototypes' `EMPTY` sentinel
+  (`{"startedBy", "table", EMPTY}`) contradicts this and is removed. It is independently
+  disqualified anyway — a frozen table carrying `__newindex` redirects writes rather than
+  failing.
+
+This remains the highest-risk class of bug, so the rule is enforced by exhaustive differential
+testing rather than trusted to review. Full detail in
+[`docs/storage-format.md`](./docs/storage-format.md).
 
 ## Two runtime modes
 
@@ -378,8 +398,10 @@ memory or GC pressure.
 
 Sizing, for the record: l10n is ~72% of the artifact (`{l10n}-Mists` is 61 MB of the 84.5 MB
 combined), across 9 locales — `deDE, esES, esMX, frFR, koKR, ptBR, ruRU, zhCN, zhTW` — with
-**no enUS**, since base data is already English. If the TOC size gate comes back unfavourable,
-splitting l10n out is the first lever to pull; the seam is the same, only finer.
+**no enUS**, since base data is already English. In-client testing confirms this loads fast at
+full size, so keeping all locales in the store is validated rather than assumed. Splitting l10n
+out stays available as a mitigation at the same seam, only finer, if the artifact ever grows
+substantially.
 
 Field coverage already matches exactly: quest `name` + `objectivesText`, npc `name` +
 `subName`, item `name`, object `name`.
@@ -434,6 +456,45 @@ Generation is pure Lua with no C dependencies. **Later, nice-to-have:** commit a
 `lua.exe` so contributors can generate and run tests locally without installing a toolchain.
 Not needed now — source mode covers the dev loop, and CI has Lua.
 
+## Module layout
+
+```text
+QuestieTDB/
+  QuestieTDB.toc              base TOC — source mode (committed)
+  QuestieTDB_<Flavor>.toc     generated, baked mode (gitignored)
+
+  src/
+    config.lua                flavors, entity types, l10n field contract
+    meta/                     schema — field keys, types, per-field defaults
+    read/
+      shared.lua              getters, cache, overlay lookup, defaults, freezing
+      source.lua              readField/getAllIds over raw tables
+      baked.lua               readField/getAllIds over TOC metadata
+    corrections/
+      registry.lua            Register / Apply / load-order / recomposition
+      <expansion>/            Static and Dynamic Corrections
+      enum/, icons.lua        constants corrections reference
+    l10n/                     locale-joined overlay
+    types/                    LuaLS annotations
+
+  data/                       raw entity data, moved from Questie
+  support/                    zones, questXP, dropTables, factionTemplates
+
+  generate.lua                data + Static Corrections -> TOC
+  verify.lua                  round-trip verification
+  validators/                 data-invariant checks, moved from Questie cli/
+  emulator/                   metadata emulator + mocked-env loader
+  test.lua                    decoder and equivalence tests
+
+  docs/
+    storage-format.md         the on-disk contract
+    table.freeze.md           live-client freeze research
+    adr/
+```
+
+`src/read/` is the only place the two modes diverge — `shared.lua` holds everything else, so
+the seam stays two functions wide.
+
 ## Testing
 
 Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, busted,
@@ -462,24 +523,21 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
 
 ## Open risks and gates
 
-### 1. TOC size in the live client — blocking, measure first
+### 1. TOC size in the live client — CLEARED
 
-In-client TOC parse time and client-side metadata memory at 20–85 MB is the one risk that can
-invalidate the whole approach. It also gates the l10n-in-TOC decision. **Measure before
-writing integration code** — the point of this gate is to test the risky assumption using an
-artifact that already exists, rather than after building the port.
+Previously the blocking gate. **Resolved by prior in-client testing**: both `toc-database` and
+`Getters` were tested deeply against real clients at full size and load fast, with no parse or
+memory problem at the 20–85 MB range.
 
-`Getters/{Database}` holds a real 20–85 MB artifact today, which is all the measurement needs
-— it is a parse-time and memory test, not a correctness test.
+This also settles the l10n-in-TOC decision — keeping all nine locales in the store is
+validated, not assumed. Splitting l10n out remains a known mitigation if the artifact grows
+substantially beyond today's size, but it is not currently needed.
 
-**Nothing in the prototype chain is worth preserving.** `Getters/{Database}` and
-`Getters/data/` are both untracked, and both are derived output of a pipeline QuestieTDB
-replaces. Treat them as disposable: run the gate with what exists, then delete freely.
-
-The only genuine constraint is ordering — either measure before retiring the prototypes, or
-copy the five `.toc` files aside first (251 MB raw, 66 MB zipped). After phase 2, QuestieTDB's
-own generator produces an equivalent artifact from Questie's tracked sources and the
-dependency disappears entirely.
+Consequence for the rest of the plan: **the prototypes' runtime behaviour is validated**, which
+raises the value of extracting their format precisely — see
+[`docs/storage-format.md`](./docs/storage-format.md). Nothing in the prototype chain needs
+preserving otherwise; `Getters/{Database}` and `Getters/data/` are untracked derived output and
+are disposable.
 
 ### 2. `*Pointers` semantics — audit
 
@@ -560,7 +618,10 @@ search for.
 The ordering constraint that matters: **the compiler is the reference implementation, so it is
 removed last** — after the differential test runs clean and its golden snapshot is committed.
 
-1. Measure TOC load cost in-client using existing `Getters/{Database}` output. **Gate.**
+1. **Tracer bullet.** One entity type, one flavor, end to end: generate `QuestieTDB_Vanilla.toc`
+   from Questie's `classicQuestDB.lua`, load it in-game, and read `QuestDB.name(2)` →
+   `"Sharptalon's Claw"`. Pierces loader, serializer, TOC emission, decoder, and in-client read
+   in one thin slice. Every later phase widens it.
 2. Port the `toc-database` engine here, retargeted at Questie's schema. Move the `Meta` layer.
 3. Build the metadata emulator and round-trip verification.
 4. Build source mode and baked mode behind the shared getter API. Establish the equivalence test.

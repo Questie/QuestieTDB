@@ -8,6 +8,7 @@ This is a **single-context** repo: one `CONTEXT.md` and one `docs/adr/` at the r
 
 - **`CONTEXT.md`** at the repo root — the glossary.
 - **`DESIGN.md`** at the repo root — the architecture, its locked decisions, and its rejected alternatives. This repo is pre-implementation, so `DESIGN.md` is currently the primary source of truth for how things are meant to work.
+- **`docs/storage-format.md`** — the on-disk TOC contract, including the nil/empty rules. Read this before writing anything that encodes or decodes entity data.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.

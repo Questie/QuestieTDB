@@ -9,6 +9,7 @@ This repo is **pre-implementation** — the design is settled, the code is not y
 
 - `DESIGN.md` — architecture, locked decisions, rejected alternatives, phasing
 - `CONTEXT.md` — glossary
+- `docs/storage-format.md` — the on-disk TOC contract and nil/empty rules
 - `docs/adr/` — decision records
 - `docs/table.freeze.md` — live-client research on `table.freeze` / `table.isfrozen`
 
