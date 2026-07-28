@@ -14,33 +14,44 @@ local concat = table.concat
 -- Metadata emission
 --------------------------------------------------------------------------------------------
 
---- Write one metadata directive, splitting into a Chunked metadata value when the encoded
---- value exceeds `maxLen`.
+--- The longest TOC line the client will read. **Measured, not assumed** — on Classic Era
+--- 1.15.9, `C_AddOns.GetAddOnMetadata` returns a silently truncated value for any line beyond
+--- this, with no error of any kind:
 ---
---- Splitting is UTF-8 safe: the split point backs up while the *next* byte is a continuation
---- byte (0x80-0xBF), so a multi-byte sequence is never cut. Localized names make this
---- reachable in practice.
+---     key `X-Object-IDS-LIST-1`  (line 1024) -> value came back 999 bytes of 1000
+---     key `X-Npc-5797-8-1`       (line 1019) -> value came back intact
 ---
---- See docs/storage-format.md, "Chunked values".
----@param out file* Open output handle
----@param key string Metadata key, without the leading "## " or trailing ":"
----@param value string Encoded value
----@param maxLen number Chunk threshold in bytes
-function lib.writeMetadata(out, key, value, maxLen)
-  if #value <= maxLen then
-    out:write("## ", key, ": ", value, "\n")
-    return 1
-  end
+--- A 1024-byte buffer including its terminator. This is the whole reason `writeMetadata`
+--- budgets by *line* rather than by value: the key counts against the same limit, and the
+--- per-type prefixes this format uses (`X-Object-`, `X-l10n-Quest-`) make keys long enough to
+--- matter. Chunking the value alone dropped 17 object IDs from a 43-part ID list, and 27,690
+--- lines across the five artifacts were over the limit before this was found.
+lib.TOC_LINE_LIMIT = 1023
 
+--- `"## "` and `": "` — what a line costs before the key and value.
+lib.TOC_LINE_OVERHEAD = 5
+
+--- Largest value that fits on one line under a given key.
+function lib.maxValueLengthFor(key, requested)
+  local allowed = lib.TOC_LINE_LIMIT - lib.TOC_LINE_OVERHEAD - #key
+  if requested and requested < allowed then return requested end
+  return allowed
+end
+
+--- Split a value into parts of at most `size` bytes.
+---
+--- UTF-8 safe: the split point backs up while the *next* byte is a continuation byte
+--- (0x80-0xBF), so a multi-byte sequence is never cut. Localized names make this reachable in
+--- practice, not theoretical.
+local function splitValue(value, size)
   local parts = {}
   local pos, len = 1, #value
   while pos <= len do
-    local endPos = pos + maxLen - 1
+    local endPos = pos + size - 1
     if endPos >= len then
       parts[#parts + 1] = sub(value, pos)
       break
     end
-    -- Back up while the next byte is a UTF-8 continuation byte.
     local nextByte = byte(value, endPos + 1)
     while endPos > pos and nextByte >= 0x80 and nextByte <= 0xBF do
       endPos = endPos - 1
@@ -48,6 +59,55 @@ function lib.writeMetadata(out, key, value, maxLen)
     end
     parts[#parts + 1] = sub(value, pos, endPos)
     pos = endPos + 1
+  end
+  return parts
+end
+
+--- Write one metadata directive, splitting into a Chunked metadata value when it does not fit
+--- on a single line.
+---
+--- Part keys are `<key>-<n>`, so they are longer than the base key and grow as the part count
+--- gains digits — which feeds back into how much value fits per part. Rather than reason about
+--- that fixed point, this splits with an assumed digit count and then *checks every line it is
+--- about to write*, retrying with a smaller budget if any would exceed the limit. The check is
+--- the contract; the arithmetic is just a good first guess.
+---
+--- See docs/storage-format.md, "Chunked values".
+---@param out file* Open output handle
+---@param key string Metadata key, without the leading "## " or trailing ":"
+---@param value string Encoded value
+---@param maxLen number Upper bound on a part, before the key budget is applied
+---@return number lines
+function lib.writeMetadata(out, key, value, maxLen)
+  if lib.TOC_LINE_OVERHEAD + #key + #value <= lib.TOC_LINE_LIMIT then
+    out:write("## ", key, ": ", value, "\n")
+    return 1
+  end
+
+  local parts
+  local digits = 1
+  for _ = 1, 6 do
+    local size = lib.maxValueLengthFor(key .. "-" .. rep("9", digits), maxLen)
+    if size < 1 then
+      error(("writeMetadata: key %q is too long to carry any value on one line"):format(key), 0)
+    end
+    parts = splitValue(value, size)
+
+    local grew = #tostring(#parts) > digits
+    local fits = true
+    for i = 1, #parts do
+      if lib.TOC_LINE_OVERHEAD + #key + 1 + #tostring(i) + #parts[i] > lib.TOC_LINE_LIMIT then
+        fits = false
+        break
+      end
+    end
+    if fits and not grew then break end
+    digits = math.max(digits + 1, #tostring(#parts))
+    parts = nil
+  end
+
+  if not parts then
+    error(("writeMetadata: could not find a chunk size for key %q"):format(key), 0)
   end
 
   out:write("## ", key, ": ~", tostring(#parts), "~\n")

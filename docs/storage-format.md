@@ -73,6 +73,30 @@ values that would match this pattern cannot occur, because every stored value is
 number, a Lua table literal (starting `{`), or a name — and a name that would collide is
 written in `~Q~` form instead, below.
 
+## Line length limit
+
+**A TOC line may not exceed 1023 bytes**, counting the whole line — `## `, the key, `: `, and
+the value. Measured on Classic Era 1.15.9: past that, `C_AddOns.GetAddOnMetadata` returns a
+silently truncated value and reports nothing.
+
+```
+key `X-Object-IDS-LIST-1`   line 1024 -> value came back 999 bytes of 1000
+key `X-Npc-5797-8-1`        line 1019 -> value came back intact
+```
+
+A 1024-byte buffer including its terminator.
+
+The consequence is that **the chunk threshold is a budget on the line, not on the value**. The
+key counts against the same limit, and it is not a constant: the per-type prefixes this format
+uses (`X-Object-`, `X-l10n-Quest-`) are long, and a chunk part's key grows as the part count
+gains digits. `generator/lib.lua` therefore sizes parts from the key and then checks every line
+it is about to write, rather than trusting the arithmetic.
+
+Budgeting the value alone is exactly the bug this rule exists to prevent: it truncated 17 IDs
+out of a 43-part ID list, across 27,690 over-long lines in the five artifacts, with no error
+anywhere. `verify.lua` now fails on any line over the limit — the metadata emulator reads the
+file directly and never truncates, so nothing else offline can see the problem.
+
 ## Tilde markers
 
 Three markers share the `~…~` space, checked before a value is interpreted as its declared

@@ -413,3 +413,53 @@ For an acyclic static database owned by the addon:
 5. Reapply freezing whenever runtime tables are recreated.
 6. Use `CopyTable` only when a caller genuinely needs a mutable independent copy.
 7. Retain capability detection where non-WoW Lua tools, tests, or older clients remain supported.
+
+---
+
+## Ownership: measured in a live client, and it changes the conclusion
+
+Classic Era 1.15.9, read through QuestieTDB in Baked mode.
+
+`table.freeze` **enforces ownership**. It raises unless the table's owner matches the calling
+function's owner:
+
+```
+attempted to freeze a table not owned by the calling function
+(expected 'QuestieTDB', got '*** ForceTaint_Strong ***')
+```
+
+That interacts badly with lazy decoding, which is the whole point of a TOC metadata store. A
+table field is materialised by `loadstring` **inside whatever execution context asked for it**,
+and that context owns the result. The caller is never QuestieTDB — it is the consumer — so the
+owner never matches.
+
+Measured over 200 consecutive table reads from a consumer's context:
+
+| | |
+| --- | ---: |
+| `table.freeze` present | yes |
+| tables successfully frozen | **0** |
+| freeze attempts refused | **113** |
+
+Before this was handled the refusal propagated out of the getter: the read threw, the value was
+never cached, and it threw again on every call. `shared.Freeze` now degrades — it returns the
+value unfrozen and counts the refusal in `LibQuestieDB.shared.freezeRefused`.
+
+**So the value-ownership guarantee does not currently hold in Baked mode.** The measurements
+higher up this document (0 KiB, 8–20% faster) are real, but they were taken freezing tables the
+measuring code owned. They do not carry over to values decoded on a consumer's behalf.
+
+Three ways out, none of them free:
+
+1. **Accept it.** Values are shared and mutable; ownership is convention, enforced offline by
+   the harness in `emulator/freeze.lua` and its mutation audit. Costs nothing, guarantees
+   nothing at runtime.
+2. **Decode eagerly at load, inside QuestieTDB's own context**, then freeze. Restores the
+   guarantee and defeats lazy decoding — which is the reason this storage format was chosen.
+   Plausible for Source mode, where base data is one `loadstring` per entity type; ruinous for
+   Baked mode.
+3. **Freeze only what QuestieTDB itself creates** — the composed Correction Overlay, which is
+   built during recomposition in QuestieTDB's context. Partial, cheap, and honest about its
+   scope.
+
+Unresolved. `DESIGN.md`'s "Reads return Frozen values" is currently aspirational in Baked mode.

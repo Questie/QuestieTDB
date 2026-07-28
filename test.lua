@@ -181,6 +181,46 @@ suite("chunking", function()
     check(#mbMap["X-T-1-1-" .. i] <= 1000, "chunk " .. i .. " exceeds the limit")
   end
 
+  -- Key length counts against the same line budget as the value. A long key must shrink the
+  -- parts, not push the line over the limit — the client truncates silently past it.
+  local longKey = "X-l10n-Quest-1234567-2"
+  local payload = string.rep("b", 5000)
+  do
+    local path = ".out/test-chunk.toc"
+    local out = assert(io.open(path, "wb"))
+    lib.writeMetadata(out, longKey, payload, 1000)
+    out:close()
+    local map = emulator.parse(path)
+    equal(emulator.getValue(map, longKey), payload, "a long-keyed value reassembles exactly")
+
+    local overLimit = 0
+    local file = assert(io.open(path, "rb"))
+    for line in file:lines() do
+      if #line > lib.TOC_LINE_LIMIT then overLimit = overLimit + 1 end
+    end
+    file:close()
+    equal(overLimit, 0, "no emitted line exceeds the client's line limit")
+    os.remove(path)
+  end
+
+  -- And the same holds for every generated artifact on disk.
+  for _, flavor in ipairs(config.flavors) do
+    local tocPath = config.tocPath(flavor)
+    if lib.fileExists(tocPath) then
+      local overLimit, worst = 0, 0
+      local file = assert(io.open(tocPath, "rb"))
+      for line in file:lines() do
+        if line:sub(1, 5) == "## X-" and #line > lib.TOC_LINE_LIMIT then
+          overLimit = overLimit + 1
+          if #line > worst then worst = #line end
+        end
+      end
+      file:close()
+      check(overLimit == 0, ("%s has %d lines over the %d-byte limit (worst %d)")
+        :format(tocPath, overLimit, lib.TOC_LINE_LIMIT, worst))
+    end
+  end
+
   os.remove(".out/test-chunk.toc")
 end)
 
@@ -622,6 +662,30 @@ suite("freeze", function()
   local base = source.read.source.entities.Quest
   check(source.shared.IsFrozen(base), "source mode base data itself is frozen")
   check(not pcall(function() base[999999] = {} end), "writing a new entity into base data must raise")
+
+  -- The VM can REFUSE to freeze. Verified on Classic Era 1.15.9: `table.freeze` enforces
+  -- ownership and raises when the table's owner differs from the calling function's, which is
+  -- what happens in Baked mode whenever a consumer triggers the lazy decode. A read must
+  -- survive that — before it was handled the getter threw, never cached, and threw again on
+  -- every subsequent call.
+  local refusing = loadFrozen(tocPath)
+  refusing.shared.SetFreezeImplementation(function()
+    error("attempted to freeze a table not owned by the calling function " ..
+          "(expected 'QuestieTDB', got '*** ForceTaint_Strong ***')", 0)
+  end)
+  refusing.shared.SetIsFrozenImplementation(function() return false end)
+  refusing.shared.freezeRefused = 0
+
+  local okRead, refusedValue = pcall(function() return refusing.Quest.Get(2, "startedBy") end)
+  check(okRead, "a read survives the VM refusing to freeze")
+  check(type(refusedValue) == "table", "the value still comes back, unfrozen")
+  check(refusing.shared.freezeRefused > 0, "the refusal is counted rather than raised")
+  check(refusing.shared.lastFreezeError ~= nil, "the refusal reason is recorded for diagnosis")
+
+  local okAgain, again = pcall(function() return refusing.Quest.Get(2, "startedBy") end)
+  check(okAgain, "the second read also survives")
+  equal(again, refusedValue, "and returns the same value, so the cache still populated")
+  equal(refusing.Quest.Get(2, "name"), "Sharptalon's Claw", "scalar reads are unaffected")
 
   -- No frozen table may carry a redirecting __newindex. Offline the metatable *is* the
   -- mechanism and its __newindex raises; what must never happen is a metamethod that

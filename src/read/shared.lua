@@ -26,6 +26,24 @@ local type, rawget, setmetatable, ipairs = type, rawget, setmetatable, ipairs
 -- No frozen table may carry `__newindex`: a frozen table *with* one redirects writes to the
 -- metamethod instead of failing, which is exactly the trap the prototypes' `EMPTY` sentinel
 -- fell into.
+--
+-- ## Freezing can be refused, and a read must survive that
+--
+-- Verified on Classic Era 1.15.9: `table.freeze` enforces **ownership**. It raises unless the
+-- table's owner matches the calling function's owner:
+--
+--     attempted to freeze a table not owned by the calling function
+--     (expected 'QuestieTDB', got '*** ForceTaint_Strong ***')
+--
+-- Baked mode decodes lazily, so a table field is materialised by `loadstring` *inside whatever
+-- execution context asked for it*. That context owns the result. When the caller is not
+-- QuestieTDB — which is every consumer — the owner does not match and freezing raises.
+--
+-- Before this was handled, that error propagated out of the getter: the read threw, the value
+-- was never cached, and it threw again on every subsequent call. **A read failing because an
+-- optional guard could not be applied is strictly worse than the guard being absent.** So
+-- freezing degrades: if the VM refuses, the value is returned unfrozen and the refusal is
+-- counted rather than raised.
 
 local luaTable = rawget(_G, "table")
 local freeze = luaTable and rawget(luaTable, "freeze")
@@ -33,19 +51,37 @@ local isFrozen = luaTable and rawget(luaTable, "isfrozen")
 
 shared.canFreeze = freeze ~= nil
 
+--- How many times the VM refused to freeze a value, and the last reason. Diagnostic only —
+--- consumers never see the failure, so this is the only way to know the guard is not holding.
+shared.freezeRefused = 0
+shared.lastFreezeError = nil
+
+local function freezeDeep(value)
+  if isFrozen and isFrozen(value) then return value end
+  for _, inner in pairs(value) do
+    if type(inner) == "table" then freezeDeep(inner) end
+  end
+  return freeze(value)
+end
+
 --- Deep-freeze a value the database owns. Measured on Classic Era 1.15.9 at 0 KiB allocated
 --- against CopyTable's ~357 KiB, and 8-20% faster — see docs/table.freeze.md.
 ---
 --- Re-freezing must be harmless: a table field is frozen when the base data loads and again
 --- when a read caches it, and the Correction Overlay produces fresh objects on every
 --- recomposition.
+---
+--- Always returns `value`, frozen if the VM allowed it and untouched if it did not.
 function shared.Freeze(value)
   if not freeze or type(value) ~= "table" then return value end
-  if isFrozen and isFrozen(value) then return value end
-  for _, inner in pairs(value) do
-    if type(inner) == "table" then shared.Freeze(inner) end
+  -- One pcall around the whole recursion rather than one per nested table: partial freezing
+  -- is a fine outcome, and the inner loop stays free of error handling.
+  local ok, err = pcall(freezeDeep, value)
+  if not ok then
+    shared.freezeRefused = shared.freezeRefused + 1
+    shared.lastFreezeError = err
   end
-  return freeze(value)
+  return value
 end
 
 --- Install a freeze implementation. Used by the offline harness to make the guard present in

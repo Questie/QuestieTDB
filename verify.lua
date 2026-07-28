@@ -113,6 +113,33 @@ local function verifyFlavor(flavor, opts)
     if value:match("^~%d+~$") then report.chunked = report.chunked + 1 end
   end
 
+  -- No line may exceed what the client will actually read. Measured on Classic Era 1.15.9:
+  -- `GetAddOnMetadata` silently truncates beyond lib.TOC_LINE_LIMIT and reports nothing, so
+  -- an over-long line is data corruption with no symptom until a consumer reads a short
+  -- value. This is the check that would have caught it: the emulator reads the file directly
+  -- and never truncates, so nothing else offline can see the problem.
+  do
+    local overLimit, worst, worstKey = 0, 0, nil
+    local file = assert(io.open(tocPath, "rb"))
+    for line in file:lines() do
+      line = line:gsub("\r$", "")
+      if line:sub(1, 5) == "## X-" and #line > lib.TOC_LINE_LIMIT then
+        overLimit = overLimit + 1
+        if #line > worst then
+          worst = #line
+          worstKey = line:match("^## ([^:]+):")
+        end
+      end
+    end
+    file:close()
+    if overLimit > 0 then
+      io.write(("  LINE LIMIT %s: %d lines exceed %d bytes (worst %d, key %s) — the client " ..
+        "will truncate these silently\n"):format(tocPath, overLimit, lib.TOC_LINE_LIMIT, worst,
+        tostring(worstKey)))
+      report.errors = report.errors + overLimit
+    end
+  end
+
   local normalize = LibQuestieDB.Meta.normalize
   local seenKeys = {}
 
