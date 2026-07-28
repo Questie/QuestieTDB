@@ -678,6 +678,108 @@ suite("equivalence-control", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- TOC file lists
+--------------------------------------------------------------------------------------------
+
+suite("toc", function()
+  -- The correction manifest drives which correction files a TOC lists, and `config` cannot
+  -- load it itself — in a client it arrives as an addon file, so the generator assigns it
+  -- explicitly. The same has to happen here, and it is asserted rather than assumed: without
+  -- it `correctionFiles` returns an empty list and every check below would pass over a file
+  -- list missing twenty-odd entries.
+  config.correctionManifest = dofile("src/corrections/manifest.lua")
+  check(config.correctionManifest ~= nil and #config.correctionManifest > 0,
+    "the correction manifest loaded")
+
+  -- The client rejects a file listed twice with `Duplicate File Load Detected`, and it is
+  -- right to: the file re-executes, rebuilding whatever it defines while earlier files still
+  -- hold references to the first copy. Blocks declare their own prerequisites — the support
+  -- block and the correction block both need `enum/constants.lua` — so the composer has to
+  -- deduplicate, and this is what proves it does.
+  local lists = { { name = "base (source mode)", files = config.sourceFileList() } }
+  for _, flavor in ipairs(config.flavors) do
+    lists[#lists + 1] = { name = flavor.name, files = config.bakedFileList(flavor) }
+  end
+
+  -- Guard against the lists silently shrinking: a composer that returns early would make every
+  -- check below vacuous.
+  for _, list in ipairs(lists) do
+    local blocks = { support = false, corrections = false, meta = false, api = false }
+    for _, file in ipairs(list.files) do
+      if file:find("^support/") then blocks.support = true end
+      if file:find("^src/corrections/%a+/") then blocks.corrections = true end
+      if file:find("^src/meta/") then blocks.meta = true end
+      if file == "src/api.lua" then blocks.api = true end
+    end
+    for name, present in pairs(blocks) do
+      check(present, ("%s is missing its %s block entirely"):format(list.name, name))
+    end
+    check(#list.files > 30, ("%s lists only %d files"):format(list.name, #list.files))
+  end
+
+  for _, list in ipairs(lists) do
+    local seen, duplicates = {}, {}
+    for _, file in ipairs(list.files) do
+      if seen[file] then duplicates[#duplicates + 1] = file end
+      seen[file] = true
+    end
+    for _, file in ipairs(duplicates) do
+      check(false, ("%s lists %s more than once"):format(list.name, file))
+    end
+    equal(#duplicates, 0, list.name .. " has no duplicate file entries")
+
+    -- Every listed file must exist, or the client silently skips it and the failure surfaces
+    -- much later as a nil index.
+    local missing = 0
+    for _, file in ipairs(list.files) do
+      if not lib.fileExists(file) then
+        missing = missing + 1
+        check(false, ("%s lists a file that does not exist: %s"):format(list.name, file))
+      end
+    end
+    equal(missing, 0, list.name .. " lists only files that exist")
+  end
+
+  -- Load order: a block's prerequisites must precede it.
+  local function positions(files)
+    local at = {}
+    for index, file in ipairs(files) do at[file] = at[file] or index end
+    return at
+  end
+
+  for _, list in ipairs(lists) do
+    local at = positions(list.files)
+    local function before(a, b, why)
+      if at[a] and at[b] then
+        check(at[a] < at[b], ("%s: %s must load before %s (%s)"):format(list.name, a, b, why))
+      end
+    end
+    before("src/config.lua", "src/meta/normalize.lua", "everything reads config")
+    before("src/corrections/enum/constants.lua", "src/support/_begin.lua",
+      "the support shim seeds DropDB.correctionKeys from the constants")
+    before("src/corrections/enum/constants.lua", "src/corrections/compat.lua",
+      "compat captures LibQuestieDB.Enum at file scope")
+    before("src/corrections/registry.lua", "src/corrections/_end.lua",
+      "registration needs the registry")
+    before("src/read/shared.lua", "src/api.lua", "api builds entities with shared.CreateEntity")
+    before("src/corrections/_end.lua", "src/api.lua",
+      "api applies QuestieTDB's own corrections, so they must be registered first")
+    before("src/support/_begin.lua", "src/support/_end.lua", "brackets are ordered")
+    before("src/corrections/_begin.lua", "src/corrections/_end.lua", "brackets are ordered")
+  end
+
+  -- Source mode only: the reader installs the loader shim, so it has to precede the data it
+  -- captures, and the data block has to close before anything else touches QuestieLoader.
+  local baseAt = positions(config.sourceFileList())
+  check(baseAt["src/read/source.lua"] < baseAt["data/Classic/_flavor.lua"],
+    "the source reader installs its shim before the data block opens")
+  check(baseAt["data/MoP/_flavor.lua"] < baseAt["data/_end.lua"],
+    "every expansion marker falls inside the data block")
+  check(baseAt["data/_end.lua"] < baseAt["src/support/_begin.lua"],
+    "the data block closes before the support block opens")
+end)
+
+--------------------------------------------------------------------------------------------
 -- Independence from the prototypes
 --------------------------------------------------------------------------------------------
 

@@ -76,7 +76,6 @@ support\Zones\uiMapIdToAreaId.lua
 src\support\_end.lua
 src\read\shared.lua
 src\corrections\registry.lua
-src\corrections\enum\constants.lua
 src\corrections\compat.lua
 src\corrections\_begin.lua
 src\corrections\Era\classicQuestFixes.lua

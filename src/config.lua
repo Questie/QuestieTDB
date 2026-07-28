@@ -239,31 +239,49 @@ function config.supportFiles(flavor)
   return files
 end
 
+--- Append `source` to `target`, skipping anything already listed.
+---
+--- Each block declares its own prerequisites — the support block and the correction block both
+--- need `enum/constants.lua`, and neither can assume the other ran. Composing here is what
+--- makes that safe: the client rejects a file listed twice with
+--- `Duplicate File Load Detected`, and loading a 39 KB constant table twice would be waste
+--- even if it did not.
+---
+--- First occurrence wins, because a block's prerequisites are listed ahead of it and the
+--- earliest position is the one that satisfies every later block.
+local function append(target, source, seen)
+  for _, file in ipairs(source) do
+    if not seen[file] then
+      seen[file] = true
+      target[#target + 1] = file
+    end
+  end
+  return target
+end
+
 --- Files a generated flavour TOC lists, in load order.
 function config.bakedFileList(flavor)
-  local files = {}
-  for _, file in ipairs(config.runtimeFiles.head) do files[#files + 1] = file end
-  files[#files + 1] = config.runtimeFiles.bakedReader
-  for _, file in ipairs(config.supportFiles(flavor)) do files[#files + 1] = file end
-  files[#files + 1] = "src/read/shared.lua"
-  files[#files + 1] = "src/corrections/registry.lua"
-  for _, file in ipairs(config.correctionFiles(flavor, "baked")) do files[#files + 1] = file end
-  for _, file in ipairs(config.runtimeFiles.tail) do files[#files + 1] = file end
+  local files, seen = {}, {}
+  append(files, config.runtimeFiles.head, seen)
+  append(files, { config.runtimeFiles.bakedReader }, seen)
+  append(files, config.supportFiles(flavor), seen)
+  append(files, { "src/read/shared.lua", "src/corrections/registry.lua" }, seen)
+  append(files, config.correctionFiles(flavor, "baked"), seen)
+  append(files, config.runtimeFiles.tail, seen)
   return files
 end
 
 --- Files the committed base TOC lists, in load order. The reader has to come before the data
 --- so its shim is in place when the payload assignments happen.
 function config.sourceFileList()
-  local files = {}
-  for _, file in ipairs(config.runtimeFiles.head) do files[#files + 1] = file end
-  files[#files + 1] = config.runtimeFiles.sourceReader
-  for _, file in ipairs(config.sourceDataFiles()) do files[#files + 1] = file end
-  for _, file in ipairs(config.supportFiles(nil)) do files[#files + 1] = file end
-  files[#files + 1] = "src/read/shared.lua"
-  files[#files + 1] = "src/corrections/registry.lua"
-  for _, file in ipairs(config.correctionFiles(nil, "source")) do files[#files + 1] = file end
-  for _, file in ipairs(config.runtimeFiles.tail) do files[#files + 1] = file end
+  local files, seen = {}, {}
+  append(files, config.runtimeFiles.head, seen)
+  append(files, { config.runtimeFiles.sourceReader }, seen)
+  append(files, config.sourceDataFiles(), seen)
+  append(files, config.supportFiles(nil), seen)
+  append(files, { "src/read/shared.lua", "src/corrections/registry.lua" }, seen)
+  append(files, config.correctionFiles(nil, "source"), seen)
+  append(files, config.runtimeFiles.tail, seen)
   return files
 end
 
