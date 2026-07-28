@@ -698,3 +698,76 @@ I implemented (1) because it is the only one that does not need your call, and l
 two costed.
 
 ---
+
+## 14 — Entity localization overlay ✅ (needs a client for the final check)
+
+**Built** — `generator/l10n.lua` and a real `src/l10n/overlay.lua`, plus the l10n hook in
+`src/read/shared.lua`.
+
+All nine non-English locales are extracted from Questie's 180 per-locale lookup files and
+stored locale-joined alongside entity data. The client-locale guard those files open with —
+`if GetLocale() ~= "deDE" then return end`, byte-identical across all 180 — is handled by
+re-stubbing `GetLocale()` between files, so one generation run reads every locale.
+
+**Verification passed**
+
+```
+$ lua5.1 generate.lua all                          # 49s
+Vanilla  20.9 MB    TBC 35.2 MB    Wrath 50.8 MB    Cata 81.5 MB    Mists 99.0 MB    (288 MB)
+
+$ lua5.1 verify.lua                                # 96s — 5/5 PASS, 0 errors
+       l10n: 40889 stored values (Vanilla) ... 187185 (Mists), segments resolved in all 9 locales
+
+$ lua5.1 equivalence.lua                           # 62s — 5/5 PASS, 0 divergences
+$ lua5.1 test.lua                                  # 349 checks, 0 failed
+```
+
+Working end to end, read through the shipped `src/` files:
+
+```
+enUS  Sharptalon's Claw          / Bring Sharptalon's Claw to Senani Thunderheart ...
+deDE  Klaue von Scharfkralle     / Bringt die Klaue von Scharfkralle zu Senani ...
+frFR  La griffe de Serres-...    / Apporter la griffe de Serres-tranchantes à Senani ...
+ruRU  Коготь гиппогрифа ...      / Принесите коготь гиппогрифа Острокогтя ...
+zhCN  沙普塔隆的爪子              / 将沙普塔隆的爪子交给灰谷碎木哨岗的塞娜尼·雷心。
+deDE  NpcDB.name(54) = Corina Steele, subName = Waffenschmiedin
+deDE  ItemDB.name(25) = Abgenutztes Kurzschwert
+deDE  ObjectDB.name(31) = Alte Löwenstatue
+```
+
+Locale changes at runtime with no regeneration and no database rebuild — `SetLocale` drops the
+cache and the next read decodes a different segment of the same stored value. **That is what
+removes `dbCompiledLang`.**
+
+Field coverage is exactly what Questie translates today: quest `name` + `objectivesText`, npc
+`name` + `subName`, item `name`, object `name` — asserted by a test, so widening it is a
+deliberate act.
+
+Where it sits: **localization is above the Correction Overlay and below the cache.** A
+translated value is cached like any other and a locale change drops the cache, so the hot path
+stays one lookup. Missing translations fall back to the base English value, and with no
+localization data present (Source mode, or `--no-l10n`) every getter behaves as if the overlay
+were absent — which is why equivalence still passes with l10n in the baked artifact and none in
+source.
+
+### D15 — A second separator for list-valued fields
+
+`objectivesText` is a list of strings, and locale-joining a list needs an inner separator. The
+store uses `‖` (U+2016) inside a field and `‡` (U+2021) between locales. Generation **asserts no
+translation contains either**, so a collision is a build failure rather than a silent
+corruption. Trailing empty locale segments are trimmed, which matters across ~500,000 values.
+
+**Sizing.** l10n is 56–66% of each artifact, consistent with `DESIGN.md`'s ~72% (ours is lower
+because entity data is larger here — corrections are folded in and coordinates are not
+quantized). Total 288 MB raw against DESIGN's recorded 251 MB.
+
+**NEEDS YOU**
+
+* In-client behaviour on a non-English client. Everything is verified through the emulator with
+  `GetLocale()` stubbed; no real client has read a `‡`-joined value.
+* `Localization/lookups/` was *not* moved out of Questie. The generator reads it from a Questie
+  checkout via `--questie=<path>`, defaulting to `../Questie`. Moving 214 MB of lookup files
+  into this repo is a decision with real consequences for clone size, and the tree is only a
+  build input — it is never shipped. Left for you.
+
+---

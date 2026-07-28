@@ -678,6 +678,89 @@ suite("equivalence-control", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Localization
+--------------------------------------------------------------------------------------------
+
+suite("l10n", function()
+  local tocPath = config.tocPath(config.flavorByName.Vanilla)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP l10n: ", tocPath, " not generated\n")
+    return
+  end
+
+  client.reset()
+  client.install({ expansion = "Classic", locale = "enUS" })
+  emulator.install(config.addonName, emulator.parse(tocPath))
+  local Lib = emulator.loadAddon(tocPath, config.addonName)
+  local l10n = Lib.l10n
+
+  if not l10n.IsAvailable() then
+    io.write("  SKIP l10n: artifact generated with --no-l10n\n")
+    client.reset()
+    return
+  end
+
+  equal(#config.locales, 9, "all nine non-English locales are declared")
+  for _, locale in ipairs({ "deDE", "esES", "esMX", "frFR", "koKR", "ptBR", "ruRU", "zhCN", "zhTW" }) do
+    check(l10n.localeIndex[locale] ~= nil, "locale declared: " .. locale)
+  end
+  equal(l10n.localeIndex.enUS, nil, "enUS is not stored — base data is already English")
+
+  -- Only the requested locale is decoded on access, and switching takes effect immediately
+  -- with no regeneration and no rebuild.
+  local base = Lib.Quest.name(2)
+  equal(base, "Sharptalon's Claw", "enUS reads the base value")
+
+  l10n.SetLocale("deDE")
+  equal(Lib.Quest.name(2), "Klaue von Scharfkralle", "deDE quest name")
+  equal(Lib.Quest.objectivesText(2),
+    { "Bringt die Klaue von Scharfkralle zu Senani Thunderheart im Splintertreeposten in Ashenvale." },
+    "deDE objectivesText comes back as a list, matching the base field's shape")
+  equal(Lib.Npc.name(54), "Corina Steele", "deDE npc name")
+  equal(Lib.Npc.subName(54), "Waffenschmiedin", "deDE npc subName")
+  equal(Lib.Item.name(25), "Abgenutztes Kurzschwert", "deDE item name")
+  equal(Lib.Object.name(31), "Alte Löwenstatue", "deDE object name")
+
+  l10n.SetLocale("ruRU")
+  equal(Lib.Quest.name(2), "Коготь гиппогрифа Острокогтя", "ruRU quest name, after a switch")
+  l10n.SetLocale("zhCN")
+  equal(Lib.Quest.name(2), "沙普塔隆的爪子", "zhCN quest name, after another switch")
+
+  l10n.SetLocale("enUS")
+  equal(Lib.Quest.name(2), base, "switching back to enUS restores the base value")
+
+  -- A field with no translation falls back to the base English value.
+  local ids = Lib.Quest.GetAllIds()
+  l10n.SetLocale("deDE")
+  local fallbacks, translated = 0, 0
+  for i = 1, math.min(#ids, 400) do
+    local localized = Lib.Quest.name(ids[i])
+    l10n.SetLocale("enUS")
+    local english = Lib.Quest.name(ids[i])
+    l10n.SetLocale("deDE")
+    if localized == english then fallbacks = fallbacks + 1 else translated = translated + 1 end
+  end
+  check(translated > 0, "translations resolve (" .. translated .. " of 400)")
+  check(fallbacks + translated == math.min(#ids, 400), "every id resolves to something")
+
+  -- Field coverage matches what Questie translates today, and no more.
+  local covered = {}
+  for typeName, fields in pairs(l10n.fields) do
+    local names = {}
+    for _, field in ipairs(fields) do names[#names + 1] = field.name end
+    table.sort(names)
+    covered[typeName] = table.concat(names, ",")
+  end
+  equal(covered.Quest, "name,objectivesText", "quest translates name and objectivesText")
+  equal(covered.Npc, "name,subName", "npc translates name and subName")
+  equal(covered.Item, "name", "item translates name only")
+  equal(covered.Object, "name", "object translates name only")
+
+  l10n.SetLocale("enUS")
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
 -- Support data
 --------------------------------------------------------------------------------------------
 

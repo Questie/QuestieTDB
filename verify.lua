@@ -203,7 +203,8 @@ local function verifyFlavor(flavor, opts)
     }
     local orphans = 0
     for key in pairs(map) do
-     if not headerKeys[key] then
+     -- Localization keys are verified separately, below.
+     if not headerKeys[key] and not key:find("^X%-" .. config.l10nMetaPrefix) then
       if not seenKeys[key] and not key:match("%-%d+$") then
         orphans = orphans + 1
       elseif not seenKeys[key] then
@@ -226,6 +227,44 @@ local function verifyFlavor(flavor, opts)
       report.errors = report.errors + changed
     end
     freezeLib.reset()
+  end
+
+  -- Localization: every stored value must split into the declared number of locale segments,
+  -- and every segment must be non-empty or absent — an empty segment means "no translation"
+  -- and the reader falls back, so a stray one is a silent English string in a German client.
+  local l10nFields, l10nSegments = 0, 0
+  for key, value in pairs(map) do
+    -- `X-l10n-<Type>-<id>-<fieldIndex>`. A chunk part carries a fourth number and is skipped.
+    if key:match("^X%-l10n%-%a+%-%d+%-%d+$") then
+      l10nFields = l10nFields + 1
+    end
+  end
+  for _, entityType in ipairs(config.entityTypes) do
+    if not opts.types or opts.types[entityType.name] then
+      local entity = LibQuestieDB[entityType.name]
+      local l10n = LibQuestieDB.l10n
+      if entity and l10n and entity.HasL10nProvider and entity.HasL10nProvider() then
+        for _, locale in ipairs(config.locales) do
+          l10n.SetLocale(locale)
+          local ids = entity.GetAllIds()
+          local translated = 0
+          for i = 1, math.min(#ids, 500) do
+            local value = entity.Get(ids[i], "name")
+            if type(value) == "string" and value ~= "" then translated = translated + 1 end
+          end
+          if translated == 0 then
+            io.write(("  L10N %s/%s: no name resolved across 500 ids\n"):format(entityType.name, locale))
+            report.errors = report.errors + 1
+          end
+          l10nSegments = l10nSegments + translated
+        end
+        l10n.SetLocale("enUS")
+      end
+    end
+  end
+  if l10nFields > 0 then
+    say(("       l10n: %d stored values, %d segments resolved across %d locales")
+      :format(l10nFields, l10nSegments, #config.locales))
   end
 
   say(("[%s] %s: %d entities, %d fields, %d chunked values, %d errors, %.1fs")

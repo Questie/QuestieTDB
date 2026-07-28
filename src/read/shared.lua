@@ -118,6 +118,19 @@ function shared.CreateEntity(meta, backend)
     return backend.readField(id, fieldIndex)
   end
 
+  -- The l10n overlay, when localization data is present. Set by src/l10n/overlay.lua after the
+  -- Entity globals exist. nil means "no localization data", and the check below costs nothing.
+  local l10nProvider
+
+  function entity.SetL10nProvider(provider)
+    l10nProvider = provider
+    entity.InvalidateCache(nil)
+  end
+
+  function entity.HasL10nProvider()
+    return l10nProvider ~= nil
+  end
+
   local function get(id, fieldIndex)
     local byId = cache[id]
     if byId then
@@ -132,6 +145,14 @@ function shared.CreateEntity(meta, backend)
     end
 
     local value = readRaw(id, fieldIndex)
+
+    -- Localization sits above the Correction Overlay and below the cache: a translated value
+    -- is cached like any other, and a locale change drops the cache rather than re-reading.
+    -- A field with no translation falls back to the base entity value.
+    if l10nProvider then
+      local translated = l10nProvider(id, fieldIndex)
+      if translated ~= nil then value = translated end
+    end
 
     -- Numeric getters default to 0, never nil. An absent value means the field was nil at
     -- source, and Questie returns 0 there. 0 is truthy in Lua, so consumers already test

@@ -24,6 +24,7 @@ local schema = dofile("generator/schema.lua")
 local encode = dofile("generator/encode.lua")
 local corrections = dofile("generator/corrections.lua")
 local flavorLoader = dofile("generator/flavor.lua")
+local l10nGen = dofile("generator/l10n.lua")
 
 -- The correction manifest drives which files each TOC lists. It is optional: a bare data
 -- round-trip works before any corrections are ported.
@@ -47,6 +48,10 @@ local function parseArgs(argv)
     elseif key == "fields" then
       opts.fields = {}
       for name in val:gmatch("[^,]+") do opts.fields[name] = true end
+    elseif key == "questie" then
+      opts.questie = val
+    elseif value == "--no-l10n" then
+      opts.noL10n = true
     elseif value == "--quiet" then
       opts.quiet = true
     elseif value:sub(1, 2) == "--" then
@@ -225,6 +230,34 @@ function generate.flavor(flavor, opts)
   end
 
   out:close()
+
+  -- Localization, appended after entity data. It is ~72% of the artifact, and it lives in the
+  -- same store rather than a separate addon because TOC metadata is client-side storage, not
+  -- Lua heap: a German user never touches the other eight locales' strings.
+  if not opts.noL10n then
+    local questiePath = opts.questie or "../Questie"
+    if lib.fileExists(questiePath .. "/Localization/lookups/" .. flavor.expansion) then
+      out = assert(io.open(tocPath, "ab"), "Cannot append to " .. tocPath)
+      for _, entityType in ipairs(config.entityTypes) do
+        local entry = loaded[entityType.name]
+        if entry then
+          local knownIds = {}
+          for id in pairs(entry.entities) do knownIds[id] = true end
+          local values, stats = l10nGen.extract(questiePath, flavor, entityType.name, knownIds)
+          local entries, fields = l10nGen.writeMetadata(out, entityType.name, values)
+          totals.l10nEntries = (totals.l10nEntries or 0) + entries
+          totals.l10nFields = (totals.l10nFields or 0) + fields
+          say(string.format("  l10n %-7s %6d entities  %8d fields  (%d locales, %d filtered)",
+            entityType.name, entries, fields, stats.locales, stats.filtered))
+          values = nil
+          collectgarbage()
+        end
+      end
+      out:close()
+    else
+      say("  l10n: skipped, no Questie lookup tree at " .. questiePath)
+    end
+  end
 
   local size = #lib.readAll(tocPath)
   say(string.format("Generated %s — %d entities, %d fields, %.1f MB, %.1fs",

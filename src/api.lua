@@ -81,6 +81,12 @@ LibQuestieDB.GetOwners = LibQuestieDB.Corrections.GetOwners
 
 LibQuestieDB.Corrections.ApplyRegisteredCorrections(LibQuestieDB.Corrections.OWNER)
 
+--- Localization attaches after the Entity globals exist, and is a no-op when the artifact
+--- carries no l10n data.
+if LibQuestieDB.l10n and LibQuestieDB.l10n.Initialize then
+  LibQuestieDB.l10n.Initialize()
+end
+
 --- Mode must be unmistakable in-game, so the indicator comes up as part of loading rather
 --- than waiting for a consumer to ask for it.
 if LibQuestieDB.ModeIndicator then
