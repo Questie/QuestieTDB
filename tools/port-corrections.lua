@@ -49,6 +49,9 @@ local SLICES = {
   { file = "Database/QuestieDB.lua", name = "classKeys", startsWith = "QuestieDB.classKeys = {" },
   { file = "Database/QuestieDB.lua", name = "specialFlags", startsWith = "QuestieDB.specialFlags = {" },
   { file = "Database/QuestieDB.lua", name = "waypointPresets", startsWith = "QuestieDB.waypointPresets = {" },
+  -- `itemDropCorrections.lua` is support data that reads these sentinels from the logic module
+  -- staying in Questie, so they have to travel with the data.
+  { file = "Database/DropTables/dropDB.lua", name = "dropCorrectionKeys", startsWith = "DropDB.correctionKeys = {" },
   { file = "Questie.lua", name = "iconTypes", pattern = "^Questie%.(ICON_TYPE_[%w_]+)%s*=%s*(%d+)" },
 }
 

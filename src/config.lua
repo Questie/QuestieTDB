@@ -162,11 +162,89 @@ function config.correctionFiles(flavor, mode)
   return files
 end
 
+--------------------------------------------------------------------------------------------
+-- Support data
+--------------------------------------------------------------------------------------------
+--
+-- Per-flavor selection happens here and nowhere else: every flavor lists a different variant
+-- and all of them assign to the same module field, so there is no runtime selection to get
+-- wrong. Taken from Questie's own per-flavor TOCs rather than guessed.
+
+config.supportData = {
+  shared = {
+    "support/Zones/dungeons.lua",
+    "support/Zones/subZoneToParentZone.lua",
+    "support/Zones/zoneIds.lua",
+    "support/Zones/instanceIdToAreaId.lua",
+    "support/DropTables/itemDropCorrections.lua",
+  },
+  perFlavor = {
+    Vanilla = {
+      "support/Zones/areaIdToUiMapId.lua", "support/Zones/uiMapIdToAreaId.lua",
+      "support/QuestXP/xpDB-classic.lua", "support/FactionTemplates/factionTemplateClassic.lua",
+      "support/DropTables/classicItemDrops.lua",
+    },
+    TBC = {
+      "support/Zones/areaIdToUiMapId.lua", "support/Zones/uiMapIdToAreaId.lua",
+      "support/QuestXP/xpDB-tbc.lua", "support/FactionTemplates/factionTemplateTBC.lua",
+      "support/DropTables/tbcItemDrops.lua",
+    },
+    Wrath = {
+      "support/Zones/areaIdToUiMapId.lua", "support/Zones/uiMapIdToAreaId.lua",
+      "support/QuestXP/xpDB-wotlk.lua", "support/FactionTemplates/factionTemplateWotlk.lua",
+      "support/DropTables/wotlkItemDrops.lua",
+    },
+    Cata = {
+      "support/Zones/areaIdToUiMapId.lua", "support/Zones/uiMapIdToAreaId.lua",
+      "support/QuestXP/xpDB-cata.lua", "support/FactionTemplates/factionTemplateCata.lua",
+      "support/DropTables/cataItemDrops.lua",
+    },
+    -- Mists uses its own zone maps, and loads Cata's drop table alongside its own, exactly as
+    -- Questie-Mists.toc does.
+    Mists = {
+      "support/Zones/MoP/areaIdToUiMapId.lua", "support/Zones/MoP/uiMapIdToAreaId.lua",
+      "support/QuestXP/xpDB-mop.lua", "support/FactionTemplates/factionTemplateMoP.lua",
+      "support/DropTables/mopItemDrops.lua", "support/DropTables/cataItemDrops.lua",
+    },
+  },
+}
+
+--- The support-data block for one flavor, bracketed by the shim install and removal.
+--- With no flavor — the base TOC — every variant is listed; later assignments to the same
+--- module field win, which is why Source mode still needs the flavor to pick correctly.
+function config.supportFiles(flavor)
+  -- The extracted constants come first: the support shim seeds `DropDB.correctionKeys` from
+  -- them before `itemDropCorrections.lua` runs.
+  local files = { "src/corrections/enum/constants.lua", "src/support/data.lua",
+                  "src/support/_begin.lua" }
+  for _, file in ipairs(config.supportData.shared) do files[#files + 1] = file end
+  if flavor then
+    for _, file in ipairs(config.supportData.perFlavor[flavor.name] or {}) do
+      files[#files + 1] = file
+    end
+  else
+    -- The base TOC lists every variant, sorted so the order is stable across runs. Sorting is
+    -- confined to the data files: the bracket files that install and remove the shim have to
+    -- keep their positions, and sorting the whole list once moved them.
+    local seen, variants = {}, {}
+    for _, name in ipairs({ "Vanilla", "TBC", "Wrath", "Cata", "Mists" }) do
+      for _, file in ipairs(config.supportData.perFlavor[name] or {}) do
+        if not seen[file] then seen[file] = true; variants[#variants + 1] = file end
+      end
+    end
+    table.sort(variants)
+    for _, file in ipairs(variants) do files[#files + 1] = file end
+  end
+  files[#files + 1] = "src/support/_end.lua"
+  return files
+end
+
 --- Files a generated flavour TOC lists, in load order.
 function config.bakedFileList(flavor)
   local files = {}
   for _, file in ipairs(config.runtimeFiles.head) do files[#files + 1] = file end
   files[#files + 1] = config.runtimeFiles.bakedReader
+  for _, file in ipairs(config.supportFiles(flavor)) do files[#files + 1] = file end
   files[#files + 1] = "src/read/shared.lua"
   files[#files + 1] = "src/corrections/registry.lua"
   for _, file in ipairs(config.correctionFiles(flavor, "baked")) do files[#files + 1] = file end
@@ -181,6 +259,7 @@ function config.sourceFileList()
   for _, file in ipairs(config.runtimeFiles.head) do files[#files + 1] = file end
   files[#files + 1] = config.runtimeFiles.sourceReader
   for _, file in ipairs(config.sourceDataFiles()) do files[#files + 1] = file end
+  for _, file in ipairs(config.supportFiles(nil)) do files[#files + 1] = file end
   files[#files + 1] = "src/read/shared.lua"
   files[#files + 1] = "src/corrections/registry.lua"
   for _, file in ipairs(config.correctionFiles(nil, "source")) do files[#files + 1] = file end

@@ -592,3 +592,109 @@ cached values are invalidated when the composed view changes; debug mode reports
   The Horde branch is registered and applies, but the *values* it produces are unverified.
 
 ---
+
+## 12 — Support data ✅
+
+**Built** — `support/` (24 files, 5.6 MB), `src/support/data.lua` plus its bracket files, and
+per-flavor selection in `src/config.lua`.
+
+Zone maps, quest XP, drop tables and faction templates now ship from QuestieTDB, exposed as
+whole tables through `LibQuestieDB.Support.Get("ZoneDB" | "QuestXP" | "DropDB" | "QuestieDB")`.
+They stay plain Lua rather than becoming metadata because callers want the whole table — lazy
+decoding buys nothing when the first read materialises everything anyway.
+
+**Only the data moved.** `zoneDB.lua`, `QuestieXP.lua` and `dropDB.lua` are `QuestieLoader`
+modules with runtime behaviour and stay with the consumer; they read what this publishes.
+
+Per-flavor selection is done entirely by *which file the TOC lists* — every flavor names a
+different variant and all of them assign to the same module field, so there is no runtime
+selection to get wrong. Taken from Questie's own per-flavor TOCs, including the detail that
+**Mists loads Cata's drop table alongside its own**.
+
+### D13 — `itemDropCorrections.lua` is support data, not a Correction
+
+Ticket 12 asks for the drop-table corrections file to be "reconciled with the corrections
+system rather than left as a stray data file". Reconciling it turned out to mean drawing the
+line, not moving the file: a Correction under `CONTEXT.md` is *entity ID → field index → value*,
+and this file is *item ID → NPC ID → drop percentage* consumed as a whole table by `dropDB.lua`.
+It is support data that happens to be named "corrections".
+
+What it actually needed was its dependency: it reads `DropDB.correctionKeys`, negative sentinels
+marking a correction's provenance (Wowhead, private server, manual), which live in the logic
+module staying with the consumer. Those are now extracted alongside the entity constants and
+seeded by the support shim, so the file loads standalone. A test asserts that.
+
+**Verification passed** — 15 support checks in `test.lua`, and all five artifacts regenerate,
+verify and pass equivalence with the support block in place.
+
+---
+
+## 13 — Data validators ✅ (with a boundary finding that needs you)
+
+**Built** — `validators/checks.lua` (Questie's `cli/validators.lua`, moved wholesale),
+`validators/run.lua`, `validators/zones.lua`, `validators/baseline/`.
+
+All fifteen invariant checks moved across unchanged. Two things about the preamble had to
+change:
+
+* **`require("lfs")` is gone.** The original created its output directory with LuaFileSystem, a
+  C module. `os.execute` does it instead, and the output location is settable rather than
+  derived from `$PWD`.
+* **`os.exit(1)` became a flag.** Questie's drivers run one check per process and exit on the
+  first failure. Here fifteen checks run per flavor in one process and the whole picture is
+  wanted, so the fifteen exit sites set `Validators.failed` and the driver reads it.
+
+Zone lookups resolve from support data owned here (`validators/zones.lua` re-derives
+`getUiMapIdByAreaId` over the override-then-generated tables), so **validation needs no consumer
+checkout** — which is the whole point of moving the job.
+
+**Verification passed**
+
+```
+$ lua5.1 validators/run.lua
+[PASS] Vanilla: 15/15 checks clean, 0 findings
+[PASS] TBC:      9/15 checks clean, 112 findings (112 baselined, 0 new)
+[PASS] Wrath:    9/15 checks clean,  94 findings ( 94 baselined, 0 new)
+[PASS] Cata:     3/15 checks clean, 316 findings (316 baselined, 0 new)
+[PASS] Mists:    5/15 checks clean, 1528 findings (1528 baselined, 0 new)
+```
+
+**Vanilla passes every check outright**, against fully corrected data. That is a meaningful
+independent signal that the correction port is right: fifteen cross-entity invariants over
+36,000 entities, all clean.
+
+Diagnostics are retained per flavor at `.out/validators/<Flavor>/report.txt`, and the checks'
+suggested-correction files land next to them ready to paste into a fix.
+
+### D14 — The baseline, and what it is really telling you — **NEEDS YOU**
+
+The other four flavors do not pass outright, and the reason is a genuine consequence of
+`DESIGN.md`'s boundary rule rather than a porting bug.
+
+Questie's validators run *after* `QuestieEvent`, `ContentPhases` and the blacklists have had
+their say. Those stay in Questie, because hiding an entity and gating it on a calendar date are
+consumer policy, not database facts. A holiday quest that only exists during Lunar Festival will
+always look like a broken quest-starter link to a database that does not know about holidays —
+and that is exactly what the TBC findings are: quests 5628/5630/5631/5635/5637 are Lunar
+Festival.
+
+So the accepted findings are committed under `validators/baseline/<Flavor>.txt` (2,051 lines
+total) and a run fails on anything *new*. That makes this a regression gate from day one rather
+than a wall of known noise, and the baseline is an explicit, reviewable record of exactly what
+the boundary rule costs.
+
+**This is a decision for you**, and there are three options:
+
+1. **Keep the baseline** (what is implemented). Cheap, honest, and the file is reviewable. The
+   cost is that a real regression *inside* the baselined set stays invisible.
+2. **Let the validator optionally read Questie's blacklist and event data** when a checkout is
+   present, and run strict there. Restores full coverage in CI at the price of the validator
+   depending on a consumer again — which is the thing this ticket moved away from.
+3. **Move blacklists and holiday gating into QuestieTDB.** Contradicts the boundary rule and
+   `DESIGN.md` rejects it explicitly for `hidden`, so this is only worth revisiting if the
+   baseline turns out to hide real bugs.
+
+I implemented (1) because it is the only one that does not need your call, and left the other
+two costed.
+
+---

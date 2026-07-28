@@ -678,6 +678,65 @@ suite("equivalence-control", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Support data
+--------------------------------------------------------------------------------------------
+
+suite("support", function()
+  local flavor = config.flavorByName.Vanilla
+  local tocPath = config.tocPath(flavor)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP support: ", tocPath, " not generated\n")
+    return
+  end
+
+  client.reset()
+  client.install({ expansion = "Classic" })
+  emulator.install(config.addonName, emulator.parse(tocPath))
+  local Lib = emulator.loadAddon(tocPath, config.addonName)
+  local Support = Lib.Support
+
+  -- Each area is exposed for consumption as a whole table.
+  check(Support.Get("ZoneDB") ~= nil, "zone data ships from this addon")
+  check(Support.Get("QuestXP") ~= nil, "quest XP data ships from this addon")
+  check(Support.Get("DropDB") ~= nil, "drop table data ships from this addon")
+  check(Support.Get("QuestieDB") ~= nil, "faction template data ships from this addon")
+
+  local zoneIds = Support.Get("ZoneDB").zoneIDs
+  check(type(zoneIds) == "table" and zoneIds.DUN_MOROGH ~= nil, "zone IDs are populated")
+
+  local xp = Support.Get("QuestXP").db
+  local xpCount = 0
+  for _ in pairs(xp or {}) do xpCount = xpCount + 1 end
+  check(xpCount > 1000, "quest XP table is populated (" .. xpCount .. " entries)")
+
+  check(Support.Get("QuestieDB").factionTemplate ~= nil, "faction templates are populated")
+
+  -- The drop-table corrections file is reconciled rather than left stray: it reads
+  -- `DropDB.correctionKeys`, which the support shim seeds from the extracted constants.
+  local dropKeys = Support.Get("DropDB").correctionKeys
+  check(type(dropKeys) == "table" and next(dropKeys) ~= nil,
+    "DropDB.correctionKeys is seeded so itemDropCorrections can load")
+  check(Support.Get("QuestieItemDropCorrections") ~= nil, "drop-table corrections loaded")
+
+  -- Per-flavor data is selected by which file the TOC lists, never at runtime.
+  local vanillaFiles, mistsFiles = config.supportFiles(flavor), config.supportFiles(config.flavorByName.Mists)
+  local function has(list, name)
+    for _, file in ipairs(list) do if file:find(name, 1, true) then return true end end
+    return false
+  end
+  check(has(vanillaFiles, "xpDB-classic.lua"), "Vanilla lists its own quest XP table")
+  check(has(mistsFiles, "xpDB-mop.lua"), "Mists lists its own quest XP table")
+  check(not has(vanillaFiles, "xpDB-mop.lua"), "Vanilla does not list MoP's quest XP table")
+  check(has(mistsFiles, "MoP/areaIdToUiMapId.lua"), "Mists lists its own zone maps")
+  check(has(mistsFiles, "cataItemDrops.lua"),
+    "Mists loads Cata's drop table alongside its own, as Questie-Mists.toc does")
+
+  check(rawget(_G, "QuestieLoader") == nil, "the support shim handed QuestieLoader back")
+
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
 -- Emulator
 --------------------------------------------------------------------------------------------
 

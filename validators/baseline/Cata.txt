@@ -1,0 +1,316 @@
+npcQuestEnds|- quest 10379 is not finished by this NPC
+npcQuestEnds|- quest 11588 is missing in questEnds
+npcQuestEnds|- quest 11974 is missing in questEnds
+npcQuestEnds|- quest 30097 is not finished by this NPC
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 3087 is not finished by this NPC
+npcQuestEnds|- quest 4742 is not finished by this NPC
+npcQuestEnds|- quest 4743 is not finished by this NPC
+npcQuestEnds|- quest 5653 is missing in questEnds
+npcQuestEnds|- quest 5659 is missing in questEnds
+npcQuestEnds|- quest 5665 is missing in questEnds
+npcQuestEnds|- quest 5666 is missing in questEnds
+npcQuestEnds|- quest 5667 is missing in questEnds
+npcQuestEnds|- quest 5682 is missing in questEnds
+npcQuestEnds|- quest 5683 is missing in questEnds
+npcQuestEnds|- quest 5684 is missing in questEnds
+npcQuestEnds|- quest 5689 is missing in questEnds
+npcQuestEnds|- quest 5690 is missing in questEnds
+npcQuestEnds|- quest 5692 is missing in questEnds
+npcQuestEnds|- quest 5693 is missing in questEnds
+npcQuestEnds|- quest 5695 is missing in questEnds
+npcQuestEnds|- quest 5696 is missing in questEnds
+npcQuestEnds|- quest 5697 is missing in questEnds
+npcQuestEnds|- quest 5702 is missing in questEnds
+npcQuestEnds|- quest 5703 is missing in questEnds
+npcQuestEnds|- quest 5705 is missing in questEnds
+npcQuestEnds|- quest 5706 is missing in questEnds
+npcQuestEnds|- quest 5708 is missing in questEnds
+npcQuestEnds|- quest 5709 is missing in questEnds
+npcQuestEnds|- quest 5711 is missing in questEnds
+npcQuestEnds|- quest 5712 is missing in questEnds
+npcQuestEnds|- quest 8244 is missing in questEnds
+npcQuestEnds|- quest 8245 is missing in questEnds
+npcQuestEnds|- quest 95072 is missing in questEnds
+npcQuestEnds|- quest 95074 is missing in questEnds
+npcQuestEnds|- quest 95075 is missing in questEnds
+npcQuestEnds|- quest 95076 is missing in questEnds
+npcQuestEnds|- quest 95077 is missing in questEnds
+npcQuestEnds|- quest 95078 is missing in questEnds
+npcQuestEnds|- quest 95079 is missing in questEnds
+npcQuestEnds|- quest 95080 is missing in questEnds
+npcQuestEnds|- quest 95081 is missing in questEnds
+npcQuestEnds|- quest 95082 is missing in questEnds
+npcQuestEnds|- quest 95083 is missing in questEnds
+npcQuestEnds|- quest 95084 is missing in questEnds
+npcQuestEnds|- quest 95085 is missing in questEnds
+npcQuestEnds|- quest 95088 is missing in questEnds
+npcQuestEnds|- quest 95089 is missing in questEnds
+npcQuestEnds|- quest 95090 is missing in questEnds
+npcQuestEnds|- quest 95092 is missing in questEnds
+npcQuestEnds|- quest 95093 is missing in questEnds
+npcQuestEnds|- quest 95094 is missing in questEnds
+npcQuestEnds|- quest 95095 is missing in questEnds
+npcQuestEnds|- quest 95096 is missing in questEnds
+npcQuestEnds|- quest 95097 is missing in questEnds
+npcQuestEnds|- quest 95098 is missing in questEnds
+npcQuestEnds|- quest 95099 is missing in questEnds
+npcQuestEnds|- quest 95100 is missing in questEnds
+npcQuestEnds|- quest 95101 is missing in questEnds
+npcQuestEnds|- quest 95102 is missing in questEnds
+npcQuestEnds|- quest 95103 is missing in questEnds
+npcQuestEnds|- quest 95104 is missing in questEnds
+npcQuestEnds|- quest 95105 is missing in questEnds
+npcQuestEnds|- quest 95106 is missing in questEnds
+npcQuestEnds|- quest 95205 is missing in questEnds
+npcQuestEnds|- quest 9613 is missing in questEnds
+npcQuestEnds|- quest 9614 is missing in questEnds
+npcQuestEnds|- quest 9615 is missing in questEnds
+npcQuestEnds|- quest 98183 is missing in questEnds
+npcQuestEnds|- questEnd 65593 is not in the database
+npcQuestEnds|- questEnd 65597 is not in the database
+npcQuestEnds|- questEnd 65604 is not in the database
+npcQuestEnds|- questEnd 65610 is not in the database
+npcQuestStarts|- quest 10066 is not started by this NPC
+npcQuestStarts|- quest 10067 is not started by this NPC
+npcQuestStarts|- quest 10789 is missing in questStarts
+npcQuestStarts|- quest 10790 is missing in questStarts
+npcQuestStarts|- quest 10871 is missing in questStarts
+npcQuestStarts|- quest 13094 is not started by this NPC
+npcQuestStarts|- quest 13129 is not started by this NPC
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 1361 is missing in questStarts
+npcQuestStarts|- quest 1638 is missing in questStarts
+npcQuestStarts|- quest 1698 is missing in questStarts
+npcQuestStarts|- quest 1698 is missing in questStarts
+npcQuestStarts|- quest 1718 is missing in questStarts
+npcQuestStarts|- quest 1718 is missing in questStarts
+npcQuestStarts|- quest 1939 is missing in questStarts
+npcQuestStarts|- quest 1943 is missing in questStarts
+npcQuestStarts|- quest 1947 is missing in questStarts
+npcQuestStarts|- quest 1947 is missing in questStarts
+npcQuestStarts|- quest 1947 is missing in questStarts
+npcQuestStarts|- quest 1947 is missing in questStarts
+npcQuestStarts|- quest 1953 is missing in questStarts
+npcQuestStarts|- quest 1953 is missing in questStarts
+npcQuestStarts|- quest 1953 is missing in questStarts
+npcQuestStarts|- quest 1953 is missing in questStarts
+npcQuestStarts|- quest 24814 is not started by this NPC
+npcQuestStarts|- quest 24814 is not started by this NPC
+npcQuestStarts|- quest 27175 is missing in questStarts
+npcQuestStarts|- quest 27469 is not started by this NPC
+npcQuestStarts|- quest 27683 is missing in questStarts
+npcQuestStarts|- quest 2861 is missing in questStarts
+npcQuestStarts|- quest 29035 is missing in questStarts
+npcQuestStarts|- quest 29037 is missing in questStarts
+npcQuestStarts|- quest 29038 is missing in questStarts
+npcQuestStarts|- quest 29040 is missing in questStarts
+npcQuestStarts|- quest 3087 is not started by this NPC
+npcQuestStarts|- quest 3096 is not started by this NPC
+npcQuestStarts|- quest 4107 is missing in questStarts
+npcQuestStarts|- quest 4108 is not started by this NPC
+npcQuestStarts|- quest 4109 is not started by this NPC
+npcQuestStarts|- quest 4110 is not started by this NPC
+npcQuestStarts|- quest 4111 is not started by this NPC
+npcQuestStarts|- quest 4112 is not started by this NPC
+npcQuestStarts|- quest 4487 is missing in questStarts
+npcQuestStarts|- quest 4738 is missing in questStarts
+npcQuestStarts|- quest 4968 is missing in questStarts
+npcQuestStarts|- quest 5405 is missing in questStarts
+npcQuestStarts|- quest 5407 is missing in questStarts
+npcQuestStarts|- quest 5408 is missing in questStarts
+npcQuestStarts|- quest 5503 is not started by this NPC
+npcQuestStarts|- quest 5628 is missing in questStarts
+npcQuestStarts|- quest 5630 is missing in questStarts
+npcQuestStarts|- quest 5882 is missing in questStarts
+npcQuestStarts|- quest 5883 is missing in questStarts
+npcQuestStarts|- quest 5884 is missing in questStarts
+npcQuestStarts|- quest 5885 is missing in questStarts
+npcQuestStarts|- quest 5886 is missing in questStarts
+npcQuestStarts|- quest 5924 is missing in questStarts
+npcQuestStarts|- quest 63448 is missing in questStarts
+npcQuestStarts|- quest 63767 is missing in questStarts
+npcQuestStarts|- quest 65284 is missing in questStarts
+npcQuestStarts|- quest 65561 is missing in questStarts
+npcQuestStarts|- quest 8151 is missing in questStarts
+npcQuestStarts|- quest 8151 is missing in questStarts
+npcQuestStarts|- quest 8151 is missing in questStarts
+npcQuestStarts|- quest 8233 is missing in questStarts
+npcQuestStarts|- quest 8250 is missing in questStarts
+npcQuestStarts|- quest 8250 is missing in questStarts
+npcQuestStarts|- quest 8254 is missing in questStarts
+npcQuestStarts|- quest 8254 is missing in questStarts
+npcQuestStarts|- quest 8254 is missing in questStarts
+npcQuestStarts|- quest 8417 is missing in questStarts
+npcQuestStarts|- quest 8417 is missing in questStarts
+npcQuestStarts|- quest 8419 is missing in questStarts
+npcQuestStarts|- quest 8419 is missing in questStarts
+npcQuestStarts|- quest 84385 is missing in questStarts
+npcQuestStarts|- quest 8871 is missing in questStarts
+npcQuestStarts|- quest 8871 is missing in questStarts
+npcQuestStarts|- quest 8872 is missing in questStarts
+npcQuestStarts|- quest 8874 is missing in questStarts
+npcQuestStarts|- quest 8875 is missing in questStarts
+npcQuestStarts|- quest 8883 is not started by this NPC
+npcQuestStarts|- quest 9063 is missing in questStarts
+npcQuestStarts|- quest 9063 is missing in questStarts
+npcQuestStarts|- quest 93823 is missing in questStarts
+npcQuestStarts|- quest 9462 is missing in questStarts
+npcQuestStarts|- quest 9502 is missing in questStarts
+npcQuestStarts|- quest 95072 is missing in questStarts
+npcQuestStarts|- quest 95074 is missing in questStarts
+npcQuestStarts|- quest 95075 is missing in questStarts
+npcQuestStarts|- quest 95076 is missing in questStarts
+npcQuestStarts|- quest 95077 is missing in questStarts
+npcQuestStarts|- quest 95078 is missing in questStarts
+npcQuestStarts|- quest 95079 is missing in questStarts
+npcQuestStarts|- quest 95080 is missing in questStarts
+npcQuestStarts|- quest 95081 is missing in questStarts
+npcQuestStarts|- quest 95082 is missing in questStarts
+npcQuestStarts|- quest 95083 is missing in questStarts
+npcQuestStarts|- quest 95084 is missing in questStarts
+npcQuestStarts|- quest 95085 is missing in questStarts
+npcQuestStarts|- quest 95088 is missing in questStarts
+npcQuestStarts|- quest 95089 is missing in questStarts
+npcQuestStarts|- quest 95090 is missing in questStarts
+npcQuestStarts|- quest 95092 is missing in questStarts
+npcQuestStarts|- quest 95093 is missing in questStarts
+npcQuestStarts|- quest 95094 is missing in questStarts
+npcQuestStarts|- quest 95095 is missing in questStarts
+npcQuestStarts|- quest 95096 is missing in questStarts
+npcQuestStarts|- quest 95097 is missing in questStarts
+npcQuestStarts|- quest 95098 is missing in questStarts
+npcQuestStarts|- quest 95099 is missing in questStarts
+npcQuestStarts|- quest 95100 is missing in questStarts
+npcQuestStarts|- quest 95101 is missing in questStarts
+npcQuestStarts|- quest 95102 is missing in questStarts
+npcQuestStarts|- quest 95103 is missing in questStarts
+npcQuestStarts|- quest 95104 is missing in questStarts
+npcQuestStarts|- quest 95105 is missing in questStarts
+npcQuestStarts|- quest 95106 is missing in questStarts
+npcQuestStarts|- quest 95205 is missing in questStarts
+npcQuestStarts|- quest 9551 is missing in questStarts
+npcQuestStarts|- quest 9617 is missing in questStarts
+npcQuestStarts|- quest 9617 is not started by this NPC
+npcQuestStarts|- quest 96253 is missing in questStarts
+npcQuestStarts|- quest 9672 is missing in questStarts
+npcQuestStarts|- quest 9737 is missing in questStarts
+npcQuestStarts|- quest 98183 is missing in questStarts
+npcQuestStarts|- questStart 65597 is not in the database
+npcQuestStarts|- questStart 65604 is not in the database
+npcSpawnAreaIds|- NPC 3655 (Mad Magglish): areaIds 6511
+npcSpawnAreaIds|- NPC 47120 (Argaloth): areaIds 5600
+npcSpawnAreaIds|- NPC 51335 (Herbouflage Effect (DND)): areaIds 5600
+npcSpawnAreaIds|- NPC 52363 (Occu'thar): areaIds 5600
+npcSpawnAreaIds|- NPC 52368 (Eyestalk): areaIds 5600
+npcSpawnAreaIds|- NPC 52369 (Eyestalk): areaIds 5600
+npcSpawnAreaIds|- NPC 52389 (Eye of Occu'thar): areaIds 5600
+npcSpawnAreaIds|- NPC 52427 (Destroyed Containment Unit): areaIds 5600
+npcSpawnAreaIds|- NPC 52428 (Eye of Occu'thar): areaIds 5600
+npcSpawnAreaIds|- NPC 53488 (Summon Enabler Stalker): areaIds 5600
+npcSpawnAreaIds|- NPC 55869 (Alizabal): areaIds 5600
+npcSpawnAreaIds|- NPC 56350 (Disciple of Hate): areaIds 5600
+npcSpawnAreaIds|- NPC 56369 (Eye of Occu'thar): areaIds 5600
+npcSpawnAreaIds|- NPC 56372 (Eye of Occu'thar): areaIds 5600
+objectQuestEnds|- object 5620:
+objectQuestEnds|- quest 926 is missing in questEnds
+objectQuestStarts|- object 187273:
+objectQuestStarts|- object 5620:
+objectQuestStarts|- quest 1268 is missing in questStarts
+objectQuestStarts|- quest 1284 is missing in questStarts
+objectQuestStarts|- quest 926 is missing in questStarts
+objectSpawnAreaIds|- Object 206842 (Mailbox): areaIds 133
+objectSpawnAreaIds|- Object 208982 (Mage Tower Banner): areaIds 5799
+objectSpawnAreaIds|- Object 208983 (Draenei Ruins Banner): areaIds 5799
+objectSpawnAreaIds|- Object 208984 (Blood Elf Banner): areaIds 5799
+objectSpawnAreaIds|- Object 208985 (Fel Reaver Banner): areaIds 5799
+objectives|- Item objective 113135 is missing in the database
+objectives|- Item objective 3704 is missing in the database
+objectives|- Item objective 3930 is missing in the database
+objectives|- Item objective 72125 is missing in the database
+objectives|- Item objective 81418 is missing in the database
+objectives|- Item objective 9299 is missing in the database
+objectives|- NPC objective 100290 is missing in the database
+objectives|- NPC objective 56531 is missing in the database
+objectives|- NPC objective 64562 is missing in the database
+objectives|- NPC objective 64562 is missing in the database
+objectives|- NPC objective 64738 is missing in the database
+objectives|- NPC objective 64738 is missing in the database
+objectives|- NPC objective 64827 is missing in the database
+objectives|- NPC objective 64827 is missing in the database
+objectives|- NPC objective 99418 is missing in the database
+objectives|- Quest 10794:
+objectives|- Quest 11997:
+objectives|- Quest 24460:
+objectives|- Quest 28017:
+objectives|- Quest 28019:
+objectives|- Quest 28021:
+objectives|- Quest 28023:
+objectives|- Quest 28082:
+objectives|- Quest 28083:
+objectives|- Quest 2841:
+objectives|- Quest 29569:
+objectives|- Quest 30173:
+objectives|- Quest 503:
+objectives|- Quest 613:
+parentChildQuestRelations|- Quest 100 (quest 1103 is missing in childQuests list)
+parentChildQuestRelations|- Quest 619 (quest has no parentQuest. 8554 is listing it as child quest)
+parentChildQuestRelations|- Quest 6543 (quest 6547 is missing in childQuests list)
+preQuestExclusiveness|- Quest 10888
+questFinishers|- Quest 11997 (NPC finisher 90418 is missing in the database)
+questFinishers|- Quest 13827 (Object finisher 194655 is missing in the database)
+questFinishers|- Quest 14002 (Object finisher 195173 is missing in the database)
+questFinishers|- Quest 14026 (Object finisher 195189 is missing in the database)
+questFinishers|- Quest 242 (NPC finisher 1058 is missing in the database)
+questFinishers|- Quest 24444 (Object finisher 201576 is missing in the database)
+questFinishers|- Quest 24446 (Object finisher 201577 is missing in the database)
+questFinishers|- Quest 24447 (Object finisher 201575 is missing in the database)
+questFinishers|- Quest 254 (Object finisher 37 is missing in the database)
+questFinishers|- Quest 28017 (NPC finisher 64764 is missing in the database)
+questFinishers|- Quest 28019 (NPC finisher 64838 is missing in the database)
+questFinishers|- Quest 28021 (NPC finisher 64764 is missing in the database)
+questFinishers|- Quest 28023 (NPC finisher 64838 is missing in the database)
+questFinishers|- Quest 28082 (NPC finisher 64563 is missing in the database)
+questFinishers|- Quest 28083 (NPC finisher 64563 is missing in the database)
+questFinishers|- Quest 30173 (NPC finisher 66201 is missing in the database)
+questFinishers|- Quest 636 (Object finisher 2655 is missing in the database)
+questFinishers|- Quest 802 (NPC finisher 3148 is missing in the database)
+questFinishers|- Quest 803 (NPC finisher 3148 is missing in the database)
+questFinishers|- Quest 839 (NPC finisher 243 is missing in the database)
+questFinishers|- Quest 856 (NPC finisher 3440 is missing in the database)
+requiredRaces|- Quest 78219 (no requiredRaces entry)
+requiredRaces|- Quest 78220 (no requiredRaces entry)
+requiredRaces|- Quest 78221 (no requiredRaces entry)
+requiredRaces|- Quest 88777 (no requiredRaces entry)
+requiredRaces|- Quest 88781 (no requiredRaces entry)
+requiredRaces|- Quest 88784 (no requiredRaces entry)
+requiredRaces|- Quest 96211 (no requiredRaces entry)
+requiredSourceItems|- Quest 10945 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10950 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10951 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10952 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10953 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10954 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10956 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10960 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10962 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10963 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10968 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 11886 (sourceItemId in requiredSourceItems: 35828)
+requiredSourceItems|- Quest 11975 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 1471 (sourceItemId in requiredSourceItems: 6284)
+requiredSourceItems|- Quest 1474 (sourceItemId in requiredSourceItems: 6286)
+requiredSourceItems|- Quest 1504 (sourceItemId in requiredSourceItems: 7464)
+requiredSourceItems|- Quest 1513 (sourceItemId in requiredSourceItems: 6626)
+requiredSourceItems|- Quest 1689 (sourceItemId in requiredSourceItems: 6928)
+requiredSourceItems|- Quest 1739 (sourceItemId in requiredSourceItems: 6913)
+requiredSourceItems|- Quest 8746 (itemObjectiveId in requiredSourceItems: 21211)
+requiredSourceItems|- Quest 8762 (itemObjectiveId in requiredSourceItems: 21211)

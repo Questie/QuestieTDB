@@ -1,0 +1,1528 @@
+npcQuestEnds|- quest 10379 is not finished by this NPC
+npcQuestEnds|- quest 11588 is missing in questEnds
+npcQuestEnds|- quest 11974 is missing in questEnds
+npcQuestEnds|- quest 13941 is missing in questEnds
+npcQuestEnds|- quest 1470 is missing in questEnds
+npcQuestEnds|- quest 1599 is missing in questEnds
+npcQuestEnds|- quest 179 is missing in questEnds
+npcQuestEnds|- quest 234 is missing in questEnds
+npcQuestEnds|- quest 24857 is missing in questEnds
+npcQuestEnds|- quest 25033 is missing in questEnds
+npcQuestEnds|- quest 27280 is not finished by this NPC
+npcQuestEnds|- quest 28017 is missing in questEnds
+npcQuestEnds|- quest 28017 is missing in questEnds
+npcQuestEnds|- quest 28019 is missing in questEnds
+npcQuestEnds|- quest 28019 is missing in questEnds
+npcQuestEnds|- quest 28021 is missing in questEnds
+npcQuestEnds|- quest 28021 is missing in questEnds
+npcQuestEnds|- quest 28023 is missing in questEnds
+npcQuestEnds|- quest 28023 is missing in questEnds
+npcQuestEnds|- quest 28082 is missing in questEnds
+npcQuestEnds|- quest 28082 is missing in questEnds
+npcQuestEnds|- quest 28083 is missing in questEnds
+npcQuestEnds|- quest 28083 is missing in questEnds
+npcQuestEnds|- quest 282 is missing in questEnds
+npcQuestEnds|- quest 28301 is not finished by this NPC
+npcQuestEnds|- quest 28465 is not finished by this NPC
+npcQuestEnds|- quest 28835 is missing in questEnds
+npcQuestEnds|- quest 29414 is not finished by this NPC
+npcQuestEnds|- quest 29422 is not finished by this NPC
+npcQuestEnds|- quest 29554 is missing in questEnds
+npcQuestEnds|- quest 29557 is missing in questEnds
+npcQuestEnds|- quest 29584 is missing in questEnds
+npcQuestEnds|- quest 29625 is missing in questEnds
+npcQuestEnds|- quest 29638 is missing in questEnds
+npcQuestEnds|- quest 29648 is missing in questEnds
+npcQuestEnds|- quest 29678 is not finished by this NPC
+npcQuestEnds|- quest 29693 is missing in questEnds
+npcQuestEnds|- quest 29696 is missing in questEnds
+npcQuestEnds|- quest 29715 is missing in questEnds
+npcQuestEnds|- quest 29719 is missing in questEnds
+npcQuestEnds|- quest 29719 is missing in questEnds
+npcQuestEnds|- quest 29722 is missing in questEnds
+npcQuestEnds|- quest 29722 is missing in questEnds
+npcQuestEnds|- quest 29728 is missing in questEnds
+npcQuestEnds|- quest 29754 is not finished by this NPC
+npcQuestEnds|- quest 29766 is missing in questEnds
+npcQuestEnds|- quest 29773 is missing in questEnds
+npcQuestEnds|- quest 29779 is not finished by this NPC
+npcQuestEnds|- quest 29780 is not finished by this NPC
+npcQuestEnds|- quest 29781 is not finished by this NPC
+npcQuestEnds|- quest 29809 is missing in questEnds
+npcQuestEnds|- quest 29837 is missing in questEnds
+npcQuestEnds|- quest 29841 is missing in questEnds
+npcQuestEnds|- quest 29884 is missing in questEnds
+npcQuestEnds|- quest 29895 is missing in questEnds
+npcQuestEnds|- quest 29895 is missing in questEnds
+npcQuestEnds|- quest 29923 is missing in questEnds
+npcQuestEnds|- quest 29938 is missing in questEnds
+npcQuestEnds|- quest 30009 is missing in questEnds
+npcQuestEnds|- quest 30019 is missing in questEnds
+npcQuestEnds|- quest 30087 is missing in questEnds
+npcQuestEnds|- quest 30097 is not finished by this NPC
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30105 is missing in questEnds
+npcQuestEnds|- quest 30153 is missing in questEnds
+npcQuestEnds|- quest 30180 is missing in questEnds
+npcQuestEnds|- quest 30233 is missing in questEnds
+npcQuestEnds|- quest 30234 is missing in questEnds
+npcQuestEnds|- quest 30235 is missing in questEnds
+npcQuestEnds|- quest 30236 is missing in questEnds
+npcQuestEnds|- quest 30238 is missing in questEnds
+npcQuestEnds|- quest 30239 is missing in questEnds
+npcQuestEnds|- quest 30244 is missing in questEnds
+npcQuestEnds|- quest 30245 is missing in questEnds
+npcQuestEnds|- quest 30246 is missing in questEnds
+npcQuestEnds|- quest 30247 is missing in questEnds
+npcQuestEnds|- quest 30248 is missing in questEnds
+npcQuestEnds|- quest 30249 is missing in questEnds
+npcQuestEnds|- quest 30251 is missing in questEnds
+npcQuestEnds|- quest 30253 is missing in questEnds
+npcQuestEnds|- quest 30264 is missing in questEnds
+npcQuestEnds|- quest 30277 is missing in questEnds
+npcQuestEnds|- quest 30277 is missing in questEnds
+npcQuestEnds|- quest 30277 is not finished by this NPC
+npcQuestEnds|- quest 30280 is missing in questEnds
+npcQuestEnds|- quest 30280 is missing in questEnds
+npcQuestEnds|- quest 30280 is not finished by this NPC
+npcQuestEnds|- quest 30296 is missing in questEnds
+npcQuestEnds|- quest 30297 is missing in questEnds
+npcQuestEnds|- quest 30298 is missing in questEnds
+npcQuestEnds|- quest 30299 is missing in questEnds
+npcQuestEnds|- quest 30300 is missing in questEnds
+npcQuestEnds|- quest 30301 is missing in questEnds
+npcQuestEnds|- quest 30302 is missing in questEnds
+npcQuestEnds|- quest 30305 is missing in questEnds
+npcQuestEnds|- quest 30307 is missing in questEnds
+npcQuestEnds|- quest 30345 is missing in questEnds
+npcQuestEnds|- quest 30385 is missing in questEnds
+npcQuestEnds|- quest 30444 is missing in questEnds
+npcQuestEnds|- quest 30449 is missing in questEnds
+npcQuestEnds|- quest 30450 is missing in questEnds
+npcQuestEnds|- quest 30451 is missing in questEnds
+npcQuestEnds|- quest 30452 is missing in questEnds
+npcQuestEnds|- quest 30454 is missing in questEnds
+npcQuestEnds|- quest 30455 is missing in questEnds
+npcQuestEnds|- quest 30458 is missing in questEnds
+npcQuestEnds|- quest 30480 is not finished by this NPC
+npcQuestEnds|- quest 30481 is missing in questEnds
+npcQuestEnds|- quest 30490 is missing in questEnds
+npcQuestEnds|- quest 30520 is missing in questEnds
+npcQuestEnds|- quest 30536 is missing in questEnds
+npcQuestEnds|- quest 30566 is missing in questEnds
+npcQuestEnds|- quest 30567 is not finished by this NPC
+npcQuestEnds|- quest 30596 is missing in questEnds
+npcQuestEnds|- quest 30615 is missing in questEnds
+npcQuestEnds|- quest 30629 is missing in questEnds
+npcQuestEnds|- quest 30630 is missing in questEnds
+npcQuestEnds|- quest 30631 is missing in questEnds
+npcQuestEnds|- quest 30638 is missing in questEnds
+npcQuestEnds|- quest 30639 is missing in questEnds
+npcQuestEnds|- quest 30648 is missing in questEnds
+npcQuestEnds|- quest 30649 is missing in questEnds
+npcQuestEnds|- quest 30673 is missing in questEnds
+npcQuestEnds|- quest 30680 is missing in questEnds
+npcQuestEnds|- quest 30681 is missing in questEnds
+npcQuestEnds|- quest 30766 is missing in questEnds
+npcQuestEnds|- quest 30818 is missing in questEnds
+npcQuestEnds|- quest 3087 is not finished by this NPC
+npcQuestEnds|- quest 30910 is missing in questEnds
+npcQuestEnds|- quest 30918 is missing in questEnds
+npcQuestEnds|- quest 30941 is missing in questEnds
+npcQuestEnds|- quest 30946 is not finished by this NPC
+npcQuestEnds|- quest 30961 is missing in questEnds
+npcQuestEnds|- quest 30968 is not finished by this NPC
+npcQuestEnds|- quest 30974 is missing in questEnds
+npcQuestEnds|- quest 30987 is missing in questEnds
+npcQuestEnds|- quest 30989 is missing in questEnds
+npcQuestEnds|- quest 31011 is not finished by this NPC
+npcQuestEnds|- quest 31012 is missing in questEnds
+npcQuestEnds|- quest 31014 is missing in questEnds
+npcQuestEnds|- quest 31014 is not finished by this NPC
+npcQuestEnds|- quest 31016 is missing in questEnds
+npcQuestEnds|- quest 31017 is missing in questEnds
+npcQuestEnds|- quest 31020 is not finished by this NPC
+npcQuestEnds|- quest 31021 is not finished by this NPC
+npcQuestEnds|- quest 31022 is not finished by this NPC
+npcQuestEnds|- quest 31026 is not finished by this NPC
+npcQuestEnds|- quest 31035 is missing in questEnds
+npcQuestEnds|- quest 31087 is not finished by this NPC
+npcQuestEnds|- quest 31087 is not finished by this NPC
+npcQuestEnds|- quest 31091 is not finished by this NPC
+npcQuestEnds|- quest 31098 is missing in questEnds
+npcQuestEnds|- quest 31099 is missing in questEnds
+npcQuestEnds|- quest 31101 is missing in questEnds
+npcQuestEnds|- quest 31109 is missing in questEnds
+npcQuestEnds|- quest 31111 is missing in questEnds
+npcQuestEnds|- quest 3112 is missing in questEnds
+npcQuestEnds|- quest 3113 is missing in questEnds
+npcQuestEnds|- quest 31130 is not finished by this NPC
+npcQuestEnds|- quest 31137 is missing in questEnds
+npcQuestEnds|- quest 31139 is missing in questEnds
+npcQuestEnds|- quest 31140 is missing in questEnds
+npcQuestEnds|- quest 31143 is missing in questEnds
+npcQuestEnds|- quest 31144 is missing in questEnds
+npcQuestEnds|- quest 31145 is missing in questEnds
+npcQuestEnds|- quest 31148 is missing in questEnds
+npcQuestEnds|- quest 31163 is missing in questEnds
+npcQuestEnds|- quest 31174 is missing in questEnds
+npcQuestEnds|- quest 31174 is missing in questEnds
+npcQuestEnds|- quest 31174 is missing in questEnds
+npcQuestEnds|- quest 31206 is missing in questEnds
+npcQuestEnds|- quest 31231 is missing in questEnds
+npcQuestEnds|- quest 31235 is missing in questEnds
+npcQuestEnds|- quest 31240 is missing in questEnds
+npcQuestEnds|- quest 31244 is missing in questEnds
+npcQuestEnds|- quest 31245 is missing in questEnds
+npcQuestEnds|- quest 31246 is missing in questEnds
+npcQuestEnds|- quest 31247 is missing in questEnds
+npcQuestEnds|- quest 31249 is missing in questEnds
+npcQuestEnds|- quest 31250 is missing in questEnds
+npcQuestEnds|- quest 31261 is not finished by this NPC
+npcQuestEnds|- quest 31267 is missing in questEnds
+npcQuestEnds|- quest 31273 is missing in questEnds
+npcQuestEnds|- quest 31278 is missing in questEnds
+npcQuestEnds|- quest 31280 is missing in questEnds
+npcQuestEnds|- quest 31289 is missing in questEnds
+npcQuestEnds|- quest 31295 is missing in questEnds
+npcQuestEnds|- quest 31296 is missing in questEnds
+npcQuestEnds|- quest 31297 is missing in questEnds
+npcQuestEnds|- quest 31305 is missing in questEnds
+npcQuestEnds|- quest 31331 is missing in questEnds
+npcQuestEnds|- quest 31384 is not finished by this NPC
+npcQuestEnds|- quest 31385 is not finished by this NPC
+npcQuestEnds|- quest 31440 is not finished by this NPC
+npcQuestEnds|- quest 31442 is not finished by this NPC
+npcQuestEnds|- quest 31445 is missing in questEnds
+npcQuestEnds|- quest 31447 is not finished by this NPC
+npcQuestEnds|- quest 31448 is not finished by this NPC
+npcQuestEnds|- quest 31469 is missing in questEnds
+npcQuestEnds|- quest 31483 is missing in questEnds
+npcQuestEnds|- quest 31485 is missing in questEnds
+npcQuestEnds|- quest 31505 is missing in questEnds
+npcQuestEnds|- quest 31511 is missing in questEnds
+npcQuestEnds|- quest 31512 is missing in questEnds
+npcQuestEnds|- quest 31514 is not finished by this NPC
+npcQuestEnds|- quest 31516 is not finished by this NPC
+npcQuestEnds|- quest 31530 is missing in questEnds
+npcQuestEnds|- quest 31533 is missing in questEnds
+npcQuestEnds|- quest 31540 is missing in questEnds
+npcQuestEnds|- quest 31541 is missing in questEnds
+npcQuestEnds|- quest 31542 is missing in questEnds
+npcQuestEnds|- quest 31543 is missing in questEnds
+npcQuestEnds|- quest 31544 is missing in questEnds
+npcQuestEnds|- quest 31554 is missing in questEnds
+npcQuestEnds|- quest 31604 is missing in questEnds
+npcQuestEnds|- quest 31605 is missing in questEnds
+npcQuestEnds|- quest 31612 is not finished by this NPC
+npcQuestEnds|- quest 31680 is not finished by this NPC
+npcQuestEnds|- quest 31681 is not finished by this NPC
+npcQuestEnds|- quest 31731 is missing in questEnds
+npcQuestEnds|- quest 31877 is missing in questEnds
+npcQuestEnds|- quest 31878 is missing in questEnds
+npcQuestEnds|- quest 31879 is missing in questEnds
+npcQuestEnds|- quest 31880 is missing in questEnds
+npcQuestEnds|- quest 31881 is missing in questEnds
+npcQuestEnds|- quest 31882 is missing in questEnds
+npcQuestEnds|- quest 31883 is missing in questEnds
+npcQuestEnds|- quest 31884 is missing in questEnds
+npcQuestEnds|- quest 31885 is missing in questEnds
+npcQuestEnds|- quest 31959 is not finished by this NPC
+npcQuestEnds|- quest 31990 is missing in questEnds
+npcQuestEnds|- quest 32012 is missing in questEnds
+npcQuestEnds|- quest 32016 is missing in questEnds
+npcQuestEnds|- quest 32017 is missing in questEnds
+npcQuestEnds|- quest 32107 is missing in questEnds
+npcQuestEnds|- quest 32143 is missing in questEnds
+npcQuestEnds|- quest 32195 is missing in questEnds
+npcQuestEnds|- quest 32231 is missing in questEnds
+npcQuestEnds|- quest 32247 is missing in questEnds
+npcQuestEnds|- quest 32248 is missing in questEnds
+npcQuestEnds|- quest 32249 is missing in questEnds
+npcQuestEnds|- quest 32258 is missing in questEnds
+npcQuestEnds|- quest 32259 is missing in questEnds
+npcQuestEnds|- quest 32260 is missing in questEnds
+npcQuestEnds|- quest 32261 is missing in questEnds
+npcQuestEnds|- quest 32277 is not finished by this NPC
+npcQuestEnds|- quest 32291 is missing in questEnds
+npcQuestEnds|- quest 32291 is missing in questEnds
+npcQuestEnds|- quest 32307 is missing in questEnds
+npcQuestEnds|- quest 32307 is missing in questEnds
+npcQuestEnds|- quest 32307 is missing in questEnds
+npcQuestEnds|- quest 32309 is missing in questEnds
+npcQuestEnds|- quest 32310 is missing in questEnds
+npcQuestEnds|- quest 32310 is missing in questEnds
+npcQuestEnds|- quest 32325 is missing in questEnds
+npcQuestEnds|- quest 32329 is missing in questEnds
+npcQuestEnds|- quest 32339 is missing in questEnds
+npcQuestEnds|- quest 32341 is missing in questEnds
+npcQuestEnds|- quest 32356 is missing in questEnds
+npcQuestEnds|- quest 32357 is missing in questEnds
+npcQuestEnds|- quest 32358 is missing in questEnds
+npcQuestEnds|- quest 32361 is missing in questEnds
+npcQuestEnds|- quest 32369 is missing in questEnds
+npcQuestEnds|- quest 32412 is missing in questEnds
+npcQuestEnds|- quest 32435 is missing in questEnds
+npcQuestEnds|- quest 32436 is missing in questEnds
+npcQuestEnds|- quest 32457 is missing in questEnds
+npcQuestEnds|- quest 32457 is missing in questEnds
+npcQuestEnds|- quest 32461 is missing in questEnds
+npcQuestEnds|- quest 32467 is missing in questEnds
+npcQuestEnds|- quest 32468 is missing in questEnds
+npcQuestEnds|- quest 32469 is missing in questEnds
+npcQuestEnds|- quest 32470 is missing in questEnds
+npcQuestEnds|- quest 32471 is missing in questEnds
+npcQuestEnds|- quest 32472 is missing in questEnds
+npcQuestEnds|- quest 32474 is missing in questEnds
+npcQuestEnds|- quest 32475 is missing in questEnds
+npcQuestEnds|- quest 32476 is missing in questEnds
+npcQuestEnds|- quest 32516 is missing in questEnds
+npcQuestEnds|- quest 32549 is missing in questEnds
+npcQuestEnds|- quest 32590 is missing in questEnds
+npcQuestEnds|- quest 32591 is missing in questEnds
+npcQuestEnds|- quest 32592 is missing in questEnds
+npcQuestEnds|- quest 32593 is missing in questEnds
+npcQuestEnds|- quest 32593 is missing in questEnds
+npcQuestEnds|- quest 32593 is missing in questEnds
+npcQuestEnds|- quest 32594 is missing in questEnds
+npcQuestEnds|- quest 32595 is missing in questEnds
+npcQuestEnds|- quest 32595 is missing in questEnds
+npcQuestEnds|- quest 32596 is missing in questEnds
+npcQuestEnds|- quest 32597 is missing in questEnds
+npcQuestEnds|- quest 32598 is missing in questEnds
+npcQuestEnds|- quest 32618 is missing in questEnds
+npcQuestEnds|- quest 32652 is not finished by this NPC
+npcQuestEnds|- quest 32661 is missing in questEnds
+npcQuestEnds|- quest 32662 is missing in questEnds
+npcQuestEnds|- quest 32663 is missing in questEnds
+npcQuestEnds|- quest 32664 is missing in questEnds
+npcQuestEnds|- quest 32668 is missing in questEnds
+npcQuestEnds|- quest 32669 is missing in questEnds
+npcQuestEnds|- quest 32670 is missing in questEnds
+npcQuestEnds|- quest 32671 is missing in questEnds
+npcQuestEnds|- quest 32672 is missing in questEnds
+npcQuestEnds|- quest 32673 is missing in questEnds
+npcQuestEnds|- quest 32674 is missing in questEnds
+npcQuestEnds|- quest 32675 is missing in questEnds
+npcQuestEnds|- quest 32718 is missing in questEnds
+npcQuestEnds|- quest 32719 is missing in questEnds
+npcQuestEnds|- quest 32720 is missing in questEnds
+npcQuestEnds|- quest 32723 is missing in questEnds
+npcQuestEnds|- quest 32805 is missing in questEnds
+npcQuestEnds|- quest 32808 is missing in questEnds
+npcQuestEnds|- quest 32809 is missing in questEnds
+npcQuestEnds|- quest 32810 is missing in questEnds
+npcQuestEnds|- quest 32812 is missing in questEnds
+npcQuestEnds|- quest 32813 is missing in questEnds
+npcQuestEnds|- quest 32814 is missing in questEnds
+npcQuestEnds|- quest 32819 is missing in questEnds
+npcQuestEnds|- quest 32836 is missing in questEnds
+npcQuestEnds|- quest 32836 is missing in questEnds
+npcQuestEnds|- quest 32837 is missing in questEnds
+npcQuestEnds|- quest 32837 is missing in questEnds
+npcQuestEnds|- quest 32838 is missing in questEnds
+npcQuestEnds|- quest 32838 is missing in questEnds
+npcQuestEnds|- quest 32839 is missing in questEnds
+npcQuestEnds|- quest 32839 is missing in questEnds
+npcQuestEnds|- quest 32840 is missing in questEnds
+npcQuestEnds|- quest 32840 is missing in questEnds
+npcQuestEnds|- quest 32841 is missing in questEnds
+npcQuestEnds|- quest 32841 is missing in questEnds
+npcQuestEnds|- quest 32842 is missing in questEnds
+npcQuestEnds|- quest 32842 is missing in questEnds
+npcQuestEnds|- quest 32843 is missing in questEnds
+npcQuestEnds|- quest 32843 is missing in questEnds
+npcQuestEnds|- quest 32844 is missing in questEnds
+npcQuestEnds|- quest 32844 is missing in questEnds
+npcQuestEnds|- quest 32845 is missing in questEnds
+npcQuestEnds|- quest 32845 is missing in questEnds
+npcQuestEnds|- quest 32846 is missing in questEnds
+npcQuestEnds|- quest 32846 is missing in questEnds
+npcQuestEnds|- quest 32847 is missing in questEnds
+npcQuestEnds|- quest 32847 is missing in questEnds
+npcQuestEnds|- quest 32848 is missing in questEnds
+npcQuestEnds|- quest 32848 is missing in questEnds
+npcQuestEnds|- quest 32849 is missing in questEnds
+npcQuestEnds|- quest 32849 is missing in questEnds
+npcQuestEnds|- quest 32850 is missing in questEnds
+npcQuestEnds|- quest 32850 is missing in questEnds
+npcQuestEnds|- quest 32851 is missing in questEnds
+npcQuestEnds|- quest 32851 is missing in questEnds
+npcQuestEnds|- quest 32852 is missing in questEnds
+npcQuestEnds|- quest 32852 is missing in questEnds
+npcQuestEnds|- quest 32853 is missing in questEnds
+npcQuestEnds|- quest 32853 is missing in questEnds
+npcQuestEnds|- quest 32854 is missing in questEnds
+npcQuestEnds|- quest 32854 is missing in questEnds
+npcQuestEnds|- quest 32855 is missing in questEnds
+npcQuestEnds|- quest 32855 is missing in questEnds
+npcQuestEnds|- quest 32856 is missing in questEnds
+npcQuestEnds|- quest 32856 is missing in questEnds
+npcQuestEnds|- quest 32857 is missing in questEnds
+npcQuestEnds|- quest 32857 is missing in questEnds
+npcQuestEnds|- quest 32858 is missing in questEnds
+npcQuestEnds|- quest 32858 is missing in questEnds
+npcQuestEnds|- quest 32859 is missing in questEnds
+npcQuestEnds|- quest 32859 is missing in questEnds
+npcQuestEnds|- quest 32861 is missing in questEnds
+npcQuestEnds|- quest 32861 is missing in questEnds
+npcQuestEnds|- quest 32862 is missing in questEnds
+npcQuestEnds|- quest 32867 is missing in questEnds
+npcQuestEnds|- quest 32870 is missing in questEnds
+npcQuestEnds|- quest 32892 is missing in questEnds
+npcQuestEnds|- quest 32895 is missing in questEnds
+npcQuestEnds|- quest 32896 is missing in questEnds
+npcQuestEnds|- quest 32910 is missing in questEnds
+npcQuestEnds|- quest 33008 is missing in questEnds
+npcQuestEnds|- quest 33019 is missing in questEnds
+npcQuestEnds|- quest 33087 is missing in questEnds
+npcQuestEnds|- quest 33088 is missing in questEnds
+npcQuestEnds|- quest 33098 is missing in questEnds
+npcQuestEnds|- quest 33100 is missing in questEnds
+npcQuestEnds|- quest 33104 is missing in questEnds
+npcQuestEnds|- quest 33105 is missing in questEnds
+npcQuestEnds|- quest 33139 is missing in questEnds
+npcQuestEnds|- quest 33354 is missing in questEnds
+npcQuestEnds|- quest 33634 is missing in questEnds
+npcQuestEnds|- quest 3364 is missing in questEnds
+npcQuestEnds|- quest 3376 is missing in questEnds
+npcQuestEnds|- quest 344 is missing in questEnds
+npcQuestEnds|- quest 347 is missing in questEnds
+npcQuestEnds|- quest 3519 is missing in questEnds
+npcQuestEnds|- quest 3521 is missing in questEnds
+npcQuestEnds|- quest 3522 is missing in questEnds
+npcQuestEnds|- quest 363 is missing in questEnds
+npcQuestEnds|- quest 364 is missing in questEnds
+npcQuestEnds|- quest 380 is missing in questEnds
+npcQuestEnds|- quest 381 is missing in questEnds
+npcQuestEnds|- quest 382 is missing in questEnds
+npcQuestEnds|- quest 3901 is missing in questEnds
+npcQuestEnds|- quest 3902 is missing in questEnds
+npcQuestEnds|- quest 3903 is missing in questEnds
+npcQuestEnds|- quest 3904 is missing in questEnds
+npcQuestEnds|- quest 3905 is missing in questEnds
+npcQuestEnds|- quest 4495 is missing in questEnds
+npcQuestEnds|- quest 459 is missing in questEnds
+npcQuestEnds|- quest 4742 is not finished by this NPC
+npcQuestEnds|- quest 4743 is not finished by this NPC
+npcQuestEnds|- quest 5653 is missing in questEnds
+npcQuestEnds|- quest 5659 is missing in questEnds
+npcQuestEnds|- quest 5689 is missing in questEnds
+npcQuestEnds|- quest 5690 is missing in questEnds
+npcQuestEnds|- quest 5692 is missing in questEnds
+npcQuestEnds|- quest 5693 is missing in questEnds
+npcQuestEnds|- quest 5702 is missing in questEnds
+npcQuestEnds|- quest 5703 is missing in questEnds
+npcQuestEnds|- quest 5705 is missing in questEnds
+npcQuestEnds|- quest 5706 is missing in questEnds
+npcQuestEnds|- quest 5708 is missing in questEnds
+npcQuestEnds|- quest 5709 is missing in questEnds
+npcQuestEnds|- quest 5711 is missing in questEnds
+npcQuestEnds|- quest 5712 is missing in questEnds
+npcQuestEnds|- quest 590 is missing in questEnds
+npcQuestEnds|- quest 747 is missing in questEnds
+npcQuestEnds|- quest 750 is missing in questEnds
+npcQuestEnds|- quest 753 is missing in questEnds
+npcQuestEnds|- quest 757 is missing in questEnds
+npcQuestEnds|- quest 780 is missing in questEnds
+npcQuestEnds|- quest 781 is missing in questEnds
+npcQuestEnds|- quest 8547 is missing in questEnds
+npcQuestEnds|- quest 916 is missing in questEnds
+npcQuestEnds|- quest 917 is missing in questEnds
+npcQuestEnds|- quest 91701 is missing in questEnds
+npcQuestEnds|- quest 91702 is missing in questEnds
+npcQuestEnds|- quest 91703 is missing in questEnds
+npcQuestEnds|- quest 91704 is missing in questEnds
+npcQuestEnds|- quest 91705 is missing in questEnds
+npcQuestEnds|- quest 91706 is missing in questEnds
+npcQuestEnds|- quest 91707 is missing in questEnds
+npcQuestEnds|- quest 91708 is missing in questEnds
+npcQuestEnds|- quest 91709 is missing in questEnds
+npcQuestEnds|- quest 91710 is missing in questEnds
+npcQuestEnds|- quest 91711 is missing in questEnds
+npcQuestEnds|- quest 91712 is missing in questEnds
+npcQuestEnds|- quest 91713 is missing in questEnds
+npcQuestEnds|- quest 91714 is missing in questEnds
+npcQuestEnds|- quest 91715 is missing in questEnds
+npcQuestEnds|- quest 91716 is missing in questEnds
+npcQuestEnds|- quest 91717 is missing in questEnds
+npcQuestEnds|- quest 91718 is missing in questEnds
+npcQuestEnds|- quest 91786 is missing in questEnds
+npcQuestEnds|- quest 92336 is missing in questEnds
+npcQuestEnds|- quest 92336 is missing in questEnds
+npcQuestEnds|- quest 92337 is missing in questEnds
+npcQuestEnds|- quest 92337 is missing in questEnds
+npcQuestEnds|- quest 92338 is missing in questEnds
+npcQuestEnds|- quest 92338 is missing in questEnds
+npcQuestEnds|- quest 9278 is missing in questEnds
+npcQuestEnds|- quest 9287 is missing in questEnds
+npcQuestEnds|- quest 9288 is missing in questEnds
+npcQuestEnds|- quest 9289 is missing in questEnds
+npcQuestEnds|- quest 9449 is missing in questEnds
+npcQuestEnds|- quest 9450 is missing in questEnds
+npcQuestEnds|- quest 9451 is missing in questEnds
+npcQuestEnds|- quest 95072 is missing in questEnds
+npcQuestEnds|- quest 95074 is missing in questEnds
+npcQuestEnds|- quest 95075 is missing in questEnds
+npcQuestEnds|- quest 95076 is missing in questEnds
+npcQuestEnds|- quest 95077 is missing in questEnds
+npcQuestEnds|- quest 95078 is missing in questEnds
+npcQuestEnds|- quest 95079 is missing in questEnds
+npcQuestEnds|- quest 95080 is missing in questEnds
+npcQuestEnds|- quest 95081 is missing in questEnds
+npcQuestEnds|- quest 95082 is missing in questEnds
+npcQuestEnds|- quest 95083 is missing in questEnds
+npcQuestEnds|- quest 95084 is missing in questEnds
+npcQuestEnds|- quest 95085 is missing in questEnds
+npcQuestEnds|- quest 95088 is missing in questEnds
+npcQuestEnds|- quest 95089 is missing in questEnds
+npcQuestEnds|- quest 95090 is missing in questEnds
+npcQuestEnds|- quest 95092 is missing in questEnds
+npcQuestEnds|- quest 95093 is missing in questEnds
+npcQuestEnds|- quest 95094 is missing in questEnds
+npcQuestEnds|- quest 95095 is missing in questEnds
+npcQuestEnds|- quest 95096 is missing in questEnds
+npcQuestEnds|- quest 95097 is missing in questEnds
+npcQuestEnds|- quest 95098 is missing in questEnds
+npcQuestEnds|- quest 95099 is missing in questEnds
+npcQuestEnds|- quest 95100 is missing in questEnds
+npcQuestEnds|- quest 95101 is missing in questEnds
+npcQuestEnds|- quest 95102 is missing in questEnds
+npcQuestEnds|- quest 95103 is missing in questEnds
+npcQuestEnds|- quest 95104 is missing in questEnds
+npcQuestEnds|- quest 95105 is missing in questEnds
+npcQuestEnds|- quest 95106 is missing in questEnds
+npcQuestEnds|- quest 95205 is missing in questEnds
+npcQuestEnds|- quest 98183 is missing in questEnds
+npcQuestEnds|- questEnd 1060 is not in the database
+npcQuestEnds|- questEnd 1063 is not in the database
+npcQuestEnds|- questEnd 1064 is not in the database
+npcQuestEnds|- questEnd 1065 is not in the database
+npcQuestEnds|- questEnd 1066 is not in the database
+npcQuestEnds|- questEnd 1067 is not in the database
+npcQuestEnds|- questEnd 1069 is not in the database
+npcQuestEnds|- questEnd 10743 is not in the database
+npcQuestEnds|- questEnd 10746 is not in the database
+npcQuestEnds|- questEnd 10787 is not in the database
+npcQuestEnds|- questEnd 1086 is not in the database
+npcQuestEnds|- questEnd 1095 is not in the database
+npcQuestEnds|- questEnd 11088 is not in the database
+npcQuestEnds|- questEnd 11124 is not in the database
+npcQuestEnds|- questEnd 11138 is not in the database
+npcQuestEnds|- questEnd 11139 is not in the database
+npcQuestEnds|- questEnd 11141 is not in the database
+npcQuestEnds|- questEnd 11144 is not in the database
+npcQuestEnds|- questEnd 11148 is not in the database
+npcQuestEnds|- questEnd 11151 is not in the database
+npcQuestEnds|- questEnd 11156 is not in the database
+npcQuestEnds|- questEnd 11158 is not in the database
+npcQuestEnds|- questEnd 11160 is not in the database
+npcQuestEnds|- questEnd 11173 is not in the database
+npcQuestEnds|- questEnd 11179 is not in the database
+npcQuestEnds|- questEnd 11184 is not in the database
+npcQuestEnds|- questEnd 11191 is not in the database
+npcQuestEnds|- questEnd 11192 is not in the database
+npcQuestEnds|- questEnd 11193 is not in the database
+npcQuestEnds|- questEnd 11194 is not in the database
+npcQuestEnds|- questEnd 11200 is not in the database
+npcQuestEnds|- questEnd 11201 is not in the database
+npcQuestEnds|- questEnd 11204 is not in the database
+npcQuestEnds|- questEnd 11205 is not in the database
+npcQuestEnds|- questEnd 11206 is not in the database
+npcQuestEnds|- questEnd 11207 is not in the database
+npcQuestEnds|- questEnd 11210 is not in the database
+npcQuestEnds|- questEnd 11217 is not in the database
+npcQuestEnds|- questEnd 11223 is not in the database
+npcQuestEnds|- questEnd 1136 is not in the database
+npcQuestEnds|- questEnd 1166 is not in the database
+npcQuestEnds|- questEnd 1169 is not in the database
+npcQuestEnds|- questEnd 1170 is not in the database
+npcQuestEnds|- questEnd 1171 is not in the database
+npcQuestEnds|- questEnd 1172 is not in the database
+npcQuestEnds|- questEnd 1173 is not in the database
+npcQuestEnds|- questEnd 11987 is not in the database
+npcQuestEnds|- questEnd 11992 is not in the database
+npcQuestEnds|- questEnd 12001 is not in the database
+npcQuestEnds|- questEnd 12087 is not in the database
+npcQuestEnds|- questEnd 12108 is not in the database
+npcQuestEnds|- questEnd 1219 is not in the database
+npcQuestEnds|- questEnd 12426 is not in the database
+npcQuestEnds|- questEnd 12452 is not in the database
+npcQuestEnds|- questEnd 1251 is not in the database
+npcQuestEnds|- questEnd 1259 is not in the database
+npcQuestEnds|- questEnd 1260 is not in the database
+npcQuestEnds|- questEnd 12682 is not in the database
+npcQuestEnds|- questEnd 1269 is not in the database
+npcQuestEnds|- questEnd 1273 is not in the database
+npcQuestEnds|- questEnd 1276 is not in the database
+npcQuestEnds|- questEnd 12764 is not in the database
+npcQuestEnds|- questEnd 12765 is not in the database
+npcQuestEnds|- questEnd 1285 is not in the database
+npcQuestEnds|- questEnd 1286 is not in the database
+npcQuestEnds|- questEnd 1287 is not in the database
+npcQuestEnds|- questEnd 1301 is not in the database
+npcQuestEnds|- questEnd 1302 is not in the database
+npcQuestEnds|- questEnd 1319 is not in the database
+npcQuestEnds|- questEnd 1320 is not in the database
+npcQuestEnds|- questEnd 1321 is not in the database
+npcQuestEnds|- questEnd 1323 is not in the database
+npcQuestEnds|- questEnd 13299 is not in the database
+npcQuestEnds|- questEnd 13574 is not in the database
+npcQuestEnds|- questEnd 1389 is not in the database
+npcQuestEnds|- questEnd 13894 is not in the database
+npcQuestEnds|- questEnd 1398 is not in the database
+npcQuestEnds|- questEnd 13994 is not in the database
+npcQuestEnds|- questEnd 1421 is not in the database
+npcQuestEnds|- questEnd 1422 is not in the database
+npcQuestEnds|- questEnd 1424 is not in the database
+npcQuestEnds|- questEnd 1425 is not in the database
+npcQuestEnds|- questEnd 1426 is not in the database
+npcQuestEnds|- questEnd 1427 is not in the database
+npcQuestEnds|- questEnd 1428 is not in the database
+npcQuestEnds|- questEnd 1429 is not in the database
+npcQuestEnds|- questEnd 1430 is not in the database
+npcQuestEnds|- questEnd 14351 is not in the database
+npcQuestEnds|- questEnd 1441 is not in the database
+npcQuestEnds|- questEnd 1445 is not in the database
+npcQuestEnds|- questEnd 1483 is not in the database
+npcQuestEnds|- questEnd 174 is not in the database
+npcQuestEnds|- questEnd 175 is not in the database
+npcQuestEnds|- questEnd 177 is not in the database
+npcQuestEnds|- questEnd 181 is not in the database
+npcQuestEnds|- questEnd 2020 is not in the database
+npcQuestEnds|- questEnd 245 is not in the database
+npcQuestEnds|- questEnd 251 is not in the database
+npcQuestEnds|- questEnd 25113 is not in the database
+npcQuestEnds|- questEnd 25114 is not in the database
+npcQuestEnds|- questEnd 25116 is not in the database
+npcQuestEnds|- questEnd 255 is not in the database
+npcQuestEnds|- questEnd 259 is not in the database
+npcQuestEnds|- questEnd 260 is not in the database
+npcQuestEnds|- questEnd 26565 is not in the database
+npcQuestEnds|- questEnd 266 is not in the database
+npcQuestEnds|- questEnd 27081 is not in the database
+npcQuestEnds|- questEnd 28468 is not in the database
+npcQuestEnds|- questEnd 28844 is not in the database
+npcQuestEnds|- questEnd 28851 is not in the database
+npcQuestEnds|- questEnd 29212 is not in the database
+npcQuestEnds|- questEnd 29256 is not in the database
+npcQuestEnds|- questEnd 29259 is not in the database
+npcQuestEnds|- questEnd 29260 is not in the database
+npcQuestEnds|- questEnd 29266 is not in the database
+npcQuestEnds|- questEnd 2971 is not in the database
+npcQuestEnds|- questEnd 29832 is not in the database
+npcQuestEnds|- questEnd 3111 is not in the database
+npcQuestEnds|- questEnd 3261 is not in the database
+npcQuestEnds|- questEnd 327 is not in the database
+npcQuestEnds|- questEnd 3281 is not in the database
+npcQuestEnds|- questEnd 32936 is not in the database
+npcQuestEnds|- questEnd 32936 is not in the database
+npcQuestEnds|- questEnd 3383 is not in the database
+npcQuestEnds|- questEnd 3384 is not in the database
+npcQuestEnds|- questEnd 33906 is not in the database
+npcQuestEnds|- questEnd 33906 is not in the database
+npcQuestEnds|- questEnd 3507 is not in the database
+npcQuestEnds|- questEnd 3515 is not in the database
+npcQuestEnds|- questEnd 3516 is not in the database
+npcQuestEnds|- questEnd 3562 is not in the database
+npcQuestEnds|- questEnd 3581 is not in the database
+npcQuestEnds|- questEnd 36608 is not in the database
+npcQuestEnds|- questEnd 3783 is not in the database
+npcQuestEnds|- questEnd 38935 is not in the database
+npcQuestEnds|- questEnd 38936 is not in the database
+npcQuestEnds|- questEnd 39127 is not in the database
+npcQuestEnds|- questEnd 4101 is not in the database
+npcQuestEnds|- questEnd 4102 is not in the database
+npcQuestEnds|- questEnd 4261 is not in the database
+npcQuestEnds|- questEnd 4421 is not in the database
+npcQuestEnds|- questEnd 4441 is not in the database
+npcQuestEnds|- questEnd 4442 is not in the database
+npcQuestEnds|- questEnd 4505 is not in the database
+npcQuestEnds|- questEnd 4506 is not in the database
+npcQuestEnds|- questEnd 45111 is not in the database
+npcQuestEnds|- questEnd 45162 is not in the database
+npcQuestEnds|- questEnd 45163 is not in the database
+npcQuestEnds|- questEnd 45304 is not in the database
+npcQuestEnds|- questEnd 45312 is not in the database
+npcQuestEnds|- questEnd 462 is not in the database
+npcQuestEnds|- questEnd 4802 is not in the database
+npcQuestEnds|- questEnd 4807 is not in the database
+npcQuestEnds|- questEnd 490 is not in the database
+npcQuestEnds|- questEnd 4905 is not in the database
+npcQuestEnds|- questEnd 4906 is not in the database
+npcQuestEnds|- questEnd 494 is not in the database
+npcQuestEnds|- questEnd 49556 is not in the database
+npcQuestEnds|- questEnd 496 is not in the database
+npcQuestEnds|- questEnd 497 is not in the database
+npcQuestEnds|- questEnd 498 is not in the database
+npcQuestEnds|- questEnd 49866 is not in the database
+npcQuestEnds|- questEnd 499 is not in the database
+npcQuestEnds|- questEnd 500 is not in the database
+npcQuestEnds|- questEnd 501 is not in the database
+npcQuestEnds|- questEnd 502 is not in the database
+npcQuestEnds|- questEnd 503 is not in the database
+npcQuestEnds|- questEnd 505 is not in the database
+npcQuestEnds|- questEnd 5053 is not in the database
+npcQuestEnds|- questEnd 506 is not in the database
+npcQuestEnds|- questEnd 507 is not in the database
+npcQuestEnds|- questEnd 5082 is not in the database
+npcQuestEnds|- questEnd 5083 is not in the database
+npcQuestEnds|- questEnd 5085 is not in the database
+npcQuestEnds|- questEnd 5086 is not in the database
+npcQuestEnds|- questEnd 5087 is not in the database
+npcQuestEnds|- questEnd 509 is not in the database
+npcQuestEnds|- questEnd 5121 is not in the database
+npcQuestEnds|- questEnd 5123 is not in the database
+npcQuestEnds|- questEnd 5128 is not in the database
+npcQuestEnds|- questEnd 513 is not in the database
+npcQuestEnds|- questEnd 514 is not in the database
+npcQuestEnds|- questEnd 515 is not in the database
+npcQuestEnds|- questEnd 5155 is not in the database
+npcQuestEnds|- questEnd 5156 is not in the database
+npcQuestEnds|- questEnd 5157 is not in the database
+npcQuestEnds|- questEnd 5158 is not in the database
+npcQuestEnds|- questEnd 5159 is not in the database
+npcQuestEnds|- questEnd 5163 is not in the database
+npcQuestEnds|- questEnd 5165 is not in the database
+npcQuestEnds|- questEnd 517 is not in the database
+npcQuestEnds|- questEnd 518 is not in the database
+npcQuestEnds|- questEnd 519 is not in the database
+npcQuestEnds|- questEnd 520 is not in the database
+npcQuestEnds|- questEnd 5202 is not in the database
+npcQuestEnds|- questEnd 5203 is not in the database
+npcQuestEnds|- questEnd 5204 is not in the database
+npcQuestEnds|- questEnd 521 is not in the database
+npcQuestEnds|- questEnd 522 is not in the database
+npcQuestEnds|- questEnd 523 is not in the database
+npcQuestEnds|- questEnd 5242 is not in the database
+npcQuestEnds|- questEnd 5244 is not in the database
+npcQuestEnds|- questEnd 5249 is not in the database
+npcQuestEnds|- questEnd 527 is not in the database
+npcQuestEnds|- questEnd 528 is not in the database
+npcQuestEnds|- questEnd 529 is not in the database
+npcQuestEnds|- questEnd 533 is not in the database
+npcQuestEnds|- questEnd 536 is not in the database
+npcQuestEnds|- questEnd 537 is not in the database
+npcQuestEnds|- questEnd 5385 is not in the database
+npcQuestEnds|- questEnd 539 is not in the database
+npcQuestEnds|- questEnd 53918 is not in the database
+npcQuestEnds|- questEnd 53920 is not in the database
+npcQuestEnds|- questEnd 53921 is not in the database
+npcQuestEnds|- questEnd 53931 is not in the database
+npcQuestEnds|- questEnd 53952 is not in the database
+npcQuestEnds|- questEnd 540 is not in the database
+npcQuestEnds|- questEnd 541 is not in the database
+npcQuestEnds|- questEnd 544 is not in the database
+npcQuestEnds|- questEnd 545 is not in the database
+npcQuestEnds|- questEnd 546 is not in the database
+npcQuestEnds|- questEnd 547 is not in the database
+npcQuestEnds|- questEnd 550 is not in the database
+npcQuestEnds|- questEnd 55005 is not in the database
+npcQuestEnds|- questEnd 55006 is not in the database
+npcQuestEnds|- questEnd 55007 is not in the database
+npcQuestEnds|- questEnd 55017 is not in the database
+npcQuestEnds|- questEnd 55018 is not in the database
+npcQuestEnds|- questEnd 551 is not in the database
+npcQuestEnds|- questEnd 552 is not in the database
+npcQuestEnds|- questEnd 554 is not in the database
+npcQuestEnds|- questEnd 555 is not in the database
+npcQuestEnds|- questEnd 556 is not in the database
+npcQuestEnds|- questEnd 557 is not in the database
+npcQuestEnds|- questEnd 559 is not in the database
+npcQuestEnds|- questEnd 560 is not in the database
+npcQuestEnds|- questEnd 561 is not in the database
+npcQuestEnds|- questEnd 562 is not in the database
+npcQuestEnds|- questEnd 563 is not in the database
+npcQuestEnds|- questEnd 56322 is not in the database
+npcQuestEnds|- questEnd 564 is not in the database
+npcQuestEnds|- questEnd 565 is not in the database
+npcQuestEnds|- questEnd 567 is not in the database
+npcQuestEnds|- questEnd 56714 is not in the database
+npcQuestEnds|- questEnd 60125 is not in the database
+npcQuestEnds|- questEnd 612 is not in the database
+npcQuestEnds|- questEnd 6162 is not in the database
+npcQuestEnds|- questEnd 65593 is not in the database
+npcQuestEnds|- questEnd 65597 is not in the database
+npcQuestEnds|- questEnd 65604 is not in the database
+npcQuestEnds|- questEnd 65610 is not in the database
+npcQuestEnds|- questEnd 6702 is not in the database
+npcQuestEnds|- questEnd 6703 is not in the database
+npcQuestEnds|- questEnd 6704 is not in the database
+npcQuestEnds|- questEnd 6705 is not in the database
+npcQuestEnds|- questEnd 6706 is not in the database
+npcQuestEnds|- questEnd 6707 is not in the database
+npcQuestEnds|- questEnd 6708 is not in the database
+npcQuestEnds|- questEnd 6709 is not in the database
+npcQuestEnds|- questEnd 6710 is not in the database
+npcQuestEnds|- questEnd 6711 is not in the database
+npcQuestEnds|- questEnd 6842 is not in the database
+npcQuestEnds|- questEnd 69 is not in the database
+npcQuestEnds|- questEnd 698 is not in the database
+npcQuestEnds|- questEnd 699 is not in the database
+npcQuestEnds|- questEnd 72452 is not in the database
+npcQuestEnds|- questEnd 7321 is not in the database
+npcQuestEnds|- questEnd 740 is not in the database
+npcQuestEnds|- questEnd 774 is not in the database
+npcQuestEnds|- questEnd 7904 is not in the database
+npcQuestEnds|- questEnd 796 is not in the database
+npcQuestEnds|- questEnd 7962 is not in the database
+npcQuestEnds|- questEnd 797 is not in the database
+npcQuestEnds|- questEnd 798 is not in the database
+npcQuestEnds|- questEnd 799 is not in the database
+npcQuestEnds|- questEnd 800 is not in the database
+npcQuestEnds|- questEnd 801 is not in the database
+npcQuestEnds|- questEnd 80442 is not in the database
+npcQuestEnds|- questEnd 807 is not in the database
+npcQuestEnds|- questEnd 810 is not in the database
+npcQuestEnds|- questEnd 811 is not in the database
+npcQuestEnds|- questEnd 814 is not in the database
+npcQuestEnds|- questEnd 81638 is not in the database
+npcQuestEnds|- questEnd 81748 is not in the database
+npcQuestEnds|- questEnd 820 is not in the database
+npcQuestEnds|- questEnd 8458 is not in the database
+npcQuestEnds|- questEnd 8459 is not in the database
+npcQuestEnds|- questEnd 8460 is not in the database
+npcQuestEnds|- questEnd 8461 is not in the database
+npcQuestEnds|- questEnd 8462 is not in the database
+npcQuestEnds|- questEnd 8464 is not in the database
+npcQuestEnds|- questEnd 8466 is not in the database
+npcQuestEnds|- questEnd 8467 is not in the database
+npcQuestEnds|- questEnd 8469 is not in the database
+npcQuestEnds|- questEnd 853 is not in the database
+npcQuestEnds|- questEnd 8571 is not in the database
+npcQuestEnds|- questEnd 859 is not in the database
+npcQuestEnds|- questEnd 890 is not in the database
+npcQuestEnds|- questEnd 892 is not in the database
+npcQuestEnds|- questEnd 904 is not in the database
+npcQuestEnds|- questEnd 9306 is not in the database
+npcQuestEnds|- questEnd 9307 is not in the database
+npcQuestEnds|- questEnd 9308 is not in the database
+npcQuestEnds|- questEnd 939 is not in the database
+npcQuestEnds|- questEnd 9411 is not in the database
+npcQuestEnds|- questEnd 9412 is not in the database
+npcQuestEnds|- questEnd 9413 is not in the database
+npcQuestEnds|- questEnd 9414 is not in the database
+npcQuestEnds|- questEnd 9435 is not in the database
+npcQuestEnds|- questEnd 9440 is not in the database
+npcQuestEnds|- questEnd 9448 is not in the database
+npcQuestEnds|- questEnd 9458 is not in the database
+npcQuestEnds|- questEnd 9459 is not in the database
+npcQuestEnds|- questEnd 9477 is not in the database
+npcQuestEnds|- questEnd 9478 is not in the database
+npcQuestEnds|- questEnd 9479 is not in the database
+npcQuestEnds|- questEnd 9480 is not in the database
+npcQuestEnds|- questEnd 9481 is not in the database
+npcQuestEnds|- questEnd 9482 is not in the database
+npcQuestEnds|- questEnd 9507 is not in the database
+npcQuestEnds|- questEnd 9596 is not in the database
+npcQuestEnds|- questEnd 9597 is not in the database
+npcQuestEnds|- questEnd 9599 is not in the database
+npcQuestEnds|- questEnd 9610 is not in the database
+npcQuestEnds|- questEnd 9650 is not in the database
+npcQuestEnds|- questEnd 9651 is not in the database
+npcQuestEnds|- questEnd 9652 is not in the database
+npcQuestEnds|- questEnd 9653 is not in the database
+npcQuestEnds|- questEnd 9654 is not in the database
+npcQuestEnds|- questEnd 9655 is not in the database
+npcQuestEnds|- questEnd 9656 is not in the database
+npcQuestEnds|- questEnd 9657 is not in the database
+npcQuestEnds|- questEnd 9658 is not in the database
+npcQuestEnds|- questEnd 9659 is not in the database
+npcQuestEnds|- questEnd 9660 is not in the database
+npcQuestEnds|- questEnd 9661 is not in the database
+npcQuestEnds|- questEnd 9662 is not in the database
+npcQuestEnds|- questEnd 969 is not in the database
+npcQuestEnds|- questEnd 97 is not in the database
+npcQuestEnds|- questEnd 9745 is not in the database
+npcQuestEnds|- questEnd 975 is not in the database
+npcQuestEnds|- questEnd 977 is not in the database
+npcQuestEnds|- questEnd 988 is not in the database
+npcQuestEnds|- questEnd 989 is not in the database
+npcQuestStarts|- quest 10066 is not started by this NPC
+npcQuestStarts|- quest 10067 is not started by this NPC
+npcQuestStarts|- quest 10302 is not started by this NPC
+npcQuestStarts|- quest 10303 is not started by this NPC
+npcQuestStarts|- quest 10789 is missing in questStarts
+npcQuestStarts|- quest 10790 is missing in questStarts
+npcQuestStarts|- quest 10871 is missing in questStarts
+npcQuestStarts|- quest 13094 is not started by this NPC
+npcQuestStarts|- quest 13129 is not started by this NPC
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 13484 is missing in questStarts
+npcQuestStarts|- quest 1361 is missing in questStarts
+npcQuestStarts|- quest 1638 is missing in questStarts
+npcQuestStarts|- quest 1698 is missing in questStarts
+npcQuestStarts|- quest 1698 is missing in questStarts
+npcQuestStarts|- quest 1718 is missing in questStarts
+npcQuestStarts|- quest 1718 is missing in questStarts
+npcQuestStarts|- quest 182 is not started by this NPC
+npcQuestStarts|- quest 1939 is missing in questStarts
+npcQuestStarts|- quest 1943 is missing in questStarts
+npcQuestStarts|- quest 1947 is missing in questStarts
+npcQuestStarts|- quest 1947 is missing in questStarts
+npcQuestStarts|- quest 1947 is missing in questStarts
+npcQuestStarts|- quest 1947 is missing in questStarts
+npcQuestStarts|- quest 1953 is missing in questStarts
+npcQuestStarts|- quest 1953 is missing in questStarts
+npcQuestStarts|- quest 1953 is missing in questStarts
+npcQuestStarts|- quest 1953 is missing in questStarts
+npcQuestStarts|- quest 218 is not started by this NPC
+npcQuestStarts|- quest 218 is not started by this NPC
+npcQuestStarts|- quest 24470 is not started by this NPC
+npcQuestStarts|- quest 24623 is not started by this NPC
+npcQuestStarts|- quest 24642 is not started by this NPC
+npcQuestStarts|- quest 24754 is not started by this NPC
+npcQuestStarts|- quest 24762 is not started by this NPC
+npcQuestStarts|- quest 24768 is not started by this NPC
+npcQuestStarts|- quest 24774 is not started by this NPC
+npcQuestStarts|- quest 24780 is not started by this NPC
+npcQuestStarts|- quest 24786 is not started by this NPC
+npcQuestStarts|- quest 24814 is not started by this NPC
+npcQuestStarts|- quest 25126 is not started by this NPC
+npcQuestStarts|- quest 25131 is not started by this NPC
+npcQuestStarts|- quest 25172 is not started by this NPC
+npcQuestStarts|- quest 26276 is not started by this NPC
+npcQuestStarts|- quest 26391 is not started by this NPC
+npcQuestStarts|- quest 26865 is missing in questStarts
+npcQuestStarts|- quest 26866 is missing in questStarts
+npcQuestStarts|- quest 26867 is missing in questStarts
+npcQuestStarts|- quest 27175 is missing in questStarts
+npcQuestStarts|- quest 27397 is not started by this NPC
+npcQuestStarts|- quest 27469 is not started by this NPC
+npcQuestStarts|- quest 27683 is missing in questStarts
+npcQuestStarts|- quest 28465 is not started by this NPC
+npcQuestStarts|- quest 2861 is missing in questStarts
+npcQuestStarts|- quest 29035 is missing in questStarts
+npcQuestStarts|- quest 29037 is missing in questStarts
+npcQuestStarts|- quest 29038 is missing in questStarts
+npcQuestStarts|- quest 29040 is missing in questStarts
+npcQuestStarts|- quest 29423 is missing in questStarts
+npcQuestStarts|- quest 29611 is missing in questStarts
+npcQuestStarts|- quest 29612 is missing in questStarts
+npcQuestStarts|- quest 29717 is missing in questStarts
+npcQuestStarts|- quest 29717 is missing in questStarts
+npcQuestStarts|- quest 29898 is not started by this NPC
+npcQuestStarts|- quest 30055 is missing in questStarts
+npcQuestStarts|- quest 30190 is missing in questStarts
+npcQuestStarts|- quest 30191 is missing in questStarts
+npcQuestStarts|- quest 30192 is missing in questStarts
+npcQuestStarts|- quest 30193 is missing in questStarts
+npcQuestStarts|- quest 30194 is missing in questStarts
+npcQuestStarts|- quest 30195 is missing in questStarts
+npcQuestStarts|- quest 30196 is missing in questStarts
+npcQuestStarts|- quest 30200 is missing in questStarts
+npcQuestStarts|- quest 30204 is missing in questStarts
+npcQuestStarts|- quest 30205 is missing in questStarts
+npcQuestStarts|- quest 30206 is missing in questStarts
+npcQuestStarts|- quest 30225 is missing in questStarts
+npcQuestStarts|- quest 30226 is missing in questStarts
+npcQuestStarts|- quest 30227 is missing in questStarts
+npcQuestStarts|- quest 30228 is missing in questStarts
+npcQuestStarts|- quest 30231 is missing in questStarts
+npcQuestStarts|- quest 30232 is missing in questStarts
+npcQuestStarts|- quest 30233 is missing in questStarts
+npcQuestStarts|- quest 30234 is missing in questStarts
+npcQuestStarts|- quest 30235 is missing in questStarts
+npcQuestStarts|- quest 30236 is missing in questStarts
+npcQuestStarts|- quest 30237 is missing in questStarts
+npcQuestStarts|- quest 30238 is missing in questStarts
+npcQuestStarts|- quest 30239 is missing in questStarts
+npcQuestStarts|- quest 30240 is missing in questStarts
+npcQuestStarts|- quest 30240 is not started by this NPC
+npcQuestStarts|- quest 30242 is missing in questStarts
+npcQuestStarts|- quest 30242 is not started by this NPC
+npcQuestStarts|- quest 30244 is missing in questStarts
+npcQuestStarts|- quest 30245 is missing in questStarts
+npcQuestStarts|- quest 30246 is missing in questStarts
+npcQuestStarts|- quest 30248 is missing in questStarts
+npcQuestStarts|- quest 30249 is missing in questStarts
+npcQuestStarts|- quest 30251 is missing in questStarts
+npcQuestStarts|- quest 30263 is missing in questStarts
+npcQuestStarts|- quest 30264 is missing in questStarts
+npcQuestStarts|- quest 30265 is missing in questStarts
+npcQuestStarts|- quest 30266 is missing in questStarts
+npcQuestStarts|- quest 30266 is not started by this NPC
+npcQuestStarts|- quest 30277 is missing in questStarts
+npcQuestStarts|- quest 30277 is missing in questStarts
+npcQuestStarts|- quest 30277 is not started by this NPC
+npcQuestStarts|- quest 30280 is missing in questStarts
+npcQuestStarts|- quest 30280 is missing in questStarts
+npcQuestStarts|- quest 30280 is not started by this NPC
+npcQuestStarts|- quest 30281 is missing in questStarts
+npcQuestStarts|- quest 30282 is missing in questStarts
+npcQuestStarts|- quest 30283 is missing in questStarts
+npcQuestStarts|- quest 30284 is missing in questStarts
+npcQuestStarts|- quest 30285 is missing in questStarts
+npcQuestStarts|- quest 30286 is missing in questStarts
+npcQuestStarts|- quest 30287 is missing in questStarts
+npcQuestStarts|- quest 30288 is missing in questStarts
+npcQuestStarts|- quest 30289 is missing in questStarts
+npcQuestStarts|- quest 30290 is missing in questStarts
+npcQuestStarts|- quest 30291 is missing in questStarts
+npcQuestStarts|- quest 30292 is missing in questStarts
+npcQuestStarts|- quest 30293 is missing in questStarts
+npcQuestStarts|- quest 30296 is missing in questStarts
+npcQuestStarts|- quest 30297 is missing in questStarts
+npcQuestStarts|- quest 30298 is missing in questStarts
+npcQuestStarts|- quest 30299 is missing in questStarts
+npcQuestStarts|- quest 30300 is missing in questStarts
+npcQuestStarts|- quest 30301 is missing in questStarts
+npcQuestStarts|- quest 30302 is missing in questStarts
+npcQuestStarts|- quest 30304 is missing in questStarts
+npcQuestStarts|- quest 30305 is missing in questStarts
+npcQuestStarts|- quest 30306 is missing in questStarts
+npcQuestStarts|- quest 30306 is not started by this NPC
+npcQuestStarts|- quest 30307 is missing in questStarts
+npcQuestStarts|- quest 30308 is missing in questStarts
+npcQuestStarts|- quest 30309 is missing in questStarts
+npcQuestStarts|- quest 30310 is missing in questStarts
+npcQuestStarts|- quest 30312 is missing in questStarts
+npcQuestStarts|- quest 30313 is missing in questStarts
+npcQuestStarts|- quest 30314 is missing in questStarts
+npcQuestStarts|- quest 30319 is not started by this NPC
+npcQuestStarts|- quest 30320 is missing in questStarts
+npcQuestStarts|- quest 30326 is not started by this NPC
+npcQuestStarts|- quest 30338 is missing in questStarts
+npcQuestStarts|- quest 30339 is missing in questStarts
+npcQuestStarts|- quest 30340 is missing in questStarts
+npcQuestStarts|- quest 30341 is missing in questStarts
+npcQuestStarts|- quest 30342 is missing in questStarts
+npcQuestStarts|- quest 30385 is missing in questStarts
+npcQuestStarts|- quest 30444 is missing in questStarts
+npcQuestStarts|- quest 30481 is missing in questStarts
+npcQuestStarts|- quest 30482 is missing in questStarts
+npcQuestStarts|- quest 30490 is missing in questStarts
+npcQuestStarts|- quest 30602 is missing in questStarts
+npcQuestStarts|- quest 30603 is missing in questStarts
+npcQuestStarts|- quest 30631 is missing in questStarts
+npcQuestStarts|- quest 30632 is missing in questStarts
+npcQuestStarts|- quest 30633 is missing in questStarts
+npcQuestStarts|- quest 30634 is missing in questStarts
+npcQuestStarts|- quest 30635 is missing in questStarts
+npcQuestStarts|- quest 30636 is missing in questStarts
+npcQuestStarts|- quest 30638 is missing in questStarts
+npcQuestStarts|- quest 30639 is missing in questStarts
+npcQuestStarts|- quest 30639 is missing in questStarts
+npcQuestStarts|- quest 30639 is missing in questStarts
+npcQuestStarts|- quest 30640 is missing in questStarts
+npcQuestStarts|- quest 30641 is missing in questStarts
+npcQuestStarts|- quest 30642 is missing in questStarts
+npcQuestStarts|- quest 30643 is missing in questStarts
+npcQuestStarts|- quest 30643 is missing in questStarts
+npcQuestStarts|- quest 30643 is missing in questStarts
+npcQuestStarts|- quest 30644 is missing in questStarts
+npcQuestStarts|- quest 30645 is missing in questStarts
+npcQuestStarts|- quest 30646 is missing in questStarts
+npcQuestStarts|- quest 30649 is missing in questStarts
+npcQuestStarts|- quest 30662 is missing in questStarts
+npcQuestStarts|- quest 30663 is missing in questStarts
+npcQuestStarts|- quest 3087 is not started by this NPC
+npcQuestStarts|- quest 3096 is not started by this NPC
+npcQuestStarts|- quest 30988 is missing in questStarts
+npcQuestStarts|- quest 31013 is missing in questStarts
+npcQuestStarts|- quest 31015 is not started by this NPC
+npcQuestStarts|- quest 31083 is missing in questStarts
+npcQuestStarts|- quest 31092 is not started by this NPC
+npcQuestStarts|- quest 31109 is missing in questStarts
+npcQuestStarts|- quest 31111 is missing in questStarts
+npcQuestStarts|- quest 31131 is missing in questStarts
+npcQuestStarts|- quest 31135 is missing in questStarts
+npcQuestStarts|- quest 31136 is missing in questStarts
+npcQuestStarts|- quest 31137 is missing in questStarts
+npcQuestStarts|- quest 31139 is missing in questStarts
+npcQuestStarts|- quest 31140 is missing in questStarts
+npcQuestStarts|- quest 31141 is missing in questStarts
+npcQuestStarts|- quest 31144 is missing in questStarts
+npcQuestStarts|- quest 31145 is missing in questStarts
+npcQuestStarts|- quest 31146 is missing in questStarts
+npcQuestStarts|- quest 31148 is missing in questStarts
+npcQuestStarts|- quest 31156 is missing in questStarts
+npcQuestStarts|- quest 31159 is missing in questStarts
+npcQuestStarts|- quest 31165 is missing in questStarts
+npcQuestStarts|- quest 31168 is missing in questStarts
+npcQuestStarts|- quest 31170 is missing in questStarts
+npcQuestStarts|- quest 31231 is missing in questStarts
+npcQuestStarts|- quest 31235 is missing in questStarts
+npcQuestStarts|- quest 31240 is missing in questStarts
+npcQuestStarts|- quest 31242 is missing in questStarts
+npcQuestStarts|- quest 31243 is missing in questStarts
+npcQuestStarts|- quest 31244 is missing in questStarts
+npcQuestStarts|- quest 31245 is missing in questStarts
+npcQuestStarts|- quest 31246 is missing in questStarts
+npcQuestStarts|- quest 31247 is missing in questStarts
+npcQuestStarts|- quest 31248 is missing in questStarts
+npcQuestStarts|- quest 31249 is missing in questStarts
+npcQuestStarts|- quest 31250 is missing in questStarts
+npcQuestStarts|- quest 31267 is missing in questStarts
+npcQuestStarts|- quest 31293 is missing in questStarts
+npcQuestStarts|- quest 31294 is missing in questStarts
+npcQuestStarts|- quest 31295 is missing in questStarts
+npcQuestStarts|- quest 31296 is missing in questStarts
+npcQuestStarts|- quest 31297 is missing in questStarts
+npcQuestStarts|- quest 31359 is not started by this NPC
+npcQuestStarts|- quest 31392 is missing in questStarts
+npcQuestStarts|- quest 31392 is missing in questStarts
+npcQuestStarts|- quest 31393 is missing in questStarts
+npcQuestStarts|- quest 31393 is missing in questStarts
+npcQuestStarts|- quest 31454 is missing in questStarts
+npcQuestStarts|- quest 31468 is missing in questStarts
+npcQuestStarts|- quest 31473 is missing in questStarts
+npcQuestStarts|- quest 31481 is missing in questStarts
+npcQuestStarts|- quest 31482 is missing in questStarts
+npcQuestStarts|- quest 31483 is missing in questStarts
+npcQuestStarts|- quest 31483 is missing in questStarts
+npcQuestStarts|- quest 31488 is missing in questStarts
+npcQuestStarts|- quest 31488 is missing in questStarts
+npcQuestStarts|- quest 31488 is missing in questStarts
+npcQuestStarts|- quest 31488 is missing in questStarts
+npcQuestStarts|- quest 31505 is missing in questStarts
+npcQuestStarts|- quest 31540 is missing in questStarts
+npcQuestStarts|- quest 31541 is missing in questStarts
+npcQuestStarts|- quest 31542 is missing in questStarts
+npcQuestStarts|- quest 31543 is missing in questStarts
+npcQuestStarts|- quest 31544 is missing in questStarts
+npcQuestStarts|- quest 31548 is missing in questStarts
+npcQuestStarts|- quest 31549 is missing in questStarts
+npcQuestStarts|- quest 31551 is missing in questStarts
+npcQuestStarts|- quest 31552 is missing in questStarts
+npcQuestStarts|- quest 31553 is missing in questStarts
+npcQuestStarts|- quest 31556 is missing in questStarts
+npcQuestStarts|- quest 31568 is missing in questStarts
+npcQuestStarts|- quest 31569 is missing in questStarts
+npcQuestStarts|- quest 31572 is missing in questStarts
+npcQuestStarts|- quest 31573 is missing in questStarts
+npcQuestStarts|- quest 31574 is missing in questStarts
+npcQuestStarts|- quest 31575 is missing in questStarts
+npcQuestStarts|- quest 31576 is missing in questStarts
+npcQuestStarts|- quest 31577 is missing in questStarts
+npcQuestStarts|- quest 31578 is missing in questStarts
+npcQuestStarts|- quest 31580 is missing in questStarts
+npcQuestStarts|- quest 31581 is missing in questStarts
+npcQuestStarts|- quest 31582 is missing in questStarts
+npcQuestStarts|- quest 31583 is missing in questStarts
+npcQuestStarts|- quest 31586 is missing in questStarts
+npcQuestStarts|- quest 31587 is missing in questStarts
+npcQuestStarts|- quest 31754 is missing in questStarts
+npcQuestStarts|- quest 31755 is missing in questStarts
+npcQuestStarts|- quest 31756 is missing in questStarts
+npcQuestStarts|- quest 31757 is missing in questStarts
+npcQuestStarts|- quest 31758 is missing in questStarts
+npcQuestStarts|- quest 31760 is missing in questStarts
+npcQuestStarts|- quest 31762 is missing in questStarts
+npcQuestStarts|- quest 31773 is not started by this NPC
+npcQuestStarts|- quest 31773 is not started by this NPC
+npcQuestStarts|- quest 31810 is not started by this NPC
+npcQuestStarts|- quest 31811 is not started by this NPC
+npcQuestStarts|- quest 31824 is missing in questStarts
+npcQuestStarts|- quest 31826 is missing in questStarts
+npcQuestStarts|- quest 31831 is missing in questStarts
+npcQuestStarts|- quest 31951 is missing in questStarts
+npcQuestStarts|- quest 31975 is missing in questStarts
+npcQuestStarts|- quest 32016 is missing in questStarts
+npcQuestStarts|- quest 32017 is missing in questStarts
+npcQuestStarts|- quest 32030 is missing in questStarts
+npcQuestStarts|- quest 32030 is not started by this NPC
+npcQuestStarts|- quest 32164 is not started by this NPC
+npcQuestStarts|- quest 32165 is not started by this NPC
+npcQuestStarts|- quest 32166 is not started by this NPC
+npcQuestStarts|- quest 32168 is missing in questStarts
+npcQuestStarts|- quest 32185 is missing in questStarts
+npcQuestStarts|- quest 32212 is not started by this NPC
+npcQuestStarts|- quest 32247 is not started by this NPC
+npcQuestStarts|- quest 32258 is missing in questStarts
+npcQuestStarts|- quest 32259 is missing in questStarts
+npcQuestStarts|- quest 32260 is missing in questStarts
+npcQuestStarts|- quest 32261 is missing in questStarts
+npcQuestStarts|- quest 32330 is missing in questStarts
+npcQuestStarts|- quest 32373 is missing in questStarts
+npcQuestStarts|- quest 32374 is missing in questStarts
+npcQuestStarts|- quest 32388 is missing in questStarts
+npcQuestStarts|- quest 32389 is missing in questStarts
+npcQuestStarts|- quest 32390 is missing in questStarts
+npcQuestStarts|- quest 32427 is missing in questStarts
+npcQuestStarts|- quest 32429 is missing in questStarts
+npcQuestStarts|- quest 32430 is missing in questStarts
+npcQuestStarts|- quest 32431 is missing in questStarts
+npcQuestStarts|- quest 32432 is missing in questStarts
+npcQuestStarts|- quest 32435 is missing in questStarts
+npcQuestStarts|- quest 32436 is missing in questStarts
+npcQuestStarts|- quest 32457 is missing in questStarts
+npcQuestStarts|- quest 32474 is missing in questStarts
+npcQuestStarts|- quest 32476 is missing in questStarts
+npcQuestStarts|- quest 32561 is missing in questStarts
+npcQuestStarts|- quest 32562 is missing in questStarts
+npcQuestStarts|- quest 32576 is missing in questStarts
+npcQuestStarts|- quest 32577 is missing in questStarts
+npcQuestStarts|- quest 32590 is missing in questStarts
+npcQuestStarts|- quest 32591 is missing in questStarts
+npcQuestStarts|- quest 32592 is missing in questStarts
+npcQuestStarts|- quest 32593 is missing in questStarts
+npcQuestStarts|- quest 32594 is missing in questStarts
+npcQuestStarts|- quest 32595 is missing in questStarts
+npcQuestStarts|- quest 32596 is missing in questStarts
+npcQuestStarts|- quest 32597 is missing in questStarts
+npcQuestStarts|- quest 32598 is missing in questStarts
+npcQuestStarts|- quest 32644 is not started by this NPC
+npcQuestStarts|- quest 32706 is not started by this NPC
+npcQuestStarts|- quest 32709 is not started by this NPC
+npcQuestStarts|- quest 32718 is missing in questStarts
+npcQuestStarts|- quest 32719 is missing in questStarts
+npcQuestStarts|- quest 32729 is not started by this NPC
+npcQuestStarts|- quest 32733 is not started by this NPC
+npcQuestStarts|- quest 32805 is missing in questStarts
+npcQuestStarts|- quest 32806 is not started by this NPC
+npcQuestStarts|- quest 32808 is missing in questStarts
+npcQuestStarts|- quest 32809 is missing in questStarts
+npcQuestStarts|- quest 32810 is missing in questStarts
+npcQuestStarts|- quest 32812 is missing in questStarts
+npcQuestStarts|- quest 32813 is missing in questStarts
+npcQuestStarts|- quest 32814 is missing in questStarts
+npcQuestStarts|- quest 32815 is missing in questStarts
+npcQuestStarts|- quest 32819 is missing in questStarts
+npcQuestStarts|- quest 32837 is missing in questStarts
+npcQuestStarts|- quest 32837 is missing in questStarts
+npcQuestStarts|- quest 32839 is missing in questStarts
+npcQuestStarts|- quest 32839 is missing in questStarts
+npcQuestStarts|- quest 32841 is missing in questStarts
+npcQuestStarts|- quest 32841 is missing in questStarts
+npcQuestStarts|- quest 32843 is missing in questStarts
+npcQuestStarts|- quest 32843 is missing in questStarts
+npcQuestStarts|- quest 32845 is missing in questStarts
+npcQuestStarts|- quest 32845 is missing in questStarts
+npcQuestStarts|- quest 32847 is missing in questStarts
+npcQuestStarts|- quest 32847 is missing in questStarts
+npcQuestStarts|- quest 32849 is missing in questStarts
+npcQuestStarts|- quest 32849 is missing in questStarts
+npcQuestStarts|- quest 32851 is missing in questStarts
+npcQuestStarts|- quest 32851 is missing in questStarts
+npcQuestStarts|- quest 32853 is missing in questStarts
+npcQuestStarts|- quest 32853 is missing in questStarts
+npcQuestStarts|- quest 32855 is missing in questStarts
+npcQuestStarts|- quest 32855 is missing in questStarts
+npcQuestStarts|- quest 32857 is missing in questStarts
+npcQuestStarts|- quest 32857 is missing in questStarts
+npcQuestStarts|- quest 32859 is missing in questStarts
+npcQuestStarts|- quest 32859 is missing in questStarts
+npcQuestStarts|- quest 32861 is missing in questStarts
+npcQuestStarts|- quest 32861 is missing in questStarts
+npcQuestStarts|- quest 32862 is missing in questStarts
+npcQuestStarts|- quest 32867 is missing in questStarts
+npcQuestStarts|- quest 32870 is missing in questStarts
+npcQuestStarts|- quest 32871 is missing in questStarts
+npcQuestStarts|- quest 32895 is missing in questStarts
+npcQuestStarts|- quest 32896 is missing in questStarts
+npcQuestStarts|- quest 33087 is missing in questStarts
+npcQuestStarts|- quest 33088 is missing in questStarts
+npcQuestStarts|- quest 33098 is missing in questStarts
+npcQuestStarts|- quest 33100 is missing in questStarts
+npcQuestStarts|- quest 33104 is missing in questStarts
+npcQuestStarts|- quest 33105 is missing in questStarts
+npcQuestStarts|- quest 4107 is missing in questStarts
+npcQuestStarts|- quest 4108 is not started by this NPC
+npcQuestStarts|- quest 4109 is not started by this NPC
+npcQuestStarts|- quest 4110 is not started by this NPC
+npcQuestStarts|- quest 4111 is not started by this NPC
+npcQuestStarts|- quest 4112 is not started by this NPC
+npcQuestStarts|- quest 4487 is missing in questStarts
+npcQuestStarts|- quest 4738 is missing in questStarts
+npcQuestStarts|- quest 4968 is missing in questStarts
+npcQuestStarts|- quest 5405 is missing in questStarts
+npcQuestStarts|- quest 5407 is missing in questStarts
+npcQuestStarts|- quest 5408 is missing in questStarts
+npcQuestStarts|- quest 5503 is not started by this NPC
+npcQuestStarts|- quest 5628 is missing in questStarts
+npcQuestStarts|- quest 5630 is missing in questStarts
+npcQuestStarts|- quest 5882 is missing in questStarts
+npcQuestStarts|- quest 5883 is missing in questStarts
+npcQuestStarts|- quest 5884 is missing in questStarts
+npcQuestStarts|- quest 5885 is missing in questStarts
+npcQuestStarts|- quest 5886 is missing in questStarts
+npcQuestStarts|- quest 5924 is missing in questStarts
+npcQuestStarts|- quest 63448 is missing in questStarts
+npcQuestStarts|- quest 63767 is missing in questStarts
+npcQuestStarts|- quest 65284 is missing in questStarts
+npcQuestStarts|- quest 65561 is missing in questStarts
+npcQuestStarts|- quest 7491 is missing in questStarts
+npcQuestStarts|- quest 7784 is missing in questStarts
+npcQuestStarts|- quest 8151 is missing in questStarts
+npcQuestStarts|- quest 8151 is missing in questStarts
+npcQuestStarts|- quest 8151 is missing in questStarts
+npcQuestStarts|- quest 8233 is missing in questStarts
+npcQuestStarts|- quest 8250 is missing in questStarts
+npcQuestStarts|- quest 8250 is missing in questStarts
+npcQuestStarts|- quest 8254 is missing in questStarts
+npcQuestStarts|- quest 8254 is missing in questStarts
+npcQuestStarts|- quest 8254 is missing in questStarts
+npcQuestStarts|- quest 8334 is not started by this NPC
+npcQuestStarts|- quest 8346 is not started by this NPC
+npcQuestStarts|- quest 8417 is missing in questStarts
+npcQuestStarts|- quest 8417 is missing in questStarts
+npcQuestStarts|- quest 8419 is missing in questStarts
+npcQuestStarts|- quest 8419 is missing in questStarts
+npcQuestStarts|- quest 84385 is missing in questStarts
+npcQuestStarts|- quest 8871 is missing in questStarts
+npcQuestStarts|- quest 8871 is missing in questStarts
+npcQuestStarts|- quest 8872 is missing in questStarts
+npcQuestStarts|- quest 8874 is missing in questStarts
+npcQuestStarts|- quest 8875 is missing in questStarts
+npcQuestStarts|- quest 8883 is not started by this NPC
+npcQuestStarts|- quest 9063 is missing in questStarts
+npcQuestStarts|- quest 9063 is missing in questStarts
+npcQuestStarts|- quest 91701 is missing in questStarts
+npcQuestStarts|- quest 91702 is missing in questStarts
+npcQuestStarts|- quest 91703 is missing in questStarts
+npcQuestStarts|- quest 91704 is missing in questStarts
+npcQuestStarts|- quest 91705 is missing in questStarts
+npcQuestStarts|- quest 91706 is missing in questStarts
+npcQuestStarts|- quest 91707 is missing in questStarts
+npcQuestStarts|- quest 91708 is missing in questStarts
+npcQuestStarts|- quest 91709 is missing in questStarts
+npcQuestStarts|- quest 91710 is missing in questStarts
+npcQuestStarts|- quest 91711 is missing in questStarts
+npcQuestStarts|- quest 91712 is missing in questStarts
+npcQuestStarts|- quest 91713 is missing in questStarts
+npcQuestStarts|- quest 91714 is missing in questStarts
+npcQuestStarts|- quest 91715 is missing in questStarts
+npcQuestStarts|- quest 91716 is missing in questStarts
+npcQuestStarts|- quest 91717 is missing in questStarts
+npcQuestStarts|- quest 91718 is missing in questStarts
+npcQuestStarts|- quest 91786 is missing in questStarts
+npcQuestStarts|- quest 92336 is missing in questStarts
+npcQuestStarts|- quest 92336 is missing in questStarts
+npcQuestStarts|- quest 92337 is missing in questStarts
+npcQuestStarts|- quest 92337 is missing in questStarts
+npcQuestStarts|- quest 92338 is missing in questStarts
+npcQuestStarts|- quest 92338 is missing in questStarts
+npcQuestStarts|- quest 9311 is not started by this NPC
+npcQuestStarts|- quest 93823 is missing in questStarts
+npcQuestStarts|- quest 9462 is missing in questStarts
+npcQuestStarts|- quest 9502 is missing in questStarts
+npcQuestStarts|- quest 95072 is missing in questStarts
+npcQuestStarts|- quest 95074 is missing in questStarts
+npcQuestStarts|- quest 95075 is missing in questStarts
+npcQuestStarts|- quest 95076 is missing in questStarts
+npcQuestStarts|- quest 95077 is missing in questStarts
+npcQuestStarts|- quest 95078 is missing in questStarts
+npcQuestStarts|- quest 95079 is missing in questStarts
+npcQuestStarts|- quest 95080 is missing in questStarts
+npcQuestStarts|- quest 95081 is missing in questStarts
+npcQuestStarts|- quest 95082 is missing in questStarts
+npcQuestStarts|- quest 95083 is missing in questStarts
+npcQuestStarts|- quest 95084 is missing in questStarts
+npcQuestStarts|- quest 95085 is missing in questStarts
+npcQuestStarts|- quest 95088 is missing in questStarts
+npcQuestStarts|- quest 95089 is missing in questStarts
+npcQuestStarts|- quest 95090 is missing in questStarts
+npcQuestStarts|- quest 95092 is missing in questStarts
+npcQuestStarts|- quest 95093 is missing in questStarts
+npcQuestStarts|- quest 95094 is missing in questStarts
+npcQuestStarts|- quest 95095 is missing in questStarts
+npcQuestStarts|- quest 95096 is missing in questStarts
+npcQuestStarts|- quest 95097 is missing in questStarts
+npcQuestStarts|- quest 95098 is missing in questStarts
+npcQuestStarts|- quest 95099 is missing in questStarts
+npcQuestStarts|- quest 95100 is missing in questStarts
+npcQuestStarts|- quest 95101 is missing in questStarts
+npcQuestStarts|- quest 95102 is missing in questStarts
+npcQuestStarts|- quest 95103 is missing in questStarts
+npcQuestStarts|- quest 95104 is missing in questStarts
+npcQuestStarts|- quest 95105 is missing in questStarts
+npcQuestStarts|- quest 95106 is missing in questStarts
+npcQuestStarts|- quest 95205 is missing in questStarts
+npcQuestStarts|- quest 9551 is missing in questStarts
+npcQuestStarts|- quest 9617 is missing in questStarts
+npcQuestStarts|- quest 9617 is not started by this NPC
+npcQuestStarts|- quest 96253 is missing in questStarts
+npcQuestStarts|- quest 9672 is missing in questStarts
+npcQuestStarts|- quest 9737 is missing in questStarts
+npcQuestStarts|- quest 98183 is missing in questStarts
+npcQuestStarts|- questStart 14351 is not in the database
+npcQuestStarts|- questStart 36609 is not in the database
+npcQuestStarts|- questStart 36882 is not in the database
+npcQuestStarts|- questStart 515 is not in the database
+npcQuestStarts|- questStart 53914 is not in the database
+npcQuestStarts|- questStart 53920 is not in the database
+npcQuestStarts|- questStart 53921 is not in the database
+npcQuestStarts|- questStart 53931 is not in the database
+npcQuestStarts|- questStart 53952 is not in the database
+npcQuestStarts|- questStart 55002 is not in the database
+npcQuestStarts|- questStart 55006 is not in the database
+npcQuestStarts|- questStart 55007 is not in the database
+npcQuestStarts|- questStart 55017 is not in the database
+npcQuestStarts|- questStart 55018 is not in the database
+npcQuestStarts|- questStart 65597 is not in the database
+npcQuestStarts|- questStart 65604 is not in the database
+npcQuestStarts|- questStart 80442 is not in the database
+npcQuestStarts|- questStart 81638 is not in the database
+npcQuestStarts|- questStart 81748 is not in the database
+objectQuestEnds|- object 1728:
+objectQuestEnds|- object 176091:
+objectQuestEnds|- object 1767:
+objectQuestEnds|- object 215872:
+objectQuestEnds|- object 218637:
+objectQuestEnds|- object 218724:
+objectQuestEnds|- object 3643:
+objectQuestEnds|- object 5620:
+objectQuestEnds|- quest 31107 is not finished by this object
+objectQuestEnds|- quest 32621 is missing in questEnds
+objectQuestEnds|- quest 32630 is missing in questEnds
+objectQuestEnds|- quest 926 is missing in questEnds
+objectQuestEnds|- questEnd 5084 is not in the database
+objectQuestEnds|- questEnd 524 is not in the database
+objectQuestEnds|- questEnd 553 is not in the database
+objectQuestEnds|- questEnd 67 is not in the database
+objectQuestStarts|- object 187236:
+objectQuestStarts|- object 187273:
+objectQuestStarts|- object 206109:
+objectQuestStarts|- object 206116:
+objectQuestStarts|- object 210051:
+objectQuestStarts|- object 5620:
+objectQuestStarts|- quest 1268 is missing in questStarts
+objectQuestStarts|- quest 1284 is missing in questStarts
+objectQuestStarts|- quest 29611 is missing in questStarts
+objectQuestStarts|- quest 29611 is missing in questStarts
+objectQuestStarts|- quest 30039 is missing in questStarts
+objectQuestStarts|- quest 30040 is missing in questStarts
+objectQuestStarts|- quest 30041 is missing in questStarts
+objectQuestStarts|- quest 30042 is missing in questStarts
+objectQuestStarts|- quest 30043 is missing in questStarts
+objectQuestStarts|- quest 30044 is missing in questStarts
+objectQuestStarts|- quest 30045 is missing in questStarts
+objectQuestStarts|- quest 33252 is missing in questStarts
+objectQuestStarts|- quest 926 is missing in questStarts
+objectives|- Item objective 113135 is missing in the database
+objectives|- Item objective 155832 is missing in the database
+objectives|- Item objective 155832 is missing in the database
+objectives|- Item objective 155856 is missing in the database
+objectives|- Item objective 155856 is missing in the database
+objectives|- Item objective 3930 is missing in the database
+objectives|- Item objective 72108 is missing in the database
+objectives|- Item objective 73366 is missing in the database
+objectives|- Item objective 81418 is missing in the database
+objectives|- Item objective 9299 is missing in the database
+objectives|- NPC objective 100290 is missing in the database
+objectives|- NPC objective 97778 is missing in the database
+objectives|- NPC objective 98353 is missing in the database
+objectives|- NPC objective 98514 is missing in the database
+objectives|- NPC objective 99418 is missing in the database
+objectives|- Object objective 211679 is missing in the database
+objectives|- Object objective 223458 is missing in the database
+objectives|- Object objective 241664 is missing in the database
+objectives|- Quest 10794:
+objectives|- Quest 11997:
+objectives|- Quest 12103:
+objectives|- Quest 2841:
+objectives|- Quest 29534:
+objectives|- Quest 29554:
+objectives|- Quest 30173:
+objectives|- Quest 30759:
+objectives|- Quest 30934:
+objectives|- Quest 32468:
+objectives|- Quest 32469:
+objectives|- Quest 32470:
+objectives|- Quest 32471:
+objectives|- Quest 32482:
+objectives|- Quest 613:
+parentChildQuestRelations|- Quest 100 (quest 1103 is missing in childQuests list)
+parentChildQuestRelations|- Quest 253 (quest has no childQuests. 254 is listing it as parent quest)
+parentChildQuestRelations|- Quest 619 (quest has no parentQuest. 618 is listing it as child quest)
+parentChildQuestRelations|- Quest 6543 (quest 6547 is missing in childQuests list)
+preQuestExclusiveness|- Quest 10888
+questFinishers|- Quest 11997 (NPC finisher 90418 is missing in the database)
+questFinishers|- Quest 13827 (Object finisher 194655 is missing in the database)
+questFinishers|- Quest 14002 (Object finisher 195173 is missing in the database)
+questFinishers|- Quest 14026 (Object finisher 195189 is missing in the database)
+questFinishers|- Quest 24444 (Object finisher 201576 is missing in the database)
+questFinishers|- Quest 24446 (Object finisher 201577 is missing in the database)
+questFinishers|- Quest 24447 (Object finisher 201575 is missing in the database)
+questFinishers|- Quest 254 (Object finisher 37 is missing in the database)
+questFinishers|- Quest 29767 (Object finisher 209655 is missing in the database)
+questFinishers|- Quest 31939 (NPC finisher 72613 is missing in the database)
+questFinishers|- Quest 32129 (NPC finisher 67376 is missing in the database)
+questFinishers|- Quest 32173 (NPC finisher 67376 is missing in the database)
+questFinishers|- Quest 32174 (NPC finisher 67377 is missing in the database)
+questFinishers|- Quest 32364 (Object finisher 216616 is missing in the database)
+questFinishers|- Quest 636 (Object finisher 2655 is missing in the database)
+requiredRaces|- Quest 11123 (no requiredRaces entry)
+requiredRaces|- Quest 11137 (no requiredRaces entry)
+requiredRaces|- Quest 11140 (no requiredRaces entry)
+requiredRaces|- Quest 11142 (no requiredRaces entry)
+requiredRaces|- Quest 11143 (no requiredRaces entry)
+requiredRaces|- Quest 11145 (no requiredRaces entry)
+requiredRaces|- Quest 11146 (no requiredRaces entry)
+requiredRaces|- Quest 11147 (no requiredRaces entry)
+requiredRaces|- Quest 11149 (no requiredRaces entry)
+requiredRaces|- Quest 11150 (no requiredRaces entry)
+requiredRaces|- Quest 11152 (no requiredRaces entry)
+requiredRaces|- Quest 11159 (no requiredRaces entry)
+requiredRaces|- Quest 11161 (no requiredRaces entry)
+requiredRaces|- Quest 11162 (no requiredRaces entry)
+requiredRaces|- Quest 11169 (no requiredRaces entry)
+requiredRaces|- Quest 11172 (no requiredRaces entry)
+requiredRaces|- Quest 11174 (no requiredRaces entry)
+requiredRaces|- Quest 11177 (no requiredRaces entry)
+requiredRaces|- Quest 11185 (no requiredRaces entry)
+requiredRaces|- Quest 11186 (no requiredRaces entry)
+requiredRaces|- Quest 11198 (no requiredRaces entry)
+requiredRaces|- Quest 11203 (no requiredRaces entry)
+requiredRaces|- Quest 11209 (no requiredRaces entry)
+requiredRaces|- Quest 11214 (no requiredRaces entry)
+requiredRaces|- Quest 11222 (no requiredRaces entry)
+requiredRaces|- Quest 1220 (no requiredRaces entry)
+requiredRaces|- Quest 1252 (no requiredRaces entry)
+requiredRaces|- Quest 1253 (no requiredRaces entry)
+requiredRaces|- Quest 1268 (no requiredRaces entry)
+requiredRaces|- Quest 1282 (no requiredRaces entry)
+requiredRaces|- Quest 1284 (no requiredRaces entry)
+requiredRaces|- Quest 1322 (no requiredRaces entry)
+requiredRaces|- Quest 1396 (no requiredRaces entry)
+requiredRaces|- Quest 253 (no requiredRaces entry)
+requiredRaces|- Quest 3505 (no requiredRaces entry)
+requiredRaces|- Quest 3923 (no requiredRaces entry)
+requiredRaces|- Quest 4842 (no requiredRaces entry)
+requiredRaces|- Quest 504 (no requiredRaces entry)
+requiredRaces|- Quest 510 (no requiredRaces entry)
+requiredRaces|- Quest 511 (no requiredRaces entry)
+requiredRaces|- Quest 512 (no requiredRaces entry)
+requiredRaces|- Quest 5245 (no requiredRaces entry)
+requiredRaces|- Quest 5253 (no requiredRaces entry)
+requiredRaces|- Quest 532 (no requiredRaces entry)
+requiredRaces|- Quest 542 (no requiredRaces entry)
+requiredRaces|- Quest 549 (no requiredRaces entry)
+requiredRaces|- Quest 566 (no requiredRaces entry)
+requiredRaces|- Quest 78219 (no requiredRaces entry)
+requiredRaces|- Quest 78220 (no requiredRaces entry)
+requiredRaces|- Quest 78221 (no requiredRaces entry)
+requiredRaces|- Quest 8465 (no requiredRaces entry)
+requiredRaces|- Quest 88777 (no requiredRaces entry)
+requiredRaces|- Quest 88781 (no requiredRaces entry)
+requiredRaces|- Quest 88784 (no requiredRaces entry)
+requiredRaces|- Quest 9609 (no requiredRaces entry)
+requiredRaces|- Quest 96211 (no requiredRaces entry)
+requiredSourceItems|- Quest 10945 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10950 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10951 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10952 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10953 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10954 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10956 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10960 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10962 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 10963 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 10968 (sourceItemId in requiredSourceItems: 31881)
+requiredSourceItems|- Quest 11886 (sourceItemId in requiredSourceItems: 35828)
+requiredSourceItems|- Quest 11975 (sourceItemId in requiredSourceItems: 31880)
+requiredSourceItems|- Quest 1471 (sourceItemId in requiredSourceItems: 6284)
+requiredSourceItems|- Quest 1474 (sourceItemId in requiredSourceItems: 6286)
+requiredSourceItems|- Quest 1504 (sourceItemId in requiredSourceItems: 7464)
+requiredSourceItems|- Quest 1513 (sourceItemId in requiredSourceItems: 6626)
+requiredSourceItems|- Quest 1689 (sourceItemId in requiredSourceItems: 6928)
+requiredSourceItems|- Quest 1739 (sourceItemId in requiredSourceItems: 6913)
+requiredSourceItems|- Quest 8746 (itemObjectiveId in requiredSourceItems: 21211)
+requiredSourceItems|- Quest 8762 (itemObjectiveId in requiredSourceItems: 21211)
