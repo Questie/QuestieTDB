@@ -678,6 +678,87 @@ suite("equivalence-control", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Public API
+--------------------------------------------------------------------------------------------
+
+suite("api", function()
+  local tocPath = config.tocPath(config.flavorByName.Vanilla)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP api: ", tocPath, " not generated\n")
+    return
+  end
+
+  client.reset()
+  client.install({ expansion = "Classic" })
+  emulator.install(config.addonName, emulator.parse(tocPath))
+  local Lib = emulator.loadAddon(tocPath, config.addonName)
+
+  -- Field access, bulk field access and ID enumeration, per entity type.
+  for _, entityType in ipairs(config.entityTypes) do
+    local entity = Lib[entityType.name]
+    check(entity ~= nil, "entity global exposed: " .. entityType.name)
+    check(type(entity.Get) == "function", entityType.name .. ".Get")
+    check(type(entity.GetAll) == "function", entityType.name .. ".GetAll")
+    check(type(entity.GetAllIds) == "function", entityType.name .. ".GetAllIds")
+    check(type(entity.GetRaw) == "function", entityType.name .. ".GetRaw")
+    check(_G[entityType.name .. "DB"] == entity, entityType.name .. "DB global alias")
+  end
+
+  equal(Lib.Quest.Get(2, "name"), "Sharptalon's Claw", "Get by name")
+  equal(Lib.Quest.Get(2, 1), "Sharptalon's Claw", "Get by index")
+  local bulk = Lib.Quest.GetAll(2, { "name", "requiredLevel" })
+  equal(bulk[1], "Sharptalon's Claw", "GetAll returns values in the requested order")
+  equal(bulk[2], 20, "GetAll second value")
+  check(#Lib.Quest.GetAllIds() > 4000, "GetAllIds returns the list")
+  equal(Lib.Quest.GetAllIds(true)[2], true, "GetAllIds(true) returns a hashmap")
+  equal(Lib.Quest.Exists(2), true, "Exists")
+
+  -- The schema is exposed so consumers can name fields rather than index them, in both the
+  -- internal spelling and the one DESIGN.md documents.
+  equal(Lib.Meta.QuestMeta.questKeys.name, 1, "Meta.QuestMeta.questKeys")
+  equal(Lib.Meta.NpcMeta.npcKeys.subName, 14, "Meta.NpcMeta.npcKeys")
+  equal(Lib.Meta.ItemMeta.itemKeys.name, 1, "Meta.ItemMeta.itemKeys")
+  equal(Lib.Meta.ObjectMeta.objectKeys.name, 1, "Meta.ObjectMeta.objectKeys")
+  equal(Lib.Meta.Quest.names[1], "name", "Meta.Quest.names")
+  equal(Lib.Meta.Quest.types[1], "string", "Meta.Quest.types")
+  equal(Lib.Meta.Quest.fieldCount, 36, "Meta.Quest.fieldCount")
+
+  -- A contract version is published and mismatch is detectable at load.
+  equal(Lib.contractVersion, config.contractVersion, "contractVersion published")
+  equal(Lib.RequireContract(config.contractVersion), true, "matching contract passes")
+  local ok, message = Lib.RequireContract(config.contractVersion + 98)
+  equal(ok, false, "mismatched contract fails")
+  check(type(message) == "string" and message:find("mismatch"), "mismatch carries a specific message")
+
+  -- A third-party addon registers Corrections with no special treatment.
+  local registrar = Lib.GetRegistrar("ThirdPartyAddon")
+  check(type(registrar.RegisterRuntimeCorrection) == "function", "GetRegistrar returns a registrar")
+  registrar.RegisterRuntimeCorrection("Quest", "demo",
+    function() return { [2] = { [1] = "Third-party name" } } end, 10)
+  registrar.Apply()
+  equal(Lib.Quest.Get(2, "name"), "Third-party name", "a third-party correction applies")
+  equal(Lib.Quest.GetRaw(2, "name"), "Sharptalon's Claw", "GetRaw bypasses it")
+  equal(Lib.GetProvenance("Quest", 2, "name"), "ThirdPartyAddon",
+    "the winning correction's owner is discoverable")
+  local owners = Lib.GetOwners()
+  check(#owners >= 2, "GetOwners exposes applied order")
+  equal(owners[#owners], "ThirdPartyAddon", "the last applied owner is last")
+
+  -- Cache lifecycle is public.
+  check(type(Lib.InvalidateCache) == "function", "InvalidateCache is public")
+  Lib.InvalidateCache("Quest", 2)
+  equal(Lib.Quest.Get(2, "name"), "Third-party name", "invalidation preserves the composed view")
+  Lib.InvalidateCache()
+  equal(Lib.Quest.Get(2, "name"), "Third-party name", "a full invalidation also recomposes")
+
+  -- Read mode is public and unmistakable.
+  equal(Lib.readMode, "baked", "readMode is published")
+  equal(Lib.ModeIndicator.GetText(), nil, "baked mode shows no source-mode indicator")
+
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
 -- Localization
 --------------------------------------------------------------------------------------------
 

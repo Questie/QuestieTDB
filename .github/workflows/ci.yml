@@ -1,0 +1,131 @@
+name: CI
+
+# Every commit produces a verified, downloadable database. The gates below are the ones
+# QuestieTDB cannot ship without: round-trip verification, source/baked equivalence, and the
+# data validators. All three block merge.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Byte-reproducible artifacts: generation stamps X-BUILD-TIME from this rather than the wall
+  # clock, so the same input produces the same bytes and a checksum means something.
+  SOURCE_DATE_EPOCH: 1700000000
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: QuestieTDB }
+
+      # The localization lookup tree and Questie's schema files are generation inputs and are
+      # read from a checkout rather than duplicated here.
+      - uses: actions/checkout@v4
+        with:
+          repository: Questie/Questie
+          path: Questie
+
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+
+      - name: Materialize the schema
+        working-directory: QuestieTDB
+        run: lua5.1 generate.lua meta ../Questie
+
+      - name: Fail on schema drift
+        working-directory: QuestieTDB
+        # Deriving the schema turns drift into a build failure instead of a discovery months
+        # later. If Questie added a field, this is where it shows up.
+        run: git diff --exit-code src/meta/
+
+      - name: Fail on correction drift
+        working-directory: QuestieTDB
+        run: |
+          lua5.1 tools/port-corrections.lua ../Questie
+          git diff --exit-code src/corrections/ || {
+            echo "::error::Ported corrections differ from Questie's. Review and commit the re-port."
+            exit 1
+          }
+
+      - name: Generate Vanilla
+        working-directory: QuestieTDB
+        run: lua5.1 generate.lua Vanilla --questie=../Questie
+
+      - name: Unit tests
+        working-directory: QuestieTDB
+        run: lua5.1 test.lua
+
+  database:
+    name: ${{ matrix.flavor }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [Vanilla, TBC, Wrath, Cata, Mists]
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: QuestieTDB }
+      - uses: actions/checkout@v4
+        with:
+          repository: Questie/Questie
+          path: Questie
+
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+
+      - name: Generate
+        working-directory: QuestieTDB
+        run: lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie
+
+      - name: Round-trip verification
+        working-directory: QuestieTDB
+        run: lua5.1 verify.lua ${{ matrix.flavor }}
+
+      - name: Round-trip verification under freezing
+        working-directory: QuestieTDB
+        # Opt-in because the pure-Lua freeze substitute costs about 2x wall clock. Running it on
+        # one flavor per commit keeps the ownership guard present in CI rather than absent.
+        if: matrix.flavor == 'Vanilla'
+        run: lua5.1 verify.lua ${{ matrix.flavor }} --freeze
+
+      - name: Source/baked equivalence
+        working-directory: QuestieTDB
+        # The load-bearing test in the system. Two permanent read modes mean it never retires.
+        run: lua5.1 equivalence.lua ${{ matrix.flavor }}
+
+      - name: Data validators
+        working-directory: QuestieTDB
+        run: lua5.1 validators/run.lua ${{ matrix.flavor }}
+
+      - name: Determinism
+        working-directory: QuestieTDB
+        # Identical input must produce byte-identical output, or every regeneration produces a
+        # spurious diff and checksums stop meaning anything.
+        run: |
+          sha256sum QuestieTDB_${{ matrix.flavor }}.toc > first.sha
+          lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie --quiet
+          sha256sum -c first.sha
+
+      - name: Upload validator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validator-report-${{ matrix.flavor }}
+          path: QuestieTDB/.out/validators/
+          if-no-files-found: ignore
+
+      - name: Package
+        working-directory: QuestieTDB
+        run: bash tools/package.sh ${{ matrix.flavor }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuestieTDB-${{ matrix.flavor }}
+          path: QuestieTDB/.out/dist/*
+          retention-days: 14

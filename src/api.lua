@@ -32,6 +32,30 @@ for _, entityType in ipairs(config.entityTypes) do
 end
 
 --------------------------------------------------------------------------------------------
+-- Schema
+--------------------------------------------------------------------------------------------
+--
+-- The schema is public so consumers can name fields rather than index them. Two spellings are
+-- exposed: `Meta.Quest` is the internal shape, and `Meta.QuestMeta.questKeys` is the spelling
+-- DESIGN.md documents. They are the same tables, not copies.
+
+for _, entityType in ipairs(config.entityTypes) do
+  local meta = LibQuestieDB.Meta[entityType.name]
+  if meta then
+    local lower = entityType.name:sub(1, 1):lower() .. entityType.name:sub(2)
+    LibQuestieDB.Meta[entityType.name .. "Meta"] = {
+      [lower .. "Keys"] = meta.keys,
+      names = meta.names,
+      types = meta.types,
+      structures = meta.structures,
+      compilerTypes = meta.compilerTypes,
+      fieldCount = meta.fieldCount,
+      l10nFields = meta.l10nFields,
+    }
+  end
+end
+
+--------------------------------------------------------------------------------------------
 -- Contract
 --------------------------------------------------------------------------------------------
 
@@ -41,6 +65,18 @@ end
 LibQuestieDB.contractVersion = config.contractVersion
 
 LibQuestieDB.addonName = ADDON_NAME
+
+--- Check compatibility from a consumer's init in one call, so the failure message is specific
+--- rather than an obscure nil index three files later.
+---@param required number The contract version the consumer was written against
+---@return boolean ok
+---@return string? message
+function LibQuestieDB.RequireContract(required)
+  if required == config.contractVersion then return true end
+  return false, ("QuestieTDB contract mismatch: this consumer needs version %s, the installed " ..
+    "QuestieTDB provides %s. Update whichever is older.")
+    :format(tostring(required), tostring(config.contractVersion))
+end
 
 --- "source" or "baked". Mode must be unmistakable, so this is public rather than internal.
 LibQuestieDB.readMode = mode

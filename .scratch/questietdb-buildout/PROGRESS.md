@@ -771,3 +771,76 @@ quantized). Total 288 MB raw against DESIGN's recorded 251 MB.
   build input — it is never shipped. Left for you.
 
 ---
+
+## 15 — Public API surface ✅
+
+**Built** — the API surface in `src/api.lua`, and `docs/api.md`.
+
+`docs/api.md` is written for a third-party author with no access to the source: reading fields,
+the nil/empty semantics table, value ownership and why `CopyTable` is explicit, the schema,
+registering Corrections including precedence and when to apply, localization, support data, read
+mode, and the contract check.
+
+Everything the ticket asks for, all covered by 53 tests:
+
+| | |
+| --- | --- |
+| Field, bulk and ID access per entity type | `Entity.Get` / `.GetAll` / `.GetAllIds` / `.Exists` / named getters |
+| Schema exposed | `Meta.QuestMeta.questKeys` (the spelling DESIGN.md documents) and `Meta.Quest.*` — the same tables, not copies |
+| Correction registration is public | `GetRegistrar(owner)`, or the long form; a third-party addon needs no special treatment |
+| A base-data read that bypasses the overlay | `Entity.GetRaw(id, key)` |
+| The winning correction's owner | `GetProvenance(datatype, id, key)`, plus `GetOwners()` for applied order |
+| Contract version, mismatch detectable at load | `contractVersion`, and `RequireContract(n)` returning `false, message` |
+
+Demonstrated end to end: a third-party addon registers a Dynamic Correction, applies it, the
+read changes, `GetRaw` still shows base data, and `GetProvenance` names the third party.
+
+---
+
+## 16 — CI, release, and bootstrap ✅ (credentials are yours)
+
+**Built** — `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `tools/package.sh`,
+`tools/bootstrap.sh`, `tools/bootstrap.ps1`.
+
+**CI** runs on every commit: unit tests, then a five-way matrix that generates, round-trip
+verifies, runs source/baked equivalence, runs the validators, and re-generates to prove the
+output is byte-identical. Validator diagnostics upload as artifacts. Equivalence blocks merge.
+
+Two drift gates that would otherwise be silent:
+
+* **Schema drift** — `generate.lua meta` re-derives from Questie and `git diff --exit-code
+  src/meta/` fails if the result differs. A field added upstream becomes a build failure.
+* **Correction drift** — `tools/port-corrections.lua` re-ports and diffs. Since the ported files
+  are byte-identical copies, any upstream edit shows up here.
+
+Freezing runs on one flavor per commit rather than all five: the pure-Lua substitute costs about
+2× wall clock, and one flavor is enough to keep the ownership guard present rather than absent.
+
+**Packaging** produces one zip per flavor containing exactly the files that artifact's own TOC
+lists — so static-only correction files, which are build-time input, are already excluded.
+Measured: Vanilla 21.0 MB raw → **6.3 MB zipped**.
+
+`release.json` carries the producing commit, the contract version, the build time, `"nolib":
+false` (CurseForge's mechanism for letting a standalone install avoid a folder collision when
+QuestieTDB also ships bundled inside Questie's zip), and per-artifact SHA-256 and byte counts.
+A consumer pins an exact release by tag.
+
+**Bootstrap** is a downloader in both bash and PowerShell — no Lua, no toolchain. It fetches the
+manifest, downloads every flavor so switching test clients needs no re-bootstrap, and
+**verifies checksums before installing**: a truncated download that overwrites a working install
+is worse than no install. It removes only the generated TOCs, because everything else in that
+folder may be a working clone.
+
+**NEEDS YOU**
+
+* **No credentials were configured, as instructed.** `release.yml` documents what it needs
+  (`GITHUB_TOKEN`, which is automatic, and `CF_API_KEY` for CurseForge) and nothing attempts to
+  create or guess one.
+* Both workflows check out `Questie/Questie` for the localization lookup tree and the schema
+  files. If that repository path or its default branch differs, the checkout steps need editing.
+* Neither workflow has run — there is no remote. `package.sh` was executed locally and produced
+  a valid zip and manifest; the YAML has not been exercised by GitHub Actions.
+* The pinned Questie integration job from `DESIGN.md`'s testing section is **not** built. It
+  belongs in Questie's CI, not here, and needs a published QuestieTDB release to pin against.
+
+---

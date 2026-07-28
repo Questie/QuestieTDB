@@ -1,0 +1,77 @@
+name: Release
+
+# Every commit publishes a pre-release; a full release is triggered deliberately. Releases are
+# identifiable by content, not just by tag: the manifest carries per-artifact SHA-256, the
+# producing commit, the schema version and the contract version.
+#
+# NOTE FOR THE MAINTAINER: this workflow needs secrets that are not configured here.
+#   GITHUB_TOKEN    provided automatically; used for the GitHub release
+#   CF_API_KEY      CurseForge upload token, if standalone publishing is wanted
+# Nothing below attempts to create or guess a credential.
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a full release rather than a pre-release"
+        type: boolean
+        default: false
+      tag:
+        description: "Tag for the release (defaults to the short SHA)"
+        type: string
+        required: false
+
+env:
+  SOURCE_DATE_EPOCH: 1700000000
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: QuestieTDB, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with:
+          repository: Questie/Questie
+          path: Questie
+
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+
+      - name: Generate every flavor
+        working-directory: QuestieTDB
+        run: lua5.1 generate.lua all --questie=../Questie
+
+      - name: Verify every flavor
+        working-directory: QuestieTDB
+        run: lua5.1 verify.lua
+
+      - name: Source/baked equivalence
+        working-directory: QuestieTDB
+        run: lua5.1 equivalence.lua
+
+      - name: Validate every flavor
+        working-directory: QuestieTDB
+        run: lua5.1 validators/run.lua
+
+      - name: Package and write the manifest
+        working-directory: QuestieTDB
+        run: bash tools/package.sh all
+
+      - name: Publish
+        working-directory: QuestieTDB
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="build-$(git rev-parse --short HEAD)"; fi
+          PRERELEASE="--prerelease"
+          if [ "${{ inputs.release }}" = "true" ]; then PRERELEASE=""; fi
+          gh release create "$TAG" .out/dist/* \
+            --title "QuestieTDB $TAG" \
+            --notes-file .out/dist/RELEASE_NOTES.md \
+            $PRERELEASE
