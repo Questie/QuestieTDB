@@ -1,8 +1,13 @@
 -- src/corrections/_end.lua
 --
 -- Closes the correction block: registers what the manifest describes, then hands
--- `QuestieLoader` and `Questie` back to whoever owned them. Nothing the shim installed
--- survives past this file.
+-- `QuestieLoader` back to whoever owned it.
+--
+-- `Questie` is the one thing the shim leaves behind, deliberately. Correction functions read
+-- `Questie.ICON_TYPE_*` and `Questie.Is*` from the **global at apply time**, not captured at
+-- load time, so tearing that table down here would leave every Dynamic Correction reading a nil
+-- global the moment it ran. The stub only ever fills in fields that are missing, and the
+-- consumer's own definitions win as soon as it loads. See src/corrections/compat.lua.
 
 local _, LibQuestieDB = ...
 
