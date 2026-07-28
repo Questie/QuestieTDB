@@ -678,6 +678,78 @@ suite("equivalence-control", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Independence from the prototypes
+--------------------------------------------------------------------------------------------
+
+suite("no-prototype-inputs", function()
+  -- `Getters` and `toc-database` are reference material, never a build input. Nothing here may
+  -- open a path inside them, and in particular nothing may consume `Getters/data/*.lua-table`:
+  -- corrections are already applied there by the pipeline QuestieTDB replaces, so building on
+  -- it would double-apply corrections from the wrong system.
+  --
+  -- Provenance comments naming a prototype are fine and wanted — they say where a design came
+  -- from. What is forbidden is a *path* that resolves into one.
+
+  local function scan(dir, found)
+    local pipe = io.popen('find "' .. dir .. '" -name "*.lua" -o -name "*.toc" -o -name "*.sh" -o -name "*.yml" 2>/dev/null')
+    if not pipe then return found end
+    for path in pipe:lines() do
+      local file = io.open(path, "rb")
+      if file then
+        local content = file:read("*a")
+        file:close()
+        -- A path *literal*, not a mention. The character classes exclude newlines so a match
+        -- cannot span from one quote on line 10 to another on line 400.
+        for _, pattern in ipairs({
+          '"[^"\n]*Getters/[^"\n]*"', "'[^'\n]*Getters/[^'\n]*'",
+          '"[^"\n]*toc%-database/[^"\n]*"', "'[^'\n]*toc%-database/[^'\n]*'",
+          '"[^"\n]*%.lua%-table[^"\n]*"', "'[^'\n]*%.lua%-table[^'\n]*'",
+        }) do
+          for match in content:gmatch(pattern) do
+            found[#found + 1] = path .. ": " .. match
+          end
+        end
+      end
+    end
+    pipe:close()
+    return found
+  end
+
+  local found = {}
+  for _, dir in ipairs({ "src", "generator", "emulator", "validators", "tools", ".github" }) do
+    scan(dir, found)
+  end
+  -- The top-level entry points, named rather than globbed: this file is a *test* and carries
+  -- the search patterns as string literals, so scanning `.` would find itself.
+  for _, file in ipairs({ "generate.lua", "verify.lua", "equivalence.lua", "QuestieTDB.toc" }) do
+    local handle = io.open(file, "rb")
+    if handle then
+      local content = handle:read("*a")
+      handle:close()
+      for _, pattern in ipairs({ "Getters/", "toc%-database/", "%.lua%-table" }) do
+        if content:find(pattern) then found[#found + 1] = file .. ": " .. pattern end
+      end
+    end
+  end
+
+  for _, offender in ipairs(found) do
+    check(false, "a build input references a prototype path: " .. offender)
+  end
+  check(#found == 0, ("%d build inputs reference a prototype path"):format(#found))
+
+  -- Every generation input is enumerated in config, and all of them live in this repo.
+  local flavor = config.flavorByName.Vanilla
+  for _, entityType in ipairs(config.entityTypes) do
+    local path = config.dataPath(flavor, entityType)
+    check(path:sub(1, 5) == "data/", "entity data comes from this repo: " .. path)
+    check(lib.fileExists(path), "entity data file exists: " .. path)
+  end
+  for _, file in ipairs(config.supportFiles(flavor)) do
+    check(lib.fileExists(file), "support file exists: " .. file)
+  end
+end)
+
+--------------------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------------------
 

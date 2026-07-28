@@ -844,3 +844,146 @@ folder may be a working clone.
   belongs in Questie's CI, not here, and needs a published QuestieTDB release to pin against.
 
 ---
+
+## 17 — Retire the prototypes ⏸ **prepared, deliberately not executed**
+
+You said: *"do not move or delete the prototypes. `Getters/GetterDB` has no remote and exists
+only on this machine. Leave it alone entirely."* Nothing was moved, nothing was deleted, and
+nothing under `Getters/` or `toc-database/` was written to.
+
+**Done**
+
+* The serializer is ported and in use — `generator/serialize.lua`.
+* The corrections registry is ported and in use — `src/corrections/registry.lua`.
+* The storage format is fully described in this repo's documentation, and was **verified by
+  generating from the spec**: `generator/serialize.lua`, `generator/encode.lua` and
+  `src/meta/codec.lua` were written from `docs/storage-format.md` plus Questie's `compiler.lua`,
+  not by reading prototype code. The two gaps the spec left open — the empty-string marker and
+  the combined-addon l10n prefix — were closed in the document as they were hit.
+* **No build input references the prototypes**, enforced rather than asserted. `test.lua`'s
+  `no-prototype-inputs` suite scans `src/`, `generator/`, `emulator/`, `validators/`, `tools/`,
+  `.github/` and the top-level entry points for a path literal resolving into `Getters/`,
+  `toc-database/`, or any `.lua-table`, and separately asserts every enumerated generation input
+  exists inside this repository. Two provenance *comments* remain — `generator/serialize.lua`
+  and `src/corrections/registry.lua` each say what they were ported from. Those are wanted.
+* `.retired` is already excluded from version control by the workspace `.gitignore`.
+* `docs/retiring-the-prototypes.md` — the runbook, the full accounting of what was taken and
+  what was rejected, and the warning below.
+* `docs/retired-README.md` — the `README.md` to drop into `.retired`, ready to copy.
+
+**Confirmed, and it is the reason to be careful**
+
+```
+$ git -C Getters/GetterDB remote -v
+(no output)
+```
+
+`GetterDB` is a nested git repository with **no remote**. It exists only on this machine, and
+it holds the serializer and the corrections registry this project was built from.
+
+**NEEDS YOU**
+
+1. **Push `GetterDB` off this machine.** `DESIGN.md` calls this the only irreversible failure
+   mode in the plan, and it is the one step here a mistake cannot undo.
+2. Then run the four commands in `docs/retiring-the-prototypes.md`. They move rather than
+   delete, so the step is reversible.
+
+---
+
+# Final state
+
+Every ticket 01–16 is complete. Ticket 17 is prepared and deliberately not executed.
+
+```
+$ lua5.1 generate.lua all      # 50s
+Vanilla   35 944 entities    238 379 fields    20.9 MB
+TBC       59 291 entities    393 917 fields    35.2 MB
+Wrath     88 658 entities    600 016 fields    50.8 MB
+Cata     141 203 entities    958 734 fields    81.5 MB
+Mists    178 366 entities  1 163 281 fields    99.0 MB
+                                              288 MB total, 6.3 MB zipped for Vanilla
+
+$ lua5.1 verify.lua            # 97s   5/5 PASS   8 351 690 field comparisons, 0 errors
+$ lua5.1 equivalence.lua       # 57s   5/5 PASS   8 351 690 comparisons, 0 divergences
+$ lua5.1 validators/run.lua    #  4s   5/5 PASS   Vanilla 15/15 clean outright
+$ lua5.1 test.lua              #       425 checks, 0 failed across 13 suites
+```
+
+Regenerating with `SOURCE_DATE_EPOCH` set reproduces all five artifacts byte-identically.
+
+## What you asked to wake up to, against what is here
+
+| | |
+| --- | --- |
+| Generates, verifies and round-trips a complete database | ✅ 8.35M field comparisons, zero errors |
+| All four entity types | ✅ Quest, Npc, Item, Object |
+| All five flavors | ✅ Vanilla, TBC, Wrath, Cata, Mists |
+| Corrections applied | ✅ 30 files ported byte-identically, +47k entities, Static and Dynamic |
+| Both read modes working and proven equivalent | ✅ 8.35M comparisons, zero divergences, and it holds *by construction* — one `normalize.field` serves generation, both readers and the verifier |
+
+## The five constraints
+
+| | |
+| --- | --- |
+| nil/empty semantics match Questie exactly | Verified against `compiler.lua`'s readers and writers directly, encoded once in `src/meta/normalize.lua`, and covered by 27 dedicated checks plus 8.35M round-trip comparisons |
+| No C dependencies | No `lfs` anywhere; it was removed from `validators/checks.lua` on the way in. Everything runs on stock `lua5.1` |
+| Deterministic serialization | `md5sum -c` green across all five artifacts on a second run; hash keys sorted, `pairs()` never decides output |
+| Never build on `Getters/data/*.lua-table` | Enforced by a test that fails the build if any input names it |
+| Schema comes from Questie | Derived by `generate.lua meta`, materialized into `src/meta/`, and CI fails on any diff. It caught two real divergences on the first run |
+
+## Ranked by what needs your attention
+
+**1. No true differential against Questie's live correction pipeline.** The strongest remaining
+correctness gap. What is proven: byte-identical correction files, matching merge semantics,
+explicit and tested ordering, and Vanilla passing all fifteen invariants. What is not: that
+Questie's own `QuestieCorrections:Initialize()` produces identical tables. That needs Questie's
+full runtime stood up. (D8, ticket 09)
+
+**2. Nothing has run in a live client.** Every in-client criterion across tickets 01, 05, 06 and
+14 was verified through the emulator instead, running the same `src/` files a client loads. The
+tracer bullet, TOC suffix precedence, the source-mode indicator, and a `‡`-joined localized read
+are all unproven against real WoW.
+
+**3. Two lossless-vs-faithful deviations.** QuestieTDB returns exact coordinates where the
+compiler quantized them (~0.024 divergence), and preserves a spawn phase of `0` where the
+compiler dropped it (changing a returned table's length). Both are strictly more faithful to
+the source, and neither is a nil semantic — but both are observable at a call site comparing
+against a hardcoded value. (D5)
+
+**4. The validator baseline.** 2,051 accepted findings across four flavors, because some
+invariants only hold once holiday and blacklist policy is applied and that stays in Questie by
+the boundary rule. Three costed options in D14; I implemented the one that needed no decision
+from you.
+
+**5. Parameterized Corrections have no home.** `LoadDarkmoonFixes` takes an argument rather than
+reading global state, so it does not fit `func()`. Left unregistered and marked in the manifest.
+(ticket 09)
+
+**6. Dynamic Corrections do not contribute IDs to `GetAllIds`.** `sodBase*.lua` introduces
+~10,000 SoD-only entities that are readable by ID but do not enumerate. Fine for Era, wrong for
+a SoD client. (ticket 10)
+
+**7. `Localization/lookups/` was not moved into this repo.** 214 MB of build-only input, read
+from a Questie checkout via `--questie=`. Moving it is a real decision about clone size.
+(ticket 14)
+
+**8. Retiring the prototypes is prepared but not run**, and `GetterDB` still has no remote.
+(ticket 17)
+
+**9. CI has never executed.** There is no remote. `tools/package.sh` ran locally and produced a
+valid zip and manifest; the YAML has not been exercised by GitHub Actions, and no credentials
+were configured.
+
+## Decisions I made without you
+
+All fifteen are written up above with reasoning: **D1** data copied into `data/` · **D2** the
+`l10n-` key prefix · **D3** the `~E~` and `~Q~` markers · **D4** one generic serializer instead
+of the prototype's dumpers · **D5** lossless where the compiler was lossy · **D6** per-type key
+prefixes from ticket 01 · **D7** numeric zeros not written · **D8** correction files copied
+verbatim behind a compat shim · **D9** constants extracted, not transcribed · **D10** the
+prototype's SoD load-order defect fixed · **D11** collisions no longer displace · **D12** what
+ships and what does not · **D13** `itemDropCorrections` is support data, not a Correction ·
+**D14** the validator baseline · **D15** a second separator for list-valued fields.
+
+The two most likely to want reversing are **D5** (lossless coordinates) and **D14** (the
+baseline).
