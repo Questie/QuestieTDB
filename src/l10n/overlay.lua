@@ -97,9 +97,11 @@ function overlay.CreateProvider(meta)
 
     if mapping.list then
       -- A list-typed field's segment is a Lua table literal, serialized by the generator with
-      -- the same serializer entity fields use, so the translated value keeps the base field's
-      -- exact shape — element counts can no longer differ per locale. The shared getter wraps
-      -- the decoded table in a fresh-per-read producer like any other table value.
+      -- the same serializer entity fields use, so the translated value keeps the field's TYPE
+      -- (a table, never a joined string). Element counts follow the upstream lookup's own
+      -- shape and may legitimately differ from base — zhCN/zhTW combine multiple objectives
+      -- into one string (1,486 Vanilla reads; equivalence counts them as "locale-shaped").
+      -- The shared getter wraps the decoded table in a fresh-per-read producer as usual.
       return codec.decodeTable(segment)
     end
 

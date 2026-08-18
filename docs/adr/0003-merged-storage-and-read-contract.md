@@ -36,10 +36,19 @@ that is pure size.) The existence gate is Decision 6.
 
 A localized field whose base type is `table` (quest `objectivesText`) is serialized as a
 Lua table literal **per locale segment**, decoded with the same codec as entity fields.
-The `‖` list-joiner is retired; structure travels in the value. This removes the class
-of bug where a quest's `objectivesText` element count differed per locale (155 Vanilla
-quests under A's joiner), and removes the need for a second separator guard. Generation
-asserts no serialized segment contains the locale separator `‡`.
+The `‖` list-joiner is retired; structure travels in the value, and the need for a second
+separator guard disappears. Generation asserts no serialized segment contains the locale
+separator `‡`.
+
+*Scope, corrected after the widened equivalence gate ran:* the contract is **type
+stability** — a table-typed field decodes as a table in every locale, never a joined
+string — plus byte-faithful extraction. It is NOT count stability: upstream zhCN/zhTW
+lookups legitimately combine multiple objectives into one string (1,486 Vanilla reads,
+174 Wrath), and reproducing the lookup's own shape is what Questie ships those users
+today. What the joiner retirement removed is the *accidental* count variance A's `‖`
+splitting invented (155 Vanilla quests); the equivalence gate counts legitimate variance
+as informational ("locale-shaped") and enforces type stability and decode success as hard
+divergences.
 
 ### 4. Chunk parts never begin or end with trimmable bytes
 

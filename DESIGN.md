@@ -467,8 +467,10 @@ Two contracts ADR 0003 added after the buildout: **corrections outrank translati
 Correction Overlay provenance supplied a localizable field, the lookup translation is skipped,
 so corrected text is never replaced by a stale copied lookup and provenance never names an
 owner for a value it did not supply (D8); and **table-typed fields keep their table shape per
-locale segment** — `objectivesText` segments are serialized table literals, so a quest's
-objective count can never differ by locale (D3). Chunk parts are split trim-safely because the
+locale segment** — `objectivesText` segments are serialized table literals, so a translated
+list is always a table, never a joined string; element counts follow the upstream lookup's
+own shape, which zhCN/zhTW legitimately vary (D3, scope corrected). Chunk parts are split
+trim-safely because the
 client removes edge whitespace from metadata values — measured, with a shipped artifact's
 Russian text corrupted by exactly this, in
 [`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md).
