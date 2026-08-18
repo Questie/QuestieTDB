@@ -17,6 +17,11 @@ config.addonName = "QuestieTDB"
 --- can observe. Questie checks this at init and fails with a specific message on mismatch.
 config.contractVersion = 1
 
+--- The oldest consumer contract this release still honors. `RequireContract` passes any
+--- required version in [minSupportedContract, contractVersion]; raise this floor only when a
+--- breaking change genuinely abandons older consumers (ADR 0003 D12).
+config.minSupportedContract = 1
+
 --- Values longer than this many bytes are stored as a Chunked metadata value.
 --- See docs/storage-format.md.
 config.maxValueLength = 1000

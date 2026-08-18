@@ -1,12 +1,23 @@
 -- src/read/shared.lua
 --
 -- Everything the two read modes have in common: named getters, the generic getter, the
--- Decoded field cache, Correction Overlay lookup, field defaults, and freezing.
+-- Decoded field cache, Correction Overlay lookup, field defaults, and the fresh-per-read
+-- value contract.
 --
--- Only two functions differ between Source mode and Baked mode — `readField` and `getAllIds` —
--- so the seam stays two functions wide and this file is written once. Source mode and
--- Generation apply Static Corrections through the same path, so "what I see in dev is what
--- ships" follows from shared code rather than from a test.
+-- The seam between Source mode and Baked mode is `readField` and `getAllIds`, plus one
+-- optional fast path — `tableChunk`, which Baked mode provides because it already holds the
+-- serialized literal for a table field. Source mode and Generation apply Static Corrections
+-- through the same path, so "what I see in dev is what ships" follows from shared code
+-- rather than from a test.
+--
+-- ## Value ownership (ADR 0003 Decision 10, revised)
+--
+-- Table reads return a **fresh, mutable, deeply independent copy on every read** — the
+-- caller owns it outright, exactly as Questie's compiler semantics always promised. The
+-- mechanism is a cached producer: the compiled chunk (Baked) or a deep-copy closure
+-- (Source and Correction Overlay values) is cached instead of a decoded table, and every
+-- read executes it. Measured at 0.13–1.8 µs for typical shapes — the same class as a plain
+-- cache hit. Scalars are immutable and stay cached as plain values.
 
 local _, LibQuestieDB = ...
 
@@ -23,27 +34,16 @@ local type, rawget, setmetatable, ipairs = type, rawget, setmetatable, ipairs
 -- Lua 5.1, which is what the generator, verify.lua and the offline harness run on, so
 -- capability detection is mandatory and the harness installs a pure-Lua substitute.
 --
--- No frozen table may carry `__newindex`: a frozen table *with* one redirects writes to the
--- metamethod instead of failing, which is exactly the trap the prototypes' `EMPTY` sentinel
--- fell into.
+-- Since ADR 0003 Decision 10 was revised, freezing guards **QuestieTDB-internal shared
+-- structures only** — Source mode's base entity tables, which a Correction or consumer must
+-- not corrupt. Values returned from reads are never frozen: they are fresh copies the caller
+-- owns. The taint-ownership findings that motivated the revision (loadstring chunks are
+-- owned by `*** ForceTaint_Strong ***`, so addon code can never freeze what the decoder
+-- builds) are recorded in docs/client-metadata-probes.md.
 --
--- ## Freezing can be refused, and a read must survive that
---
--- Verified on Classic Era 1.15.9: `table.freeze` enforces **ownership**. It raises unless the
--- table's owner matches the calling function's owner:
---
---     attempted to freeze a table not owned by the calling function
---     (expected 'QuestieTDB', got '*** ForceTaint_Strong ***')
---
--- Baked mode decodes lazily, so a table field is materialised by `loadstring` *inside whatever
--- execution context asked for it*. That context owns the result. When the caller is not
--- QuestieTDB — which is every consumer — the owner does not match and freezing raises.
---
--- Before this was handled, that error propagated out of the getter: the read threw, the value
--- was never cached, and it threw again on every subsequent call. **A read failing because an
--- optional guard could not be applied is strictly worse than the guard being absent.** So
--- freezing degrades: if the VM refuses, the value is returned unfrozen and the refusal is
--- counted rather than raised.
+-- Freezing still degrades rather than fails: if the VM refuses, the structure stays
+-- unfrozen and the refusal is counted, because a load failing over an optional guard is
+-- strictly worse than the guard being absent.
 
 local luaTable = rawget(_G, "table")
 local freeze = luaTable and rawget(luaTable, "freeze")
@@ -122,8 +122,10 @@ function shared.CreateEntity(meta, backend)
     backend = backend,
   }
 
-  -- Decoded field cache. Scalars are cached unconditionally in both modes because strings and
-  -- numbers are immutable and carry no hazard; table fields are cached *and* frozen.
+  -- Decoded field cache. Scalars are cached as plain values — strings and numbers are
+  -- immutable and carry no hazard. A table field caches a **producer function** instead of
+  -- the table (ADR 0003 D10): every hit executes it and hands the caller a fresh mutable
+  -- copy. A function is unambiguous in the cache because no stored value can be one.
   local cache = {}
 
   -- Correction Overlay: the composed query-time layer of Dynamic Corrections. Reads resolve
@@ -132,26 +134,58 @@ function shared.CreateEntity(meta, backend)
   local overlay = {}
   entity.overlay = overlay
 
+  -- Composed ids: the union of backend ids and overlay-added ids (ADR 0003 D7). An entity a
+  -- Dynamic Correction adds is readable, enumerable, and exists — all three or none. Built
+  -- lazily, dropped whenever the overlay is replaced.
+  local unionList, unionMap
+
+  local function buildUnion()
+    local list, map = backend.getAllIds()
+    local extra = false
+    for id in pairs(overlay) do
+      if map[id] ~= true then extra = true break end
+    end
+    if not extra then
+      unionList, unionMap = list, map
+      return
+    end
+    unionMap = {}
+    for id in pairs(map) do unionMap[id] = true end
+    unionList = {}
+    for i = 1, #list do unionList[i] = list[i] end
+    for id in pairs(overlay) do
+      if unionMap[id] ~= true then
+        unionMap[id] = true
+        unionList[#unionList + 1] = id
+      end
+    end
+    table.sort(unionList)
+  end
+
   --- Swap in a freshly composed overlay and drop every cached value, because any of them could
-  --- have been decided by the layer being replaced.
+  --- have been decided by the layer being replaced. The composed id union is rebuilt too,
+  --- since the new overlay may add or withdraw entities.
   function entity.SetOverlay(composed)
     overlay = composed or {}
     entity.overlay = overlay
+    unionList, unionMap = nil, nil
     entity.InvalidateCache(nil)
   end
 
-  local function readRaw(id, fieldIndex)
-    local layer = overlay[id]
-    if layer ~= nil then
-      local value = layer[fieldIndex]
-      if value ~= nil then
-        -- The registry's sentinel for "this Correction sets the field to nil", which a plain
-        -- nil in the overlay table cannot express.
-        if value == LibQuestieDB.Corrections.NIL then return nil end
-        return value
-      end
+  --- Deep copy of a plain normalized value tree. Correction and Source values carry no
+  --- metatables and no cycles — normalization and the registry guarantee plain data.
+  local function deepCopy(value)
+    local out = {}
+    for k, v in pairs(value) do
+      if type(v) == "table" then out[k] = deepCopy(v) else out[k] = v end
     end
-    return backend.readField(id, fieldIndex)
+    return out
+  end
+
+  --- A producer over a value the database retains: each call returns a fresh copy, so the
+  --- retained original can never be reached — or corrupted — through a read.
+  local function copyProducer(value)
+    return function() return deepCopy(value) end
   end
 
   -- The l10n overlay, when localization data is present. Set by src/l10n/overlay.lua after the
@@ -168,11 +202,14 @@ function shared.CreateEntity(meta, backend)
   end
 
   local function get(id, fieldIndex)
+    if type(id) ~= "number" then return nil end
     local byId = cache[id]
     if byId then
       local cached = byId[fieldIndex]
       if cached ~= nil then
         if cached == NIL then return nil end
+        -- A cached producer: execute it for a fresh mutable copy the caller owns.
+        if type(cached) == "function" then return cached() end
         return cached
       end
     else
@@ -180,30 +217,67 @@ function shared.CreateEntity(meta, backend)
       cache[id] = byId
     end
 
-    local value = readRaw(id, fieldIndex)
-
-    -- Localization sits above the Correction Overlay and below the cache: a translated value
-    -- is cached like any other, and a locale change drops the cache rather than re-reading.
-    -- A field with no translation falls back to the base entity value.
-    if l10nProvider then
-      local translated = l10nProvider(id, fieldIndex)
-      if translated ~= nil then value = translated end
+    -- The overlay probe happens here rather than in a helper so the localization step below
+    -- knows whether a Correction supplied the value: Corrections win over localization
+    -- (ADR 0003 D8) — a copied lookup must never replace corrected text with stale text, and
+    -- provenance must never name an owner for a value it did not supply.
+    local value, corrected
+    local layer = overlay[id]
+    if layer ~= nil then
+      local overlayValue = layer[fieldIndex]
+      if overlayValue ~= nil then
+        corrected = true
+        -- The registry's sentinel for "this Correction sets the field to nil", which a plain
+        -- nil in the overlay table cannot express.
+        if overlayValue ~= LibQuestieDB.Corrections.NIL then value = overlayValue end
+      end
     end
 
-    -- Numeric getters default to 0, never nil. An absent value means the field was nil at
-    -- source, and Questie returns 0 there. 0 is truthy in Lua, so consumers already test
-    -- `~= 0`; returning nil instead would change behaviour at ~290 call sites.
+    if not corrected then
+      -- Localization overlays base data only. A field with no translation falls back to the
+      -- base entity value; a corrected field never consults the lookup at all.
+      if l10nProvider then
+        local translated = l10nProvider(id, fieldIndex)
+        if translated ~= nil then value = translated end
+      end
+
+      if value == nil then
+        if types[fieldIndex] == "table" and backend.tableChunk then
+          -- Baked fast path: compile the stored literal into the producer directly — the
+          -- decoded table is never materialised on this side of the cache at all.
+          local producer = backend.tableChunk(id, fieldIndex)
+          if producer then
+            byId[fieldIndex] = producer
+            return producer()
+          end
+        else
+          value = backend.readField(id, fieldIndex)
+        end
+      end
+    end
+
+    -- Numeric getters default to 0, never nil — but only for an entity that exists in the
+    -- composed view (ADR 0003 D6). An unknown id reads nil for every field, so a missing
+    -- entity can no longer masquerade as a valid all-zero row.
     if value == nil then
       if types[fieldIndex] == "number" then
-        byId[fieldIndex] = 0
-        return 0
+        if not unionMap then buildUnion() end
+        if unionMap[id] == true then
+          byId[fieldIndex] = 0
+          return 0
+        end
       end
       byId[fieldIndex] = NIL
       return nil
     end
 
     if type(value) == "table" then
-      value = shared.Freeze(value)
+      -- Overlay, translated, and Source-backend tables reach here: cache a producer closing
+      -- over the retained value. Only copies ever escape, so the original — which may be the
+      -- overlay's composed row or Source mode's frozen base — stays unreachable.
+      local producer = copyProducer(value)
+      byId[fieldIndex] = producer
+      return producer()
     end
     byId[fieldIndex] = value
     return value
@@ -218,33 +292,52 @@ function shared.CreateEntity(meta, backend)
     return get(id, fieldIndex)
   end
 
-  --- Bulk field access. Returns values in the order the keys were requested.
+  --- Bulk field access. Returns a **packed** table — values in requested order plus `n`,
+  --- because nullable fields leave holes that make `#` and a bare `unpack` undefined.
+  --- Consume with `unpack(values, 1, values.n)`. An unknown entity returns nil (ADR D6/D11).
   function entity.GetAll(id, requestedKeys)
-    local values = {}
-    for i = 1, #requestedKeys do
+    if not entity.Exists(id) then return nil end
+    local n = #requestedKeys
+    local values = { n = n }
+    for i = 1, n do
       values[i] = entity.Get(id, requestedKeys[i])
     end
     return values
   end
 
-  --- Base data only, bypassing the Correction Overlay. For tooling and debugging.
+  --- Base data only, bypassing the Correction Overlay and localization. For tooling and
+  --- debugging. Table values are fresh copies here too, and an out-of-range or unknown key
+  --- returns nil identically in both modes (ADR 0003).
   function entity.GetRaw(id, key)
+    if type(id) ~= "number" then return nil end
     local fieldIndex = keys[key] or (type(key) == "number" and key or nil)
-    if not fieldIndex then return nil end
+    if not fieldIndex or fieldIndex < 1 or fieldIndex > fieldCount then return nil end
     local value = backend.readField(id, fieldIndex)
-    if value == nil and types[fieldIndex] == "number" then return 0 end
+    if value == nil then
+      if types[fieldIndex] == "number" then
+        -- GetRaw's existence gate is the backend alone: it bypasses the overlay, so an
+        -- overlay-added entity legitimately has no raw row.
+        local _, map = backend.getAllIds()
+        if map[id] == true then return 0 end
+      end
+      return nil
+    end
+    if type(value) == "table" then return deepCopy(value) end
     return value
   end
 
+  --- Every id in the composed view: backend ids plus overlay-added ids (ADR D7). The list is
+  --- ascending; the hashmap form is a drop-in for Questie's `*Pointers[id]` checks. Callers
+  --- must treat both as read-only — they are shared, not copies.
   function entity.GetAllIds(hashmap)
-    local list, map = backend.getAllIds()
-    if hashmap == true then return map end
-    return list
+    if not unionList then buildUnion() end
+    if hashmap == true then return unionMap end
+    return unionList
   end
 
   function entity.Exists(id)
-    local _, map = backend.getAllIds()
-    return map[id] == true
+    if not unionMap then buildUnion() end
+    return unionMap[id] == true
   end
 
   --- Drop cached values so the next read recomposes. Called when the overlay changes, and

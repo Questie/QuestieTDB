@@ -183,10 +183,12 @@ local function verifyFlavor(flavor, opts)
       local meta = LibQuestieDB.Meta[entityType.name]
       local sourceEntities = loadedFlavor[entityType.name].entities
 
-      -- The ID list must round-trip in both forms consumers build from it.
+      -- The ID list must round-trip in both forms consumers build from it. This reads the
+      -- BACKEND's list, not `entity.GetAllIds()`: public enumeration is the composed view
+      -- (ADR 0003 D7), which legitimately includes entities Dynamic Corrections add, while
+      -- this check's subject is the stored artifact alone.
       local sourceIds = lib.sortedIds(sourceEntities)
-      local storedList = entity.GetAllIds()
-      local storedMap = entity.GetAllIds(true)
+      local storedList, storedMap = entity.backend.getAllIds()
       if not lib.deepEqual(sourceIds, storedList) then
         io.write(("  MISMATCH %s IDS-LIST: %d source ids, %d stored\n")
           :format(entityType.name, #sourceIds, #storedList))
@@ -236,19 +238,22 @@ local function verifyFlavor(flavor, opts)
         end
       end
 
-      -- An unknown entity ID must read as nil, never as a stray value. ADR 0003 Decision 6
-      -- gates numeric defaults on existence, so the target contract is nil for every field;
-      -- the pre-ADR runtime returned the numeric default. Both are accepted while the
-      -- runtime half lands, and anything else fails. TODO(WS4): tighten to nil-only once
-      -- src/read implements existence-gated defaults.
+      -- An unknown entity ID reads as nil for every field — numeric defaults are gated on
+      -- existence (ADR 0003 Decision 6), so a missing entity can never masquerade as a valid
+      -- all-zero row. Checked through both the raw and the composed getter.
       local absentId = sourceIds[#sourceIds] + 1000000
       for fieldIndex = 1, meta.fieldCount do
        if not opts.fields or opts.fields[meta.names[fieldIndex]] then
         local value = entity.GetRaw(absentId, fieldIndex)
-        local legacyDefault = normalize.default(meta, fieldIndex)
-        if value ~= nil and value ~= legacyDefault then
-          io.write(("  MISMATCH %s unknown id %d field %d: expected nil (or legacy %s), got %s\n")
-            :format(entityType.name, absentId, fieldIndex, tostring(legacyDefault), tostring(value)))
+        if value ~= nil then
+          io.write(("  MISMATCH %s unknown id %d field %d: expected nil, got %s\n")
+            :format(entityType.name, absentId, fieldIndex, tostring(value)))
+          report.errors = report.errors + 1
+        end
+        local composedValue = entity.Get(absentId, fieldIndex)
+        if composedValue ~= nil then
+          io.write(("  MISMATCH %s unknown id %d field %d (composed): expected nil, got %s\n")
+            :format(entityType.name, absentId, fieldIndex, tostring(composedValue)))
           report.errors = report.errors + 1
         end
        end

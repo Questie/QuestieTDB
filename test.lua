@@ -585,43 +585,33 @@ end)
 -- Frozen values
 --------------------------------------------------------------------------------------------
 
-suite("freeze", function()
+suite("value-ownership", function()
+  -- ADR 0003 Decision 10, revised: table reads return a FRESH MUTABLE COPY on every read —
+  -- the caller owns it outright, exactly matching the compiler semantics Questie's ~290 call
+  -- sites were written against. Freezing now guards internal shared structures only
+  -- (Source-mode base data), where it still degrades rather than fails.
   local flavor = config.flavorByName.Vanilla
   local tocPath = config.tocPath(flavor)
   if not lib.fileExists(tocPath) then
-    io.write("  SKIP freeze: ", tocPath, " not generated\n")
+    io.write("  SKIP value-ownership: ", tocPath, " not generated\n")
     return
   end
 
   local freezeLib = dofile("emulator/freeze.lua")
 
-  -- The substitute itself.
+  -- The offline freeze substitute itself, still needed for the internal-structure guard.
   local plain = { 1, 2, { 3 } }
   freezeLib.freeze(plain)
   check(freezeLib.isFrozen(plain), "freeze marks the table")
   check(not pcall(function() plain[4] = 9 end), "writing a new key to a frozen table must raise")
   equal(plain[1], 1, "reads through a frozen table are unaffected")
   check(freezeLib.freeze(plain) == plain, "re-freezing is harmless and returns the same table")
-
-  -- `__newindex` fires only for absent keys in Lua 5.1, so an overwrite or a `= nil` deletion
-  -- slips past prevention. The audit is what covers it — and the audit is the half that has to
-  -- work, because `GetQuest`'s `creatureObjective[3] = nil` is exactly an existing-key write.
-  equal(select(1, freezeLib.audit()), 0, "a untouched frozen table audits clean")
-  rawset(plain, 1, 9)
-  equal(select(1, freezeLib.audit()), 1, "the audit catches an overwrite __newindex cannot see")
-  freezeLib.reset()
-  local nilled = { 1, 2, 3 }
-  freezeLib.freeze(nilled)
-  rawset(nilled, 3, nil)
-  equal(select(1, freezeLib.audit()), 1, "the audit catches a `= nil` deletion")
   freezeLib.reset()
 
-  local function loadFrozen(path, clientOpts)
+  local function loadMode(path, clientOpts)
     client.reset()
     client.install(clientOpts or {})
-    if path == config.addonName .. ".toc" then
-      -- source mode needs no metadata
-    else
+    if path ~= config.addonName .. ".toc" then
       emulator.install(config.addonName, emulator.parse(path))
     end
     local Lib = emulator.loadAddon(path, config.addonName)
@@ -629,74 +619,275 @@ suite("freeze", function()
     return Lib
   end
 
-  -- Baked mode: a returned table is frozen, and mutating it raises.
-  local baked = loadFrozen(tocPath)
-  check(baked.shared.canFreeze, "freeze capability is detected once a substitute is installed")
-  local startedBy = baked.Quest.Get(2, "startedBy")
-  check(type(startedBy) == "table", "quest 2 startedBy is a table")
-  check(baked.shared.IsFrozen(startedBy), "baked mode returns a frozen table")
-  check(not pcall(function() startedBy[99] = true end), "mutating a baked table value must raise")
-  -- The `creatureObjective[3] = nil` shape: prevention cannot see it offline, the audit can.
-  -- Delete a key the table actually has — quest 2's startedBy is sparse.
-  local presentKey = next(startedBy)
-  rawset(startedBy, presentKey, nil)
-  check(select(1, freezeLib.audit()) >= 1, "the audit catches a deletion inside a returned table")
+  --- The fresh-per-read contract, checked identically in both modes.
+  local function checkFreshPerRead(Lib, label)
+    local first = Lib.Quest.Get(2, "startedBy")
+    local second = Lib.Quest.Get(2, "startedBy")
+    check(type(first) == "table", label .. ": quest 2 startedBy is a table")
+    check(first ~= second, label .. ": two reads return distinct tables")
+    equal(first, second, label .. ": distinct tables carry equal content")
 
-  -- Nested tables are frozen too, which is the case a shallow freeze would miss.
-  local spawns = baked.Npc.Get(30, "spawns")
-  check(type(spawns) == "table", "npc 30 spawns is a table")
-  local zone = next(spawns)
-  check(baked.shared.IsFrozen(spawns[zone]), "nested tables are frozen")
+    -- Mutating what a read handed out never reaches the database or a later read. This is
+    -- the exact `creatureObjective[3] = nil` shape that used to require a mutation audit.
+    local key = next(first)
+    first[key] = nil
+    first[999] = "consumer scribble"
+    local third = Lib.Quest.Get(2, "startedBy")
+    equal(third, second, label .. ": mutation of a returned table never reaches the next read")
+    check(third[999] == nil, label .. ": the scribbled key is absent from a fresh read")
 
-  -- Scalars are cached without freezing, because strings and numbers cannot be mutated.
-  equal(baked.Quest.Get(2, "name"), "Sharptalon's Claw", "scalar reads still work under freezing")
-  equal(baked.Quest.Get(2, "name"), baked.Quest.Get(2, "name"), "scalar reads are stable")
+    -- Nested independence: inner tables are fresh too.
+    local spawnsA = Lib.Npc.Get(30, "spawns")
+    local spawnsB = Lib.Npc.Get(30, "spawns")
+    check(type(spawnsA) == "table", label .. ": npc 30 spawns is a table")
+    local zone = next(spawnsA)
+    check(spawnsA[zone] ~= spawnsB[zone], label .. ": nested tables are independent copies")
+    spawnsA[zone][1] = "corrupted"
+    equal(Lib.Npc.Get(30, "spawns"), spawnsB, label .. ": nested mutation never propagates")
 
-  -- Source mode: base data is frozen after load, so a correction or a consumer cannot corrupt it.
-  local source = loadFrozen(config.addonName .. ".toc", { expansion = "Classic" })
-  local sourceStartedBy = source.Quest.Get(2, "startedBy")
-  check(source.shared.IsFrozen(sourceStartedBy), "source mode returns a frozen table")
-  check(not pcall(function() sourceStartedBy[99] = true end), "mutating source base data must raise")
-  freezeLib.audit() -- absorb the deliberate mutation above
+    -- Scalars are immutable, so they stay plainly cached and stable.
+    equal(Lib.Quest.Get(2, "name"), "Sharptalon's Claw", label .. ": scalar reads work")
+    equal(Lib.Quest.Get(2, "name"), Lib.Quest.Get(2, "name"), label .. ": scalar reads are stable")
 
+    -- GetRaw values are caller-owned copies too.
+    local rawA = Lib.Quest.GetRaw(2, "startedBy")
+    local rawB = Lib.Quest.GetRaw(2, "startedBy")
+    check(rawA ~= rawB, label .. ": GetRaw returns a fresh copy per call")
+    equal(rawA, rawB, label .. ": GetRaw copies carry equal content")
+  end
+
+  local baked = loadMode(tocPath)
+  checkFreshPerRead(baked, "baked")
+
+  local source = loadMode(config.addonName .. ".toc", { expansion = "Classic" })
+  checkFreshPerRead(source, "source")
+
+  -- Overlay-supplied tables are fresh per read as well, and the composed row is unreachable.
+  local objectivesIndex = baked.Meta.QuestMeta.questKeys.objectivesText
+  baked.Corrections.RegisterRuntimeCorrection("OwnershipTest", "Quest", "objectives",
+    function() return { [2] = { [objectivesIndex] = { "corrected objective" } } } end, 10)
+  baked.Corrections.ApplyRegisteredCorrections("OwnershipTest")
+  local correctedA = baked.Quest.Get(2, "objectivesText")
+  local correctedB = baked.Quest.Get(2, "objectivesText")
+  check(correctedA ~= correctedB, "overlay table values are fresh per read")
+  equal(correctedA, { "corrected objective" }, "the corrected value reads through")
+  correctedA[1] = "scribbled"
+  equal(baked.Quest.Get(2, "objectivesText"), { "corrected objective" },
+    "mutating an overlay-supplied value never reaches the overlay")
+  baked.Corrections.UnregisterCorrection("OwnershipTest", "Quest", "objectives")
+  baked.Corrections.ApplyRegisteredCorrections("OwnershipTest")
+
+  -- Source mode still freezes its base data: internal shared structure, not a returned value.
   local base = source.read.source.entities.Quest
   check(source.shared.IsFrozen(base), "source mode base data itself is frozen")
   check(not pcall(function() base[999999] = {} end), "writing a new entity into base data must raise")
 
-  -- The VM can REFUSE to freeze. Verified on Classic Era 1.15.9: `table.freeze` enforces
-  -- ownership and raises when the table's owner differs from the calling function's, which is
-  -- what happens in Baked mode whenever a consumer triggers the lazy decode. A read must
-  -- survive that — before it was handled the getter threw, never cached, and threw again on
-  -- every subsequent call.
-  local refusing = loadFrozen(tocPath)
-  refusing.shared.SetFreezeImplementation(function()
+  -- And the internal freeze still degrades rather than fails when the VM refuses.
+  source.shared.SetFreezeImplementation(function()
     error("attempted to freeze a table not owned by the calling function " ..
           "(expected 'QuestieTDB', got '*** ForceTaint_Strong ***')", 0)
   end)
-  refusing.shared.SetIsFrozenImplementation(function() return false end)
-  refusing.shared.freezeRefused = 0
-
-  local okRead, refusedValue = pcall(function() return refusing.Quest.Get(2, "startedBy") end)
-  check(okRead, "a read survives the VM refusing to freeze")
-  check(type(refusedValue) == "table", "the value still comes back, unfrozen")
-  check(refusing.shared.freezeRefused > 0, "the refusal is counted rather than raised")
-  check(refusing.shared.lastFreezeError ~= nil, "the refusal reason is recorded for diagnosis")
-
-  local okAgain, again = pcall(function() return refusing.Quest.Get(2, "startedBy") end)
-  check(okAgain, "the second read also survives")
-  equal(again, refusedValue, "and returns the same value, so the cache still populated")
-  equal(refusing.Quest.Get(2, "name"), "Sharptalon's Claw", "scalar reads are unaffected")
-
-  -- No frozen table may carry a redirecting __newindex. Offline the metatable *is* the
-  -- mechanism and its __newindex raises; what must never happen is a metamethod that
-  -- swallows the write.
-  local meta = getmetatable(startedBy)
-  if meta then
-    check(type(meta.__newindex) == "function", "a frozen table's __newindex must exist to raise")
-    check(not pcall(rawget(meta, "__newindex"), startedBy, 1, 1), "__newindex must raise, not redirect")
-  end
+  source.shared.freezeRefused = 0
+  local refused = source.shared.Freeze({ 1, { 2 } })
+  check(type(refused) == "table", "a refused freeze still returns the value")
+  check(source.shared.freezeRefused > 0, "the refusal is counted rather than raised")
+  check(source.shared.lastFreezeError ~= nil, "the refusal reason is recorded for diagnosis")
 
   client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
+-- Read contract: existence, composed enumeration, precedence, season gating
+--------------------------------------------------------------------------------------------
+
+suite("read-contract", function()
+  local tocPath = config.tocPath(config.flavorByName.Vanilla)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP read-contract: ", tocPath, " not generated\n")
+    return
+  end
+
+  local function loadMode(path, clientOpts)
+    client.reset()
+    client.install(clientOpts or {})
+    if path ~= config.addonName .. ".toc" then
+      emulator.install(config.addonName, emulator.parse(path))
+    end
+    return emulator.loadAddon(path, config.addonName)
+  end
+
+  --- ADR D6: an unknown id reads nil for EVERY field — including numerics, whose default-0
+  --- rule is gated on existence — and invalid ids never reach cache internals.
+  local function checkUnknownIds(Lib, label)
+    equal(Lib.Quest.Get(999999999, "requiredLevel"), nil, label .. ": unknown id numeric field is nil")
+    equal(Lib.Quest.Get(999999999, "name"), nil, label .. ": unknown id string field is nil")
+    equal(Lib.Quest.Exists(999999999), false, label .. ": unknown id does not exist")
+    equal(Lib.Quest.GetAll(999999999, { "name" }), nil, label .. ": unknown id GetAll is nil")
+    equal(Lib.Quest.GetRaw(999999999, "requiredLevel"), nil, label .. ": unknown id GetRaw is nil")
+
+    check(pcall(Lib.Quest.Get, nil, "name"), label .. ": Get(nil) must not raise")
+    equal(Lib.Quest.Get(nil, "name"), nil, label .. ": Get(nil) is nil")
+    equal(Lib.Quest.name(nil), nil, label .. ": named getter with nil id is nil")
+    equal(Lib.Quest.Get("2", "name"), nil, label .. ": a string id is invalid, not coerced")
+    equal(Lib.Quest.GetRaw(nil, "name"), nil, label .. ": GetRaw(nil) is nil")
+    equal(Lib.Quest.GetAll(nil, { "name" }), nil, label .. ": GetAll(nil) is nil")
+
+    -- GetRaw bounds parity (was: source raised where baked returned nil).
+    equal(Lib.Quest.GetRaw(2, 999), nil, label .. ": GetRaw out-of-range index is nil")
+    equal(Lib.Quest.GetRaw(2, -5), nil, label .. ": GetRaw negative index is nil")
+    equal(Lib.Quest.GetRaw(2, "nonexistentField"), nil, label .. ": GetRaw unknown key is nil")
+    equal(Lib.Quest.Get(2, 999), nil, label .. ": Get out-of-range index is nil")
+
+    -- An existing entity still defaults absent numerics to 0 — the ~290-call-site contract.
+    check(type(Lib.Quest.Get(2, "requiredSourceItems")) ~= "nil" or
+          Lib.Quest.Get(2, "requiredSourceItems") == nil, label .. ": probe read")
+    equal(type(Lib.Quest.Get(2, "requiredLevel")), "number",
+      label .. ": existing entity numeric field is a number")
+  end
+
+  local baked = loadMode(tocPath)
+  checkUnknownIds(baked, "baked")
+
+  --- ADR D7: an entity a Dynamic Correction adds is readable, enumerable, and exists — all
+  --- three or none — and withdrawal removes all three on the next recomposition.
+  local addedId = 4999999
+  check(baked.Quest.Exists(addedId) == false, "the added id does not exist beforehand")
+  local baseCount = #baked.Quest.GetAllIds()
+  baked.Corrections.RegisterRuntimeCorrection("AddingAddon", "Quest", "add-entity",
+    function() return { [addedId] = { [1] = "Dynamically Added Quest" } } end, 10)
+  baked.Corrections.ApplyRegisteredCorrections("AddingAddon")
+
+  equal(baked.Quest.Get(addedId, "name"), "Dynamically Added Quest", "the added entity is readable")
+  equal(baked.Quest.Exists(addedId), true, "the added entity exists")
+  equal(baked.Quest.GetAllIds(true)[addedId], true, "the added entity is in the hashmap")
+  equal(#baked.Quest.GetAllIds(), baseCount + 1, "the added entity is in the list")
+  local sorted = true
+  local list = baked.Quest.GetAllIds()
+  for i = 2, #list do if list[i - 1] > list[i] then sorted = false break end end
+  check(sorted, "the composed id list stays ascending")
+  equal(baked.Quest.Get(addedId, "requiredLevel"), 0,
+    "an added entity's absent numeric field defaults to 0 like any existing entity")
+  local packed = baked.Quest.GetAll(addedId, { "name", "requiredLevel" })
+  check(packed ~= nil and packed[1] == "Dynamically Added Quest",
+    "GetAll works for an added entity")
+
+  baked.Corrections.UnregisterCorrection("AddingAddon", "Quest", "add-entity")
+  baked.Corrections.ApplyRegisteredCorrections("AddingAddon")
+  equal(baked.Quest.Exists(addedId), false, "withdrawal removes existence")
+  equal(baked.Quest.Get(addedId, "name"), nil, "withdrawal removes readability")
+  equal(#baked.Quest.GetAllIds(), baseCount, "withdrawal removes the id from enumeration")
+
+  --- ADR D8: Corrections win over localization, and provenance is honest.
+  if baked.l10n.IsAvailable() then
+    baked.l10n.SetLocale("deDE")
+    equal(baked.Quest.Get(2, "name"), "Klaue von Scharfkralle", "the translation reads through")
+    baked.Corrections.RegisterRuntimeCorrection("FixingAddon", "Quest", "fix-name",
+      function() return { [2] = { [1] = "Corrected Name" } } end, 10)
+    baked.Corrections.ApplyRegisteredCorrections("FixingAddon")
+    equal(baked.Quest.Get(2, "name"), "Corrected Name",
+      "a corrected field is NOT replaced by a stale lookup translation")
+    equal(baked.GetProvenance("Quest", 2, "name"), "FixingAddon",
+      "provenance names the owner whose value is actually returned")
+    equal(baked.Quest.Get(2, "objectivesText") ~= nil, true,
+      "an uncorrected localizable field still translates")
+    baked.Corrections.UnregisterCorrection("FixingAddon", "Quest", "fix-name")
+    baked.Corrections.ApplyRegisteredCorrections("FixingAddon")
+    equal(baked.Quest.Get(2, "name"), "Klaue von Scharfkralle",
+      "withdrawing the correction restores the translation")
+    baked.l10n.SetLocale("enUS")
+  end
+
+  -- The same contract holds in source mode.
+  local source = loadMode(config.addonName .. ".toc", { expansion = "Classic" })
+  checkUnknownIds(source, "source")
+
+  client.reset()
+
+  --- ADR D9: SoD manifest entries register only when the season is actually active, and
+  --- parameterized sets are recorded for explicit application, never applied automatically.
+  local runtime = dofile("generator/runtime.lua")
+  local savedSeasons, savedEnum = rawget(_G, "C_Seasons"), rawget(_G, "Enum")
+
+  local syntheticManifest = {
+    { file = "Era/fake.lua", module = "FakeEra", datatype = "Quest",
+      dynamic = { "LoadDynamic" }, expansions = { Classic = true },
+      parameterized = { "LoadParameterized" } },
+    { file = "Sod/fake.lua", module = "FakeSod", datatype = "Quest",
+      dynamic = { "LoadSod" }, expansions = { Classic = true } },
+  }
+  local fakeModules = {
+    FakeEra = {
+      LoadDynamic = function() return { [2] = { [4] = 42 } } end,
+      LoadParameterized = function(_, location)
+        return { [2] = { [1] = "Faire at " .. tostring(location) } }
+      end,
+    },
+    FakeSod = { LoadSod = function() return { [2] = { [4] = 60 } } end },
+  }
+  local function registerSynthetic()
+    local Lib = runtime.build()
+    Lib.CorrectionManifest = syntheticManifest
+    local registered = Lib.CorrectionRegister.FromManifest(
+      Lib.config.flavorByName.Vanilla, function(name) return fakeModules[name] end)
+    local sodEntries, eraEntries = 0, 0
+    for _, entry in ipairs(Lib.Corrections.Select({ dynamic = true })) do
+      if entry.name:find("^Sod/") then sodEntries = sodEntries + 1 end
+      if entry.name:find("^Era/") then eraEntries = eraEntries + 1 end
+    end
+    return Lib, registered, sodEntries, eraEntries
+  end
+
+  _G.C_Seasons = { GetActiveSeason = function() return 0 end }
+  _G.Enum = { SeasonID = { SeasonOfDiscovery = 2 } }
+  local _, _, sodInactive, eraInactive = registerSynthetic()
+  equal(sodInactive, 0, "no season active: SoD sets do not register")
+  equal(eraInactive, 1, "no season active: Era sets register normally")
+
+  _G.C_Seasons = { GetActiveSeason = function() return 2 end }
+  local activeLib, _, sodActive = registerSynthetic()
+  equal(sodActive, 1, "SoD active: SoD sets register")
+
+  _G.C_Seasons = nil
+  local _, _, sodAbsent = registerSynthetic()
+  equal(sodAbsent, 0, "no C_Seasons API at all: SoD sets do not register")
+
+  -- Parameterized sets: recorded but never auto-registered; explicit application carries the
+  -- consumer's argument; re-application with a new argument replaces, never accumulates.
+  local function countByName(Lib, pattern)
+    local n = 0
+    for _, entry in ipairs(Lib.Corrections.Select({ dynamic = true })) do
+      if entry.name:find(pattern, 1, true) then n = n + 1 end
+    end
+    return n
+  end
+  equal(countByName(activeLib, "LoadParameterized"), 0,
+    "a parameterized set is never registered automatically")
+  check(activeLib.CorrectionRegister.parameterized.LoadParameterized ~= nil,
+    "the parameterized set is recorded for explicit application")
+
+  local applied = activeLib.Corrections.ApplyParameterized("LoadParameterized", "Elwynn")
+  equal(applied, 1, "ApplyParameterized registers the recorded set")
+  equal(countByName(activeLib, "LoadParameterized"), 1, "exactly one entry after application")
+  local entries = activeLib.Corrections.Select({ dynamic = true })
+  local materialized
+  for _, entry in ipairs(entries) do
+    if entry.name:find("LoadParameterized", 1, true) then materialized = entry.func() end
+  end
+  equal(materialized[2][1], "Faire at Elwynn", "the consumer's argument reaches the correction")
+
+  activeLib.Corrections.ApplyParameterized("LoadParameterized", "Mulgore")
+  equal(countByName(activeLib, "LoadParameterized"), 1,
+    "re-application with a new argument replaces rather than accumulates")
+  for _, entry in ipairs(activeLib.Corrections.Select({ dynamic = true })) do
+    if entry.name:find("LoadParameterized", 1, true) then materialized = entry.func() end
+  end
+  equal(materialized[2][1], "Faire at Mulgore", "the new argument wins")
+
+  equal(activeLib.Corrections.ApplyParameterized("NoSuchFunction", 1), 0,
+    "an unknown parameterized name applies nothing")
+
+  _G.C_Seasons = savedSeasons
+  _G.Enum = savedEnum
 end)
 
 --------------------------------------------------------------------------------------------
@@ -947,6 +1138,18 @@ suite("api", function()
   local bulk = Lib.Quest.GetAll(2, { "name", "requiredLevel" })
   equal(bulk[1], "Sharptalon's Claw", "GetAll returns values in the requested order")
   equal(bulk[2], 20, "GetAll second value")
+  equal(bulk.n, 2, "GetAll is packed: n carries the requested count")
+
+  -- Nullable fields leave holes, which made a bare `unpack` silently drop trailing values.
+  -- The packed shape makes the documented pattern `unpack(values, 1, values.n)` lossless.
+  local holey = Lib.Quest.GetAll(2, { "name", "triggerEnd", "requiredLevel" })
+  equal(holey.n, 3, "a nil middle field still counts in n")
+  local a, b, c = unpack(holey, 1, holey.n)
+  equal(a, "Sharptalon's Claw", "unpack with n: first")
+  equal(b, nil, "unpack with n: the nil hole survives")
+  equal(c, 20, "unpack with n: the value after the hole is not dropped")
+  equal(Lib.Quest.GetAll(999999999, { "name" }), nil, "GetAll of an unknown entity is nil")
+
   check(#Lib.Quest.GetAllIds() > 4000, "GetAllIds returns the list")
   equal(Lib.Quest.GetAllIds(true)[2], true, "GetAllIds(true) returns a hashmap")
   equal(Lib.Quest.Exists(2), true, "Exists")
@@ -961,12 +1164,16 @@ suite("api", function()
   equal(Lib.Meta.Quest.types[1], "string", "Meta.Quest.types")
   equal(Lib.Meta.Quest.fieldCount, 36, "Meta.Quest.fieldCount")
 
-  -- A contract version is published and mismatch is detectable at load.
+  -- A contract version is published, and the check is a range, not an equality (ADR D12):
+  -- additive releases must not break consumers built against an older contract.
   equal(Lib.contractVersion, config.contractVersion, "contractVersion published")
   equal(Lib.RequireContract(config.contractVersion), true, "matching contract passes")
   local ok, message = Lib.RequireContract(config.contractVersion + 98)
-  equal(ok, false, "mismatched contract fails")
+  equal(ok, false, "a newer-than-provided contract fails")
   check(type(message) == "string" and message:find("mismatch"), "mismatch carries a specific message")
+  equal(Lib.RequireContract(config.minSupportedContract - 1), false,
+    "a contract below the supported floor fails")
+  equal(Lib.RequireContract(nil), false, "a non-numeric required contract fails cleanly")
 
   -- A third-party addon registers Corrections with no special treatment.
   local registrar = Lib.GetRegistrar("ThirdPartyAddon")
@@ -982,12 +1189,19 @@ suite("api", function()
   check(#owners >= 2, "GetOwners exposes applied order")
   equal(owners[#owners], "ThirdPartyAddon", "the last applied owner is last")
 
-  -- Cache lifecycle is public.
+  -- Cache lifecycle is public, and the datatype argument is case-insensitive like the
+  -- corrections API — `InvalidateCache("quest", 2)` silently no-oping was a live-probed bug.
   check(type(Lib.InvalidateCache) == "function", "InvalidateCache is public")
   Lib.InvalidateCache("Quest", 2)
   equal(Lib.Quest.Get(2, "name"), "Third-party name", "invalidation preserves the composed view")
   Lib.InvalidateCache()
   equal(Lib.Quest.Get(2, "name"), "Third-party name", "a full invalidation also recomposes")
+  local invalidatedWith
+  local originalInvalidate = Lib.Quest.InvalidateCache
+  Lib.Quest.InvalidateCache = function(id) invalidatedWith = id; return originalInvalidate(id) end
+  Lib.InvalidateCache("quest", 2)
+  equal(invalidatedWith, 2, "a lowercase datatype reaches the entity")
+  Lib.Quest.InvalidateCache = originalInvalidate
 
   -- Read mode is public and unmistakable.
   equal(Lib.readMode, "baked", "readMode is published")

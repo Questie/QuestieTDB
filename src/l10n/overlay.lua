@@ -15,14 +15,12 @@
 -- With no localization data present — Source mode, or a Baked artifact generated with
 -- `--no-l10n` — every getter behaves exactly as if this file were absent.
 
-local ADDON_NAME, LibQuestieDB = ...
+local _, LibQuestieDB = ...
 
 local overlay = {}
 
 local config = LibQuestieDB.config
 local codec = LibQuestieDB.Meta.codec
-
-local find, sub, gsub = string.find, string.sub, string.gsub
 
 --------------------------------------------------------------------------------------------
 -- Locale
@@ -30,9 +28,6 @@ local find, sub, gsub = string.find, string.sub, string.gsub
 
 overlay.locales = config.locales
 overlay.separator = config.localeSeparator
-
---- Separator between the elements of a list-valued field — only `objectivesText`.
-overlay.listSeparator = "\226\128\150"
 
 overlay.localeIndex = {}
 for index, locale in ipairs(config.locales) do overlay.localeIndex[locale] = index end
@@ -101,17 +96,11 @@ function overlay.CreateProvider(meta)
     if segment == nil then return nil end
 
     if mapping.list then
-      local list, position = {}, 1
-      while true do
-        local sepStart, sepEnd = find(segment, overlay.listSeparator, position, true)
-        if not sepStart then
-          list[#list + 1] = sub(segment, position)
-          break
-        end
-        list[#list + 1] = sub(segment, position, sepStart - 1)
-        position = sepEnd + 1
-      end
-      return list
+      -- A list-typed field's segment is a Lua table literal, serialized by the generator with
+      -- the same serializer entity fields use, so the translated value keeps the base field's
+      -- exact shape — element counts can no longer differ per locale. The shared getter wraps
+      -- the decoded table in a fresh-per-read producer like any other table value.
+      return codec.decodeTable(segment)
     end
 
     return segment
