@@ -36,7 +36,13 @@ local function stubFrame()
 end
 
 --- Install client globals. Call before loading an addon TOC.
----@param opts table? { expansion = "Classic" }
+---
+--- The persona is parameterized so suites can load the addon as someone other than the
+--- default Alliance Human 60 on a non-seasonal realm — Horde branches in the faction fixes
+--- and the season-gated SoD sets never execute under the default persona, and untested
+--- branches are where the sibling implementation's review found real bugs.
+---@param opts table? { expansion = "Classic", faction = "Horde", classFile = "SHAMAN",
+---  raceName = "Orc", level = 25, locale = "deDE", season = "SoD" }
 function client.install(opts)
   opts = opts or {}
 
@@ -72,7 +78,17 @@ function client.install(opts)
   _G.tremove = table.remove
   _G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
   _G.C_Timer = { After = function(_, fn) if fn then fn() end end, NewTicker = noop }
-  _G.C_Seasons = { HasActiveSeason = function() return false end, GetActiveSeason = function() return 0 end }
+
+  -- Season gating (ADR 0003 D9). `opts.season = "SoD"` models a live Season of Discovery
+  -- realm; the default models plain Era, where the SoD correction sets must not register.
+  -- `Enum.SeasonID` is installed alongside because that is where the runtime reads the id.
+  local seasonId = opts.season == "SoD" and 2 or 0
+  _G.Enum = _G.Enum or {}
+  _G.Enum.SeasonID = _G.Enum.SeasonID or { SeasonOfDiscovery = 2 }
+  _G.C_Seasons = {
+    HasActiveSeason = function() return seasonId ~= 0 end,
+    GetActiveSeason = function() return seasonId end,
+  }
 
   return _G
 end

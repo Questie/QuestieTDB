@@ -56,7 +56,8 @@ Two behaviours to internalise before writing anything:
 ```sh
 lua5.1 generate.lua all           # every flavor            ~50s
 lua5.1 verify.lua                 # round-trip verification ~96s
-lua5.1 equivalence.lua            # source == baked         ~57s
+lua5.1 equivalence.lua            # source == baked, all read forms + self-proof
+lua5.1 reconstruct.lua Vanilla    # artifact == byte-exact re-derivation ~8s
 lua5.1 validators/run.lua         # cross-entity invariants  ~4s
 lua5.1 test.lua                   # unit tests and negative controls
 ```
@@ -105,7 +106,8 @@ support/                  zones, quest XP, drop tables, faction templates
 
 generate.lua              data + Static Corrections -> TOC
 verify.lua                round-trip verification
-equivalence.lua           source/baked equivalence
+equivalence.lua           source/baked equivalence, every read form, self-proving
+reconstruct.lua           byte-exact artifact reconstruction against the generator
 test.lua                  unit tests and negative controls
 generator/                offline internals
 emulator/                 metadata emulator, client stubs, freeze substitute

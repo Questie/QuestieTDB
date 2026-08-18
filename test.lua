@@ -1606,6 +1606,160 @@ suite("quantization", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Personas: branches the default Alliance-Human persona can never execute
+--------------------------------------------------------------------------------------------
+
+suite("personas", function()
+  local tocPath = config.tocPath(config.flavorByName.Vanilla)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP personas: ", tocPath, " not generated\n")
+    return
+  end
+
+  local function loadMode(path, clientOpts)
+    client.reset()
+    client.install(clientOpts)
+    if path ~= config.addonName .. ".toc" then
+      emulator.install(config.addonName, emulator.parse(path))
+    end
+    return emulator.loadAddon(path, config.addonName)
+  end
+
+  -- Faction oracle: Soothing Spices (item 3713). `LoadFactionFixes` points its relatedQuests
+  -- at the Alliance quest 555 or the Horde quest 7321 — src/corrections/Era/
+  -- classicItemFixes.lua:1612 (Alliance) and :1632 (Horde). Literal expected values, so a
+  -- persona plumbing regression cannot pass by comparing one wrong answer against itself.
+  local sourceAlliance = loadMode(config.addonName .. ".toc", { expansion = "Classic" })
+  equal(sourceAlliance.Item.Get(3713, "relatedQuests"), { 555, 1218 },
+    "source Alliance: Soothing Spices relates to quest 555")
+
+  local sourceHorde = loadMode(config.addonName .. ".toc", { expansion = "Classic", faction = "Horde" })
+  equal(sourceHorde.Item.Get(3713, "relatedQuests"), { 7321, 1218 },
+    "source Horde: Soothing Spices relates to quest 7321 — the Horde branch actually ran")
+
+  local bakedHorde = loadMode(tocPath, { faction = "Horde" })
+  equal(bakedHorde.Item.Get(3713, "relatedQuests"), { 7321, 1218 },
+    "baked Horde: the faction branch composes identically over the artifact")
+
+  -- Season persona: with Season of Discovery active the gated Sod/ sets register and the SoD
+  -- base quests join the composed view. Counts are compared, not hardcoded — the data moves.
+  local plain = loadMode(config.addonName .. ".toc", { expansion = "Classic" })
+  local plainIds = plain.Quest.GetAllIds(true)
+  local plainCount = #plain.Quest.GetAllIds()
+
+  local sod = loadMode(config.addonName .. ".toc", { expansion = "Classic", season = "SoD" })
+  local sodList = sod.Quest.GetAllIds()
+  check(#sodList > plainCount, "SoD persona: the composed quest list grows")
+
+  local addedId
+  for _, id in ipairs(sodList) do
+    if not plainIds[id] then addedId = id break end
+  end
+  check(addedId ~= nil, "SoD persona: an added quest id is enumerable")
+  if addedId then
+    equal(sod.Quest.Exists(addedId), true, "SoD persona: an added quest exists")
+    check(select("#", sod.Quest.Get(addedId, 1)) >= 0, "SoD persona: an added quest reads without raising")
+    equal(plain.Quest.Exists(addedId), false, "plain Era: the same quest does not exist")
+  end
+
+  local sodSets = 0
+  for _, entry in ipairs(sod.Corrections.Select({ dynamic = true })) do
+    if entry.name:find("^Sod/") then sodSets = sodSets + 1 end
+  end
+  check(sodSets > 0, "SoD persona: Sod/ correction sets registered")
+
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
+-- Perf guard: the cached hot path must not allocate beyond the fresh value itself
+--------------------------------------------------------------------------------------------
+
+suite("perf-guard", function()
+  local tocPath = config.tocPath(config.flavorByName.Vanilla)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP perf-guard: ", tocPath, " not generated\n")
+    return
+  end
+
+  client.reset()
+  client.install({})
+  local map = emulator.parse(tocPath)
+  emulator.install(config.addonName, map)
+  local Lib = emulator.loadAddon(tocPath, config.addonName)
+
+  local N = 5000
+
+  --- Bytes allocated by `fn` run N times, with the collector stopped so every allocation is
+  --- visible and none is reclaimed mid-measurement.
+  local function allocatedBytes(fn)
+    collectgarbage("collect")
+    collectgarbage("stop")
+    local before = collectgarbage("count")
+    for _ = 1, N do fn() end
+    local grown = (collectgarbage("count") - before) * 1024
+    collectgarbage("restart")
+    collectgarbage("collect")
+    return grown
+  end
+
+  -- Warm both paths so the measured loops see only cache hits.
+  Lib.Quest.Get(2, "name")
+  Lib.Quest.Get(2, "startedBy")
+
+  -- A cached scalar read allocates nothing at all. The tightest possible guard against the
+  -- reviewed sibling's defect class (an eager assert-message concat on every read): a single
+  -- per-read string is ≥ 24 bytes, i.e. ≥ 120,000 bytes over this loop, against a bound of 512.
+  local scalarBytes = allocatedBytes(function() return Lib.Quest.Get(2, "name") end)
+  check(scalarBytes <= 512,
+    ("cached scalar reads allocated %d bytes over %d reads — the hot path is allocating"):format(scalarBytes, N))
+
+  -- A cached table read allocates exactly what the producer itself allocates — the fresh
+  -- copy — and nothing on top. Tolerance: 16 bytes per read, smaller than any real string.
+  local stored = map["X-Quest-2-" .. tostring(Lib.Meta.QuestMeta.questKeys.startedBy)]
+  check(stored ~= nil, "quest 2 startedBy stored literal found for calibration")
+  local producer = codec.compileTable(stored)
+  local baseline = allocatedBytes(function() return producer() end)
+  local viaGet = allocatedBytes(function() return Lib.Quest.Get(2, "startedBy") end)
+  check(viaGet - baseline <= N * 16,
+    ("cached table reads allocated %d bytes beyond the %d-byte producer baseline over %d reads")
+      :format(viaGet - baseline, baseline, N))
+
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
+-- Reconstruction negative control: the byte gate must detect a single corrupted byte
+--------------------------------------------------------------------------------------------
+
+suite("reconstruct-control", function()
+  local flavor = config.flavorByName.Vanilla
+  local sourceToc = config.tocPath(flavor)
+  if not lib.fileExists(sourceToc) then
+    io.write("  SKIP reconstruct-control: ", sourceToc, " not generated\n")
+    return
+  end
+
+  lib.mkdirp(".out/corrupt")
+  local original = lib.readAll(sourceToc)
+  local corrupted = original:gsub("## X%-Npc%-30%-1: [^\n]*", "## X-Npc-30-1: Not A Forest Spider", 1)
+  check(corrupted ~= original, "corruption fixture did not apply")
+  lib.writeAll(".out/corrupt/" .. sourceToc, corrupted)
+
+  local countFile = ".out/reconstruct-count.txt"
+  local ok = os.execute("lua5.1 reconstruct.lua Vanilla --toc-dir=.out/corrupt --count-only > " ..
+    countFile .. " 2>/dev/null")
+  local failed
+  if type(ok) == "number" then failed = ok ~= 0 else failed = not ok end
+  check(failed, "reconstruct accepted a corrupted artifact")
+  local counted = tonumber((lib.readAll(countFile):match("(%d+)")))
+  equal(counted, 1, "one corrupted byte is exactly one localized mismatch")
+
+  os.remove(".out/corrupt/" .. sourceToc)
+  os.remove(countFile)
+end)
+
+--------------------------------------------------------------------------------------------
 -- Driver
 --------------------------------------------------------------------------------------------
 
