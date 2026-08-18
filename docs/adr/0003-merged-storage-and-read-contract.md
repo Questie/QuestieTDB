@@ -85,15 +85,36 @@ never applied automatically: they are exposed through an explicit
 `Corrections` API taking the runtime fact (the Faire location) as an argument, because
 selecting it requires game state that QuestieTDB does not own.
 
-### 10. Frozen values are real in both modes
+### 10. Table reads return a fresh mutable copy per read, via cached compiled chunks
 
-**Measured:** `table.freeze` is taint-ownership-gated; tables built by `loadstring`
-chunks are owned by the force-taint context, which is why Baked-mode freezing refused
-universally. The decoder therefore performs the deep freeze **inside** the chunk it
-compiles (`local v = <payload> ; <deep-freeze> ; return v`) — validated live: nested
-tables freeze fully and writes error. Where `table.freeze` is absent, the documented
-guarantee is "owned by the database, not enforced" — docs must state the real guarantee,
-not the aspiration.
+*Revised same day, before implementation, after live measurement — the original text of
+this decision mandated frozen shared values.*
+
+Every table-field read executes a **cached compiled chunk** and returns a fresh, deeply
+independent, mutable table the caller owns. Baked mode already holds the serialized
+literal: it caches `loadstring(text)` once per field and re-executes per read. Source
+mode and overlay-composed values serialize once through the shared serializer, compile
+once, and re-execute identically — the two modes stay equivalent by construction.
+
+**Measured (Era build 69109, `GetTimePreciseSec`):** chunk re-execution costs 0.13 µs for
+a one-id table, 0.26 µs for three ids, 1.7 µs for six coordinate pairs, 19 µs for a
+64-pair spawn table — at or near the 0.25 µs decoded-cache hit for the shapes hot loops
+actually touch. `C_EncodingUtil.DeserializeCBOR` measures within ~15% of chunk execution
+at every size (0.42–20.7 µs) and `CopyTable` is 4–5× slower than either.
+
+Why this replaces freezing: DESIGN.md rejected fresh-per-read *solely* for the
+`loadstring`-per-read parse cost, which chunk caching removes — and fresh-per-read is the
+**exact** semantics Questie's ~290 call sites were compiled against, so the consumer-side
+mutation audit disappears entirely. Scalar fields keep the plain decoded cache (strings
+and numbers are immutable). `table.freeze` remains in use only for QuestieTDB-internal
+shared structures (schema meta, ID maps), where addon ownership makes it work; the
+taint-ownership findings and the validated in-chunk/loadstring-helper freeze patterns
+stay recorded in `client-metadata-probes.md` for any future return to shared values.
+
+**CBOR as a storage format is rejected with numbers:** base64(CBOR) is ~38% smaller than
+the Lua literal pre-zip and chunk-edge-safe by construction, but it makes artifacts
+undiffable — deterministic, reviewable artifacts are a core design value — and its decode
+chain (23.5 µs) beats nothing that matters.
 
 ### 11. Bulk reads are unpack-safe
 

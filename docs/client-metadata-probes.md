@@ -107,6 +107,31 @@ The unbounded decoded cache is real but bounded in practice: a consumer sweeping
 of fields across every quest costs tens of MB at Mists scale, not hundreds. A budget
 decision, not an emergency.
 
+## 6b. Copy-mechanism benchmarks — `C_EncodingUtil` CBOR vs cached chunks vs `CopyTable`
+
+`C_EncodingUtil` exists on Era (`SerializeCBOR`, `DeserializeCBOR`, JSON, Base64, Hex,
+`CompressString`). `DeserializeCBOR` returns a genuinely fresh deep copy (fresh identity
+at every level; mutating the copy leaves the source untouched) with exact double
+round-trip, UTF-8 and empty-string fidelity. Timed with `GetTimePreciseSec`, 10–20k
+iterations, per-op µs:
+
+| Shape | cached-chunk exec | DeserializeCBOR | CopyTable | loadstring+exec |
+| --- | ---: | ---: | ---: | ---: |
+| `{2787}` | **0.13** | 0.42 | 0.61 | — |
+| `{5, 3, 7}` | **0.26** | 0.68 | 1.63 | — |
+| 6 coordinate pairs | **1.70** | 1.80 | 8.72 | — |
+| 64-pair spawn table | **19.2** | 20.7 | 91.4 | 86.4 |
+
+One-time costs for the 64-pair table: `SerializeCBOR` 10.9 µs, Base64 decode 3.5 µs,
+base64→CBOR chain 23.5 µs. Sizes: CBOR 1,241 B, base64(CBOR) 1,656 B, Lua literal
+2,685 B.
+
+Consequences (ADR 0003 Decision 10, revised): re-executing an already-compiled literal
+chunk produces a fresh mutable deep copy at or near decoded-cache-hit cost for typical
+field shapes, which voids DESIGN.md's stated reason for rejecting fresh-per-read values
+and retires the frozen-shared-value contract for reads. `CopyTable` is 4–5× slower than
+either native path at every size. CBOR-as-storage is rejected for artifact diffability.
+
 ## 7. Deferred: synthetic-TOC probes (need a probe addon + full client restart)
 
 TOC files are read at client start, so these need a crafted addon and a restart slot:
