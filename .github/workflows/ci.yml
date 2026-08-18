@@ -56,6 +56,12 @@ jobs:
         working-directory: QuestieTDB
         run: lua5.1 generate.lua Vanilla --questie=../Questie
 
+      - name: Generate Mists
+        working-directory: QuestieTDB
+        # The suites that read artifacts off disk sweep every generated flavor. Vanilla alone
+        # left the largest artifact untested; Mists is the other end of the size range.
+        run: lua5.1 generate.lua Mists --questie=../Questie
+
       - name: Unit tests
         working-directory: QuestieTDB
         run: lua5.1 test.lua
@@ -88,9 +94,10 @@ jobs:
 
       - name: Round-trip verification under freezing
         working-directory: QuestieTDB
-        # Opt-in because the pure-Lua freeze substitute costs about 2x wall clock. Running it on
-        # one flavor per commit keeps the ownership guard present in CI rather than absent.
-        if: matrix.flavor == 'Vanilla'
+        # Opt-in because the pure-Lua freeze substitute costs about 2x wall clock. The smallest
+        # and largest flavors keep the ownership guard present in CI without paying 2x on every
+        # matrix leg.
+        if: matrix.flavor == 'Vanilla' || matrix.flavor == 'Mists'
         run: lua5.1 verify.lua ${{ matrix.flavor }} --freeze
 
       - name: Source/baked equivalence
@@ -129,3 +136,19 @@ jobs:
           name: QuestieTDB-${{ matrix.flavor }}
           path: QuestieTDB/.out/dist/*
           retention-days: 14
+
+  gates:
+    name: All gates
+    runs-on: ubuntu-latest
+    # Terminal aggregate: branch protection requires exactly this one status. `always()` keeps
+    # it running when a dependency fails or is cancelled; the explicit checks then fail it, so
+    # a skipped or cancelled gate can never read as green.
+    needs: [test, database]
+    if: always()
+    steps:
+      - name: Fail unless every gate succeeded
+        run: |
+          ok=1
+          [ "${{ needs.test.result }}" = "success" ] || { echo "::error::Unit tests: ${{ needs.test.result }}"; ok=0; }
+          [ "${{ needs.database.result }}" = "success" ] || { echo "::error::Database matrix: ${{ needs.database.result }}"; ok=0; }
+          [ "$ok" = "1" ]

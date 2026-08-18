@@ -4,6 +4,11 @@ name: Release
 # identifiable by content, not just by tag: the manifest carries per-artifact SHA-256, the
 # producing commit, the schema version and the contract version.
 #
+# Publication is impossible on red. `publish` needs `quality`, and `quality` runs the same
+# bar CI runs — drift gates, unit tests, verification, equivalence, validators — against the
+# exact tree being released. The token-bearing job runs no build code: everything it uploads
+# came through the quality bar, unmodified, via the workflow artifact.
+#
 # NOTE FOR THE MAINTAINER: this workflow needs secrets that are not configured here.
 #   GITHUB_TOKEN    provided automatically; used for the GitHub release
 #   CF_API_KEY      CurseForge upload token, if standalone publishing is wanted
@@ -27,13 +32,12 @@ env:
   SOURCE_DATE_EPOCH: 1700000000
 
 jobs:
-  build:
+  quality:
+    name: Quality bar
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-        with: { path: QuestieTDB, fetch-depth: 0 }
+        with: { path: QuestieTDB }
       - uses: actions/checkout@v4
         with:
           repository: Questie/Questie
@@ -42,9 +46,31 @@ jobs:
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
 
+      - name: Materialize the schema
+        working-directory: QuestieTDB
+        run: lua5.1 generate.lua meta ../Questie
+
+      - name: Fail on schema drift
+        working-directory: QuestieTDB
+        run: git diff --exit-code src/meta/
+
+      - name: Fail on correction drift
+        working-directory: QuestieTDB
+        run: |
+          lua5.1 tools/port-corrections.lua ../Questie
+          git diff --exit-code src/corrections/ || {
+            echo "::error::Ported corrections differ from Questie's. Review and commit the re-port."
+            exit 1
+          }
+
       - name: Generate every flavor
         working-directory: QuestieTDB
         run: lua5.1 generate.lua all --questie=../Questie
+
+      - name: Unit tests
+        working-directory: QuestieTDB
+        # Defense in depth: the same suite CI runs, here against the artifacts being released.
+        run: lua5.1 test.lua
 
       - name: Verify every flavor
         working-directory: QuestieTDB
@@ -61,6 +87,29 @@ jobs:
       - name: Package and write the manifest
         working-directory: QuestieTDB
         run: bash tools/package.sh all
+
+      - name: Hand the packaged release to publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: QuestieTDB/.out/dist/*
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    needs: quality
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: QuestieTDB, fetch-depth: 0 }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: QuestieTDB/.out/dist
 
       - name: Publish
         working-directory: QuestieTDB
