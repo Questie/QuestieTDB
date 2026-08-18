@@ -63,6 +63,27 @@ function register.IsSodActive()
   return seasons.GetActiveSeason() == sodId
 end
 
+--- Whether the running client is Titan Reforged. Upstream detects it as a Wrath client whose
+--- active season is 109 — `Modules/VersionCheck.lua:89`, whose own comment notes there is no
+--- `Enum.SeasonID` entry for it, hence the literal. Offline and in the emulator the season
+--- API reports 0, so the default everywhere is plain Wrath.
+function register.IsTitanReforgedActive()
+  local seasons = rawget(_G, "C_Seasons")
+  if not seasons or type(seasons.GetActiveSeason) ~= "function" then return false end
+  return seasons.GetActiveSeason() == 109
+end
+
+--- Per-function Dynamic gates, named by a manifest entry's `gatedDynamic` map. SoD gating is
+--- per-file — the whole `Sod/` tree is that season's set — but these must be per-function:
+--- the same upstream file carries gated and ungated Dynamic functions side by side
+--- (`wotlkQuestFixes.lua` holds ungated `LoadFactionFixes` beside Titan-only
+--- `LoadTitanReforgedFixes`, applied under `if Questie.IsTitanReforged` in
+--- `QuestieCorrections:Initialize`). An unrecognized gate name stays closed: a correction
+--- set applying where it must not is the defect class this exists to stop.
+register.variantActive = {
+  TitanReforged = register.IsTitanReforgedActive,
+}
+
 --- Parameterized correction functions recorded by `FromManifest`, keyed by function name.
 --- Each needs a runtime fact QuestieTDB does not own (the Darkmoon Faire's location), so
 --- they are never applied automatically — see `ApplyParameterized`.
@@ -121,7 +142,10 @@ function register.FromManifest(flavor, moduleFor)
       end
 
       for offset, functionName in ipairs(spec.dynamic or {}) do
-        if type(module[functionName]) == "function" then
+        local gate = spec.gatedDynamic and spec.gatedDynamic[functionName]
+        local gateOpen = not gate
+          or (register.variantActive[gate] ~= nil and register.variantActive[gate]())
+        if gateOpen and type(module[functionName]) == "function" then
           local entry = registry.RegisterRuntimeCorrection(registry.OWNER, spec.datatype,
             spec.file .. ":" .. functionName,
             wrap(module, functionName, spec.datatype),

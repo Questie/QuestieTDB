@@ -1715,6 +1715,58 @@ suite("personas", function()
   end
   check(sodSets > 0, "SoD persona: Sod/ correction sets registered")
 
+  -- Titan Reforged gate. Upstream applies `LoadTitanReforgedFixes` only under
+  -- `Questie.IsTitanReforged` (QuestieCorrections:Initialize), detected as a Wrath client
+  -- with active season 109 (Modules/VersionCheck.lua:89). The gate is per-function: the same
+  -- manifest entries carry `LoadFactionFixes`, which must apply either way. Probe: quest 6823
+  -- "Agent of Hydraxis" — the Titan set raises questLevel/requiredLevel to 80
+  -- (src/corrections/Wotlk/wotlkQuestFixes.lua:8816-8819).
+  local function titanSets(loaded)
+    local count = 0
+    for _, entry in ipairs(loaded.Corrections.Select({ dynamic = true })) do
+      if entry.name:find("LoadTitanReforgedFixes", 1, true) then count = count + 1 end
+    end
+    return count
+  end
+
+  local plainWrath = loadMode(config.addonName .. ".toc", { expansion = "Wotlk", faction = "Horde" })
+  equal(titanSets(plainWrath), 0, "plain Wrath: no Titan set registers")
+  equal(plainWrath.Quest.Get(6823, "questLevel"), plainWrath.Quest.GetRaw(6823, "questLevel"),
+    "plain Wrath: quest 6823 keeps its base questLevel")
+  check(plainWrath.Quest.Get(6823, "questLevel") ~= 80, "plain Wrath: the Titan 80 never applies")
+
+  local titanWrath = loadMode(config.addonName .. ".toc",
+    { expansion = "Wotlk", faction = "Horde", season = "TitanReforged" })
+  equal(titanSets(titanWrath), 3, "Titan persona: all three gated sets register")
+  equal(titanWrath.Quest.Get(6823, "questLevel"), 80, "Titan persona: quest 6823 questLevel 80")
+  equal(titanWrath.Quest.Get(6823, "requiredLevel"), 80, "Titan persona: quest 6823 requiredLevel 80")
+
+  -- The ungated sibling function still applies with the gate closed AND open: Horde elder
+  -- quest 13012 gains reputationReward {{HORDE, 75}} from LoadFactionFixes
+  -- (src/corrections/Wotlk/wotlkQuestFixes.lua, questFixesHorde).
+  local plainRep = plainWrath.Quest.Get(13012, "reputationReward")
+  check(type(plainRep) == "table" and plainRep[1] and plainRep[1][2] == 75,
+    "plain Wrath: faction fixes still apply alongside the closed gate")
+  local titanRep = titanWrath.Quest.Get(13012, "reputationReward")
+  check(type(titanRep) == "table" and titanRep[1] and titanRep[1][2] == 75,
+    "Titan persona: faction fixes unaffected by the open gate")
+
+  -- Season 109 is not Season of Discovery: the Sod/ sets must not mistake it.
+  local titanSod = 0
+  for _, entry in ipairs(titanWrath.Corrections.Select({ dynamic = true })) do
+    if entry.name:find("^Sod/") then titanSod = titanSod + 1 end
+  end
+  equal(titanSod, 0, "Titan persona: Sod/ sets do not register on season 109")
+
+  -- Baked mode composes the same gate: the Wrath artifact plus a Titan persona reads 80.
+  local wrathToc = config.tocPath(config.flavorByName.Wrath)
+  if lib.fileExists(wrathToc) then
+    local bakedTitan = loadMode(wrathToc, { expansion = "Wotlk", faction = "Horde", season = "TitanReforged" })
+    equal(bakedTitan.Quest.Get(6823, "questLevel"), 80, "baked Titan: gate composes over the artifact")
+    local bakedPlain = loadMode(wrathToc, { expansion = "Wotlk", faction = "Horde" })
+    check(bakedPlain.Quest.Get(6823, "questLevel") ~= 80, "baked plain Wrath: gate stays closed")
+  end
+
   client.reset()
 end)
 

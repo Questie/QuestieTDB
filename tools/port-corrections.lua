@@ -285,14 +285,23 @@ local FILES = {
     module = "QuestieTBCObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
 
   -- Wotlk
+  --
+  -- `LoadTitanReforgedFixes` is Titan Reforged-only: `QuestieCorrections:Initialize` applies
+  -- it under `if Questie.IsTitanReforged` while the sibling `LoadFactionFixes` in the same
+  -- files runs ungated, so the gate must be per-function, not per-file. The runtime predicate
+  -- lives in src/corrections/register.lua (`variantActive`), mirroring upstream's detection
+  -- (`Modules/VersionCheck.lua:89`: a Wrath client with active season 109).
   { src = "wotlkQuestFixes.lua", dst = "Wotlk/wotlkQuestFixes.lua", datatype = "Quest", minExpansion = 3,
-    module = "QuestieWotlkQuestFixes", static = { "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" } },
+    module = "QuestieWotlkQuestFixes", static = { "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
+    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
   { src = "wotlkNPCFixes.lua", dst = "Wotlk/wotlkNPCFixes.lua", datatype = "Npc", minExpansion = 3,
     module = "QuestieWotlkNpcFixes", static = { "Load", "LoadAutomatics" },
-    dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" } },
+    dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
+    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
   { src = "wotlkItemFixes.lua", dst = "Wotlk/wotlkItemFixes.lua", datatype = "Item", minExpansion = 3,
     module = "QuestieWotlkItemFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" } },
+    dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
+    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
   { src = "wotlkObjectFixes.lua", dst = "Wotlk/wotlkObjectFixes.lua", datatype = "Object", minExpansion = 3,
     module = "QuestieWotlkObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
 
@@ -392,6 +401,7 @@ local function renderManifest()
       }
       if spec.static then parts[#parts + 1] = "static = " .. serialize.value(spec.static) end
       if spec.dynamic then parts[#parts + 1] = "dynamic = " .. serialize.value(spec.dynamic) end
+      if spec.gatedDynamic then parts[#parts + 1] = "gatedDynamic = " .. serialize.value(spec.gatedDynamic) end
       if spec.expansions then parts[#parts + 1] = "expansions = " .. serialize.value(spec.expansions) end
       if spec.minExpansion then parts[#parts + 1] = "minExpansionOrder = " .. spec.minExpansion end
       if spec.parameterized then parts[#parts + 1] = "parameterized = " .. serialize.value(spec.parameterized) end

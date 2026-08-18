@@ -80,9 +80,14 @@ function client.install(opts)
   _G.C_Timer = { After = function(_, fn) if fn then fn() end end, NewTicker = noop }
 
   -- Season gating (ADR 0003 D9). `opts.season = "SoD"` models a live Season of Discovery
-  -- realm; the default models plain Era, where the SoD correction sets must not register.
-  -- `Enum.SeasonID` is installed alongside because that is where the runtime reads the id.
-  local seasonId = opts.season == "SoD" and 2 or 0
+  -- realm; `opts.season = "TitanReforged"` models a Titan Reforged realm — a Wrath client
+  -- whose active season is 109, which has no `Enum.SeasonID` entry (upstream's detection and
+  -- its comment: Questie `Modules/VersionCheck.lua:89`). The default models a plain realm,
+  -- where neither seasonal correction set may register.
+  -- `Enum.SeasonID` is installed alongside because that is where the runtime reads SoD's id.
+  local seasonId = 0
+  if opts.season == "SoD" then seasonId = 2
+  elseif opts.season == "TitanReforged" then seasonId = 109 end
   _G.Enum = _G.Enum or {}
   _G.Enum.SeasonID = _G.Enum.SeasonID or { SeasonOfDiscovery = 2 }
   _G.C_Seasons = {
