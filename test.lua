@@ -449,6 +449,35 @@ suite("corrections", function()
   end
   check(staticOnly > 0, "there are static-only correction files to exclude")
   equal(shipped, 0, "no static-only correction file is listed in a baked artifact")
+
+  -- Expansion-varying constants. Upstream evaluates these under the client's expansion flags
+  -- (QuestieDB.lua:122-150 raceKeys, :178-191 classKeys; npcDB.lua:63-75 npcFlags), so the
+  -- enum carries them per expansion and the compat shim serves the flavor's own set — Era
+  -- correction files apply on every expansion, and a frozen Era mask would bake wrong values
+  -- into TBC+ artifacts (440 TBC divergences before this, per the differential).
+  local enum = Lib.Enum
+  check(enum.byExpansion ~= nil, "the enum carries per-expansion constants")
+  equal(enum.raceKeys.ALL_ALLIANCE, 77, "flat race mask stays the Era value")
+  equal(enum.npcFlags.REPAIR, 16384, "flat REPAIR stays the Era value")
+  equal(enum.byExpansion.TBC.raceKeys.ALL_ALLIANCE, 1101, "TBC ALL_ALLIANCE per QuestieDB.lua")
+  equal(enum.byExpansion.TBC.raceKeys.ALL_HORDE, 690, "TBC ALL_HORDE per QuestieDB.lua")
+  equal(enum.byExpansion.Cata.raceKeys.ALL_ALLIANCE, 2098253, "Cata ALL_ALLIANCE adds Worgen")
+  equal(enum.byExpansion.TBC.npcFlags.REPAIR, 4096, "TBC REPAIR per npcDB.lua IsClassic branch")
+  equal(enum.byExpansion.Wotlk.npcFlags.BARBER, 33554432, "BARBER exists from Wotlk")
+  equal(enum.npcFlags.BARBER, nil, "BARBER absent on Era, as upstream nils it")
+  equal(enum.byExpansion.TBC.classKeys.ALL_CLASSES, 1503, "TBC ALL_CLASSES per QuestieDB.lua")
+  equal(enum.byExpansion.MoP.classKeys.ALL_CLASSES, 2047, "MoP ALL_CLASSES per QuestieDB.lua")
+
+  -- And the shim actually serves them: a TBC prepare must hand correction files TBC masks,
+  -- while the Vanilla prepare above keeps Era masks.
+  local corrections = dofile("generator/corrections.lua")
+  local tbcContext = corrections.prepare(config.flavorByName.TBC)
+  local tbcDB = tbcContext.lib.CorrectionCompat.modules.QuestieDB
+  equal(tbcDB.raceKeys.ALL_ALLIANCE, 1101, "compat serves TBC race masks to a TBC flavor")
+  equal(tbcDB.npcFlags.REPAIR, 4096, "compat serves TBC npc flags to a TBC flavor")
+  local eraContext = corrections.prepare(flavor)
+  equal(eraContext.lib.CorrectionCompat.modules.QuestieDB.raceKeys.ALL_ALLIANCE, 77,
+    "compat serves Era race masks to the Vanilla flavor")
 end)
 
 --------------------------------------------------------------------------------------------

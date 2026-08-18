@@ -71,14 +71,32 @@ local function sliceTable(source, startsWith)
   return source:sub(bracePos, pos - 1)
 end
 
-local function extractConstants()
+--- Constants are extracted once **per expansion**, because upstream evaluates them under the
+--- client's expansion flags: `raceKeys.ALL_ALLIANCE` is 77 on Era but 1101 on TBC/Wrath and
+--- 2098253 on Cata (QuestieDB.lua:122-150), `npcFlags.REPAIR` is `IsClassic and 16384 or 4096`
+--- (npcDB.lua:63-75), `classKeys.ALL_CLASSES` walks every expansion (QuestieDB.lua:178-191).
+--- Extracting under `isClassic` alone baked Era masks into every flavor's artifacts — found by
+--- the cross-implementation differential as 440 TBC divergences, growing per expansion.
+---
+--- `flags` mirrors how a real client of that expansion presents itself to upstream's
+--- conditionals; `order` feeds `Expansions.Current`. Names match `config.flavors[].expansion`.
+local EXPANSIONS = {
+  { name = "Classic", order = 1, flags = { isClassic = true } },
+  { name = "TBC",     order = 2, flags = { isTBC = true } },
+  { name = "Wotlk",   order = 3, flags = { isWotlk = true } },
+  { name = "Cata",    order = 4, flags = { isCata = true } },
+  { name = "MoP",     order = 5, flags = { isMoP = true } },
+}
+
+local function extractConstantsFor(expansion)
   local extracted = {}
 
   for _, spec in ipairs(EXTRACTIONS) do
-    loader.installEnvironment({ isClassic = true })
+    loader.installEnvironment(expansion.flags)
     local Expansions = QuestieLoader:ImportModule("Expansions")
     Expansions.Classic, Expansions.Era, Expansions.Tbc = 1, 1, 2
-    Expansions.Wotlk, Expansions.Cata, Expansions.MoP, Expansions.Current = 3, 4, 5, 1
+    Expansions.Wotlk, Expansions.Cata, Expansions.MoP = 3, 4, 5
+    Expansions.Current = expansion.order
     local path = QUESTIE .. "/" .. spec.file
     local restore = loader.installPermissiveGlobals()
     local ok, err = pcall(loader.executeFile, path)
@@ -94,7 +112,7 @@ local function extractConstants()
   end
 
   -- Zone IDs live in their own data file and need only the ZoneDB module.
-  loader.installEnvironment({ isClassic = true })
+  loader.installEnvironment(expansion.flags)
   local restoreZone = loader.installPermissiveGlobals()
   local zoneOk, zoneErr = pcall(loader.executeFile, QUESTIE .. "/Database/Zones/data/zoneIds.lua")
   restoreZone()
@@ -105,6 +123,11 @@ local function extractConstants()
   end
   extracted.zoneIDs = ZoneDB.zoneIDs
 
+  -- The slices evaluate under the same expansion globals the loop installed: `Questie.Is*`
+  -- reaches them through the chunk environment's `__index = _G`. `playerFaction` is a local
+  -- in QuestieDB.lua that the slice cannot see, so `ALL_CLASSES` on Classic evaluates its
+  -- Horde arm (1501) — the historical extraction value, kept for artifact stability; the
+  -- faction-conditional class masks are the Dynamic faction layer's job at runtime.
   for _, spec in ipairs(SLICES) do
     local source = lib.readAll(QUESTIE .. "/" .. spec.file)
     if spec.pattern then
@@ -131,7 +154,29 @@ local function extractConstants()
   return extracted
 end
 
-local function renderConstants(extracted)
+---@param perExpansion table expansion name -> extracted constants
+---@return string rendered
+---@return table varyingNames sorted list of constant names that differ by expansion
+local function renderConstants(perExpansion)
+  local classic = perExpansion.Classic
+
+  local names = {}
+  for name in pairs(classic) do names[#names + 1] = name end
+  table.sort(names)
+
+  -- A constant varies when any expansion's serialization differs from Classic's. The
+  -- serializer is deterministic (sorted keys), so string equality is table equality.
+  local varying = {}
+  for _, name in ipairs(names) do
+    local classicForm = serialize.value(classic[name])
+    for _, expansion in ipairs(EXPANSIONS) do
+      if serialize.value(perExpansion[expansion.name][name]) ~= classicForm then
+        varying[#varying + 1] = name
+        break
+      end
+    end
+  end
+
   local out = {}
   out[#out + 1] = "-- src/corrections/enum/constants.lua"
   out[#out + 1] = "--"
@@ -140,17 +185,31 @@ local function renderConstants(extracted)
   out[#out + 1] = "-- The constants correction files reference, extracted from Questie's own sources rather"
   out[#out + 1] = "-- than transcribed — the same discipline as the schema, for the same reason: a"
   out[#out + 1] = "-- hand-maintained copy of someone else's table drifts."
+  out[#out + 1] = "--"
+  out[#out + 1] = "-- Flat tables hold the Classic values. Constants whose upstream definition branches on"
+  out[#out + 1] = "-- the expansion (race masks, npc flags, ALL_CLASSES) additionally appear per expansion"
+  out[#out + 1] = "-- under `constants.byExpansion`; the compat shim serves the flavor's own set."
   out[#out + 1] = ""
   out[#out + 1] = "local _, LibQuestieDB = ..."
   out[#out + 1] = ""
   out[#out + 1] = "local constants = {}"
   out[#out + 1] = ""
 
-  local names = {}
-  for name in pairs(extracted) do names[#names + 1] = name end
-  table.sort(names)
   for _, name in ipairs(names) do
-    out[#out + 1] = "constants." .. name .. " = " .. serialize.value(extracted[name])
+    out[#out + 1] = "constants." .. name .. " = " .. serialize.value(classic[name])
+    out[#out + 1] = ""
+  end
+
+  if #varying > 0 then
+    local byExpansion = {}
+    for _, expansion in ipairs(EXPANSIONS) do
+      local entry = {}
+      for _, name in ipairs(varying) do
+        entry[name] = perExpansion[expansion.name][name]
+      end
+      byExpansion[expansion.name] = entry
+    end
+    out[#out + 1] = "constants.byExpansion = " .. serialize.value(byExpansion)
     out[#out + 1] = ""
   end
 
@@ -160,7 +219,7 @@ local function renderConstants(extracted)
   out[#out + 1] = ""
   out[#out + 1] = "return constants"
   out[#out + 1] = ""
-  return table.concat(out, "\n")
+  return table.concat(out, "\n"), varying
 end
 
 --------------------------------------------------------------------------------------------
@@ -357,12 +416,18 @@ if not lib.fileExists(QUESTIE .. "/Database/Corrections/classicQuestFixes.lua") 
 end
 
 lib.mkdirp("src/corrections/enum")
-local extracted = extractConstants()
-lib.writeAll("src/corrections/enum/constants.lua", renderConstants(extracted))
+local perExpansion = {}
+for _, expansion in ipairs(EXPANSIONS) do
+  perExpansion[expansion.name] = extractConstantsFor(expansion)
+end
+local rendered, varying = renderConstants(perExpansion)
+lib.writeAll("src/corrections/enum/constants.lua", rendered)
 local names = {}
-for name in pairs(extracted) do names[#names + 1] = name end
+for name in pairs(perExpansion.Classic) do names[#names + 1] = name end
 table.sort(names)
-print(("Extracted %d constant tables: %s"):format(#names, table.concat(names, ", ")))
+print(("Extracted %d constant tables across %d expansions: %s"):format(
+  #names, #EXPANSIONS, table.concat(names, ", ")))
+print(("Expansion-varying: %s"):format(#varying > 0 and table.concat(varying, ", ") or "none"))
 
 local copied, missing = copyCorrections()
 lib.writeAll("src/corrections/manifest.lua", renderManifest())
