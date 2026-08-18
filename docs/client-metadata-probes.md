@@ -65,6 +65,18 @@ result on a nested `{1, {2, {3}}, s = "x"}`: `rootFrozen`, `childFrozen`, `grand
 Probe-time state of the current runtime: 0 of 38 table values returned by the public
 getters were frozen; all accepted writes; `shared.freezeRefused` counted each refusal.
 
+**Implementation refinement, also probed:** the ownership check is on the *calling
+function*, so the deep-freeze helper must not be ordinary addon-owned code — but a helper
+**itself compiled once via `loadstring`** shares the force-taint owner and successfully
+deep-froze tables produced by a *separately compiled* payload chunk (root and nested
+children all `isfrozen`). Production shape: compile one shared helper at init, call
+`helper(value)` after each decode. Two simplifications follow from the wider freeze
+research (`table.freeze.md`): decoded Lua literals are trees by construction — no aliasing
+or cycles are expressible in literal syntax — so the decode-path helper needs no
+visited-set; and because a frozen table with `__newindex` redirects writes instead of
+erroring, tables composed by the Correction Overlay must be verified metatable-free
+before freezing (decoded literals are plain by construction).
+
 ## 4. Marker discipline in-client
 
 - `~E~` decodes correctly through the full runtime: `Npc.Get(15672, 1)` returns a true
