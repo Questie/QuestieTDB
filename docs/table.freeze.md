@@ -462,4 +462,20 @@ Three ways out, none of them free:
    built during recomposition in QuestieTDB's context. Partial, cheap, and honest about its
    scope.
 
-Unresolved. `DESIGN.md`'s "Reads return Frozen values" is currently aspirational in Baked mode.
+**Resolved — twice over — on 2026-08-18** (see
+[`client-metadata-probes.md`](./client-metadata-probes.md) §3 and 6b):
+
+- The refusals were root-caused live: `table.freeze` is gated on taint *ownership*, and every
+  table a `loadstring` chunk builds belongs to `*** ForceTaint_Strong ***`, not to the addon —
+  so option 2's "inside QuestieTDB's own context" could never have worked as written. The
+  working mechanism is the inverse: perform the deep freeze **inside** loadstring-compiled
+  code (a single shared helper, itself compiled via `loadstring`, freezes across separately
+  compiled chunks — validated in-client, nested tables fully frozen).
+- And then the question became moot: ADR 0003 Decision 10 (revised) retired frozen shared
+  values entirely. Re-executing the cached compiled chunk returns a fresh mutable copy per
+  read at 0.13–1.8 µs for typical shapes, which is Questie's existing per-call semantics with
+  no consumer audit at all. Freezing now applies only to QuestieTDB-internal shared
+  structures, where addon ownership makes it real — a strict superset of option 3.
+
+The validated in-chunk freeze pattern stays recorded in the probes document should shared
+frozen values ever return.
