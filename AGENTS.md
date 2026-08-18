@@ -3,7 +3,10 @@
 The database Questie consumes. Stores entity data as WoW addon TOC metadata and owns the
 offline generator that produces it.
 
-This repo is **pre-implementation** — the design is settled, the code is not yet written.
+This repo is **implemented**: the generator, both runtime modes, corrections,
+localization, validators, CI, and release tooling all exist. `DESIGN.md` describes the
+architecture as designed; where it and the code disagree, read the ADRs in `docs/adr/` —
+`0003-merged-storage-and-read-contract.md` is the most recent contract statement.
 
 ## Read first
 

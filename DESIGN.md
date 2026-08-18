@@ -1,6 +1,7 @@
 # QuestieTDB — Questie TOC Database
 
-Design document. No implementation yet.
+The design document this implementation was built from. Contracts decided after the
+buildout live in `docs/adr/` — ADR 0003 supersedes this document where they disagree.
 
 Vocabulary is defined in [`CONTEXT.md`](./CONTEXT.md) and used precisely here.
 
