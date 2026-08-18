@@ -24,7 +24,7 @@ its owner, while retaining the ability to register Corrections.
 | Runtime modes | **Source mode** and **Baked mode**, selected automatically by TOC suffix precedence. |
 | Variants | SoD / Classic+ are Dynamic Correction sets over the Era database, not separate databases. |
 | Localization | Baked into the TOC alongside entity data. |
-| Value ownership | Database-owned. Reads return **Frozen values**. |
+| Value ownership | Caller-owned. Table reads return a **fresh mutable copy** per read (ADR 0003 D10, revised after live measurement — originally "Frozen values"). |
 | Engine base | `toc-database`'s generator, retargeted at Questie's schema. |
 | Schema reference | `Getters` — already encodes Questie's field layout, though **stale** (32 fields vs Questie's current 36). |
 
@@ -423,37 +423,36 @@ database is wrong" path.
 
 ## Value ownership
 
-Reads return **Frozen values**. The database owns them; callers must not mutate. A caller
-needing a mutable working copy calls `CopyTable` explicitly.
+**Superseded by [ADR 0003 Decision 10](./docs/adr/0003-merged-storage-and-read-contract.md),
+revised after live measurement.** This section originally mandated frozen shared values; what
+ships is the opposite, and better on this design's own terms.
 
-Enforced with `table.freeze`, which is a **VM-level flag, not a metatable proxy** — reads are
-completely unaffected, `rawset` is blocked, and `getmetatable` still returns `nil`.
-Measurements from [`docs/table.freeze.md`](./docs/table.freeze.md), which records live-client
-verification on Classic Era 1.15.9: deep-freeze allocates **0 KiB** against `CopyTable`'s
-~357 KiB, and runs 8–20% faster.
+Table reads return a **fresh mutable copy per read**, produced by executing a cached compiled
+chunk — Baked mode caches `loadstring` of the stored literal, Source mode and overlay values
+serialize once through the shared serializer and compile once, so both modes execute chunks
+and stay equivalent by construction. Scalar fields keep the plain decoded cache (strings and
+numbers are immutable).
 
-| | |
-| --- | --- |
-| Source-mode base data | frozen after load |
-| Scalar fields | cached unconditionally, both modes — strings and numbers are immutable, so no hazard |
-| Table fields (17 of 32 quest fields) | cached **and** frozen, both modes |
-| Genuine mutation needs | explicit `CopyTable` at the call site |
+Why the reversal, in short (full numbers in
+[`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md)):
 
-Three consequences:
+- **Fresh-per-read is Questie's existing semantics.** The compiler decodes fresh tables per
+  call, and the ~290 call sites were written against that — sites like `GetQuest`'s
+  `creatureObjective[3] = nil` stay harmless, and the consumer-side mutation audit this
+  section used to require disappears entirely.
+- **The original rejection reason is measured away.** "Fresh-per-read" was rejected for the
+  `loadstring` parse per read; caching the compiled chunk removes the parse, and re-execution
+  costs 0.13–1.8 µs for typical field shapes (19 µs for the largest spawn tables) against a
+  0.25 µs cache hit.
+- **Frozen values never actually held in Baked mode.** `table.freeze` is taint-ownership
+  gated, and tables built by `loadstring` chunks belong to the force-taint context — the
+  refusal was measured live, along with the chunk-internal freeze pattern that would fix it,
+  recorded in the probes document should shared values ever return.
 
-- **The audit is self-executing.** `GetQuest` writes `creatureObjective[3] = nil` into its
-  query results — safe today only because the compiler decodes fresh tables per call. Turning
-  freezing on surfaces every such site as
-  `attempted to perform indexed assignment on a frozen table`.
-- **That particular mutation should be fixed in the data.** It exists to normalise "0 means no
-  icon". Normalise during Generation so the reader never needs to write.
-- **`__newindex` sentinels must go.** A frozen table *with* `__newindex` redirects writes to
-  the metamethod instead of failing. `Getters`' `EMPTY` sentinel uses exactly that pattern;
-  replace it with a plain frozen table.
-
-`table.freeze` does not exist in standard Lua 5.1, which is what the generator, `verify.lua`,
-and Questie's `cli/` harness run on. Capability detection is mandatory, and the offline
-harness needs a pure-Lua substitute so CI stays strict.
+`table.freeze` remains in use only for QuestieTDB-internal shared structures (schema meta,
+ID maps), where addon ownership makes it real. `docs/table.freeze.md` holds the underlying
+API research, including the `__newindex` redirect hazard that still forbids metatable-carrying
+sentinels anywhere near frozen internals.
 
 ## Localization
 
@@ -463,6 +462,16 @@ the UI locale changes.
 
 Replace with the l10n overlay: locale-joined values, `SetLocale()` at runtime, getters
 wrapped with enUS fallback. **This deletes the recompile-on-locale-change entirely.**
+
+Two contracts ADR 0003 added after the buildout: **corrections outrank translations** — when
+Correction Overlay provenance supplied a localizable field, the lookup translation is skipped,
+so corrected text is never replaced by a stale copied lookup and provenance never names an
+owner for a value it did not supply (D8); and **table-typed fields keep their table shape per
+locale segment** — `objectivesText` segments are serialized table literals, so a quest's
+objective count can never differ by locale (D3). Chunk parts are split trim-safely because the
+client removes edge whitespace from metadata values — measured, with a shipped artifact's
+Russian text corrupted by exactly this, in
+[`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md).
 
 l10n stays **inside** the QuestieTDB TOC rather than becoming a separate addon. TOC metadata
 lives in client-side storage, not the Lua heap — nothing materialises until a getter decodes
@@ -511,6 +520,21 @@ slot in the developer's clone. Deviations from the generic pattern: the install 
 downloaded** so switching test clients needs no re-bootstrap.
 
 ### Measured sizes
+
+Current artifacts, post-ADR-0003 wire changes (quantized-decimal spelling accounts for the
+growth over the pre-ADR build; every flavor remains 4–6% under the sibling `-pi`
+implementation's equivalents):
+
+| Flavor | Raw bytes |
+| --- | ---: |
+| Vanilla | 25,430,676 |
+| TBC | 42,444,718 |
+| Wrath | 60,482,670 |
+| Cata | 96,049,939 |
+| Mists | 117,410,435 |
+| **All five** | **341,818,438** |
+
+Historical prototype measurements, retained for comparison rather than overwritten:
 
 | | Raw | Zipped |
 | --- | ---: | ---: |
