@@ -28,6 +28,7 @@
 local config = dofile("src/config.lua")
 local lib = dofile("generator/lib.lua")
 local loader = dofile("generator/loader.lua")
+local serialize = dofile("generator/serialize.lua")
 
 local l10n = {}
 
@@ -63,10 +64,12 @@ l10n.types = {
 --- Separator between locales. U+2021 DOUBLE DAGGER.
 l10n.localeSeparator = config.localeSeparator
 
---- Separator between the elements of a list-valued field — only `objectivesText`.
---- U+2016 DOUBLE VERTICAL LINE. Generation asserts no source string contains either
---- separator, so a collision is a build failure rather than a silent corruption.
-l10n.listSeparator = "\226\128\150"
+-- There is deliberately no second, element-level separator. A list-valued field
+-- (`objectivesText`) serializes each locale's list as a Lua table literal through the same
+-- serializer entity fields use (ADR 0003, Decision 3), so structure travels in the value and
+-- the field keeps its table shape identically in every locale. The retired `‖` joiner could
+-- change a quest's element count per locale — observed on 155 Vanilla quests — and its
+-- documented collision guard never actually existed.
 
 function l10n.lookupPath(questiePath, flavor, typeCfg, locale)
   return ("%s/Localization/lookups/%s/%s/%s.lua")
@@ -119,16 +122,31 @@ function l10n.extract(questiePath, flavor, typeName, knownIds)
               if typeCfg.scalar then
                 value = row
               elseif fieldCfg.list then
+                -- List-valued fields keep their table shape; a bare string becomes a
+                -- one-element list so the field's type is stable across locales.
                 local list = row[fieldCfg.from]
-                if type(list) == "table" then
-                  value = table.concat(list, l10n.listSeparator)
-                elseif type(list) == "string" then
+                if type(list) == "table" and next(list) ~= nil then
                   value = list
+                elseif type(list) == "string" and list ~= "" then
+                  value = { list }
                 end
               else
                 value = row[fieldCfg.from]
               end
-              if type(value) == "string" and value ~= "" then
+              if type(value) == "string" then
+                -- The client trims a metadata value's edges (measured — see
+                -- docs/client-metadata-probes.md §1), and which segment sits at the value's
+                -- edge depends on which other locales are present. Trimming uniformly at
+                -- extraction keeps a translation identical regardless of its position.
+                -- Control characters are stripped outright: they are defects in display
+                -- text — observed in the wild as a leading DEL on TBC npc 24996's zhTW
+                -- name — and a raw segment cannot carry them (the join guard would
+                -- correctly fail the build).
+                value = value:gsub("[%z\1-\31\127]", "")
+                value = value:match("^[ \t\r\n]*(.-)[ \t\r\n]*$")
+                if value == "" then value = nil end
+              end
+              if value ~= nil then
                 local slots = byField[fieldIndex]
                 if not slots then slots = {}; byField[fieldIndex] = slots end
                 slots[localeIndex] = value
@@ -151,18 +169,28 @@ end
 --------------------------------------------------------------------------------------------
 
 --- Join nine locale slots into one stored value. An empty segment means "no translation for
---- this locale"; the reader falls back to the base entity value.
+--- this locale"; the reader falls back to the base entity value. A table slot (list-valued
+--- field) serializes as a Lua table literal — the same codec entity fields use.
 function l10n.join(slots)
   local parts, last = {}, 0
   for index = 1, #config.locales do
     local value = slots[index]
-    if value then
-      -- A separator inside a value would make the segments unrecoverable. Fail the build
-      -- rather than emit something that decodes wrong.
-      if value:find(l10n.localeSeparator, 1, true) then
-        error("l10n: a translation contains the locale separator: " .. value:sub(1, 80), 0)
+    if value ~= nil then
+      local segment = value
+      if type(value) == "table" then
+        segment = serialize.value(value)
       end
-      parts[index] = value
+      -- A separator inside a segment would make the segments unrecoverable, and a control
+      -- character would break the line-oriented TOC format itself. Fail the build rather
+      -- than emit something that decodes wrong. (This guard was documented before — now it
+      -- exists.)
+      if segment:find(l10n.localeSeparator, 1, true) then
+        error("l10n: a translation contains the locale separator: " .. segment:sub(1, 80), 0)
+      end
+      if segment:find("[%z\1-\31\127]") then
+        error("l10n: a translation contains a control character: " .. segment:sub(1, 80), 0)
+      end
+      parts[index] = segment
       last = index
     else
       parts[index] = ""
@@ -171,7 +199,13 @@ function l10n.join(slots)
   if last == 0 then return nil end
   -- Trailing empty segments carry no information and cost bytes across ~500k values.
   for index = #parts, last + 1, -1 do parts[index] = nil end
-  return table.concat(parts, l10n.localeSeparator)
+  local joined = table.concat(parts, l10n.localeSeparator)
+  -- A joined value that happens to look like a chunk-count header would be misread by every
+  -- consumer of the store. No real translation is `~3~`, so refuse rather than escape.
+  if joined:match("^~%d+~$") then
+    error("l10n: joined value collides with the chunk-header marker: " .. joined, 0)
+  end
+  return joined
 end
 
 --- Write one entity type's localization metadata.

@@ -29,10 +29,14 @@ end
 
 --- Store a string raw where possible, because that is what makes a generated TOC legible and
 --- keeps the artifact small. Fall back to a Lua literal for anything a line-oriented format
---- cannot carry.
+--- cannot carry — control characters, marker lookalikes, and strings the client's own parser
+--- would alter: it trims leading and trailing whitespace from every metadata value (measured,
+--- docs/client-metadata-probes.md §1), so an edge-whitespace string survives only in quoted
+--- form, where the quote characters become the value's edges.
 function encode.string(value)
   if value == "" then return codec.EMPTY_STRING end
-  if find(value, "[%z\1-\31\127]") or collidesWithMarker(value) then
+  if find(value, "[%z\1-\31\127]") or collidesWithMarker(value)
+     or find(value, "^ ") or find(value, " $") then
     return codec.QUOTED_PREFIX .. serialize.quote(value)
   end
   return value

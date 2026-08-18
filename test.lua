@@ -1173,6 +1173,225 @@ suite("emulator", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Wire safety: trim-safe splitting, case-folded keys (ADR 0003 D4, D5)
+--------------------------------------------------------------------------------------------
+
+suite("wire-safety", function()
+  lib.mkdirp(".out")
+  local path = ".out/test-wire.toc"
+
+  local function emit(key, value, maxLen)
+    local out = assert(io.open(path, "wb"))
+    out:write("## Interface: 11508\n\n")
+    lib.writeMetadata(out, key, value, maxLen)
+    out:close()
+    return emulator.parse(path)
+  end
+
+  -- The client trims each stored value's edges (measured, docs/client-metadata-probes.md §1).
+  -- Simulate exactly that per part and require lossless reassembly.
+  local function clientTrim(s) return s:match("^[ \t\r\n]*(.-)[ \t\r\n]*$") end
+  local function clientJoin(map, key)
+    local header = map[key]
+    if not header:match("^~%d+~$") then return clientTrim(header) end
+    local joined = {}
+    for i = 1, tonumber(header:match("%d+")) do
+      joined[#joined + 1] = clientTrim(map[key .. "-" .. i])
+    end
+    return table.concat(joined)
+  end
+
+  -- A space sitting exactly at the split point must move the split, not straddle it.
+  local spaceAtBoundary = string.rep("x", 999) .. " " .. string.rep("y", 500)
+  local map = emit("X-T-1-1", spaceAtBoundary, 1000)
+  equal(clientJoin(map, "X-T-1-1"), spaceAtBoundary, "client-trimmed reassembly is lossless")
+  for i = 1, tonumber(map["X-T-1-1"]:match("%d+")) do
+    local part = map["X-T-1-1-" .. i]
+    check(not part:match("^[ \t\r\n]") and not part:match("[ \t\r\n]$"),
+      "part " .. i .. " has no trimmable edge")
+  end
+
+  -- A run of spaces near the boundary backs the split up past the whole run.
+  local runNearBoundary = string.rep("a", 995) .. "     " .. string.rep("b", 995)
+  map = emit("X-T-1-2", runNearBoundary, 1000)
+  equal(clientJoin(map, "X-T-1-2"), runNearBoundary, "space-run value reassembles losslessly")
+  for i = 1, tonumber(map["X-T-1-2"]:match("%d+")) do
+    local part = map["X-T-1-2-" .. i]
+    check(not part:match("^[ \t\r\n]") and not part:match("[ \t\r\n]$"),
+      "run part " .. i .. " has no trimmable edge")
+  end
+
+  -- Multibyte text with spaces — both split constraints at once.
+  local mixed = string.rep("Bringt die Klaue von Scharfkralle ‡u Senani ", 60)
+  mixed = mixed:sub(1, #mixed - 1) -- no trailing space: whole-value edges are the encoder's job
+  map = emit("X-T-1-3", mixed, 1000)
+  equal(clientJoin(map, "X-T-1-3"), mixed, "utf-8 + spaces reassemble losslessly under client trim")
+
+  -- A whitespace run longer than a part cannot split trim-safely: build failure, not corruption.
+  do
+    local out = assert(io.open(path, "wb"))
+    local ok, err = pcall(lib.writeMetadata, out, "X-T-1-4",
+      "x" .. string.rep(" ", 2000) .. "y", 1000)
+    out:close()
+    check(not ok and tostring(err):find("whitespace run"),
+      "unsplittable whitespace run fails the build: " .. tostring(err))
+  end
+
+  -- Whole-value edges are refused at the chokepoint — the encoders must never produce them.
+  do
+    local out = assert(io.open(path, "wb"))
+    local okLead = pcall(lib.writeMetadata, out, "X-T-1-5", " leading", 1000)
+    local okTrail = pcall(lib.writeMetadata, out, "X-T-1-6", "trailing ", 1000)
+    out:close()
+    check(not okLead, "leading-whitespace value is refused at write time")
+    check(not okTrail, "trailing-whitespace value is refused at write time")
+  end
+
+  -- And the string encoder routes edge-whitespace strings through the quoted form instead.
+  do
+    local encoded = encode.string(" padded ")
+    check(encoded:sub(1, 3) == codec.QUOTED_PREFIX, "edge-whitespace string encodes quoted")
+    equal(codec.decodeString(encoded), " padded ", "quoted edge-whitespace string round-trips")
+    equal(encode.string("interior spaces fine"), "interior spaces fine",
+      "interior whitespace still stores raw")
+  end
+
+  -- GetAddOnMetadata folds key case (measured §2): a case-only key collision is one key to
+  -- the client, so generation must refuse it.
+  do
+    local out = assert(io.open(path, "wb"))
+    lib.writeMetadata(out, "X-Abc-1", "one", 1000)
+    local ok, err = pcall(lib.writeMetadata, out, "X-ABC-1", "two", 1000)
+    out:close()
+    check(not ok and tostring(err):find("case%-insensitively"),
+      "case-folded key collision is refused: " .. tostring(err))
+  end
+
+  -- Cross-family prefixes must differ by more than case, since the per-handle registry
+  -- cannot see across the entity pass and the l10n append pass.
+  do
+    local prefixes = {}
+    for _, entityType in ipairs(config.entityTypes) do
+      prefixes[#prefixes + 1] = ("x-" .. entityType.metaPrefix):lower()
+      prefixes[#prefixes + 1] = ("x-" .. config.l10nMetaPrefix .. entityType.metaPrefix):lower()
+    end
+    for i = 1, #prefixes do
+      for j = 1, #prefixes do
+        if i ~= j then
+          check(prefixes[i]:sub(1, #prefixes[j]) ~= prefixes[j],
+            ("key families %q and %q overlap case-insensitively"):format(prefixes[i], prefixes[j]))
+        end
+      end
+    end
+  end
+
+  -- Every artifact on disk honors the edge-whitespace invariant, exactly as verify.lua checks.
+  for _, flavor in ipairs(config.flavors) do
+    local tocPath = config.tocPath(flavor)
+    if lib.fileExists(tocPath) then
+      local offending = 0
+      local file = assert(io.open(tocPath, "rb"))
+      for line in file:lines() do
+        line = line:gsub("\r$", "")
+        if line:sub(1, 5) == "## X-" then
+          local value = line:match("^## [^:]+: (.*)$")
+          if value and #value > 0 and
+             (lib.TRIMMABLE[value:byte(1)] or lib.TRIMMABLE[value:byte(#value)]) then
+            offending = offending + 1
+          end
+        end
+      end
+      file:close()
+      check(offending == 0,
+        ("%s has %d values with client-trimmable edges"):format(tocPath, offending))
+    end
+  end
+
+  os.remove(path)
+end)
+
+--------------------------------------------------------------------------------------------
+-- Coordinate quantization (ADR 0003 D1)
+--------------------------------------------------------------------------------------------
+
+suite("quantization", function()
+  local floor = math.floor
+  local function grid(c) return floor(c * 40.90) / 40.90 end
+
+  local meta = {
+    entity = "Test",
+    fieldCount = 4,
+    names = { "spawns", "waypoints", "triggerEnd", "extraObjectives" },
+    types = { "table", "table", "table", "table" },
+    structures = { "spawnlist", "waypointlist", "trigger", "extraobjectives" },
+    emptyIsNil = { [1] = true, [2] = true, [3] = true, [4] = true },
+    zeroPairIsNil = {},
+    normalize = {},
+    keys = { spawns = 1, waypoints = 2, triggerEnd = 3, extraObjectives = 4 },
+  }
+
+  -- Spawnlist: the compiler grid, the {-1,-1} sentinel, and phase survival rules — all from
+  -- Database/compiler.lua's readers/writers verbatim.
+  equal(normalize.field(meta, 1, { [1440] = { { 36.43, 55.89 } } }),
+    { [1440] = { { grid(36.43), grid(55.89) } } }, "spawn coordinates land on the 40.90 grid")
+  equal(normalize.field(meta, 1, { [1440] = { { -1, -1 } } }),
+    { [1440] = { { -1, -1 } } }, "instance sentinel survives")
+  equal(normalize.field(meta, 1, { [1440] = { { 0.001, 0.002 } } }),
+    { [1440] = { { -1, -1 } } }, "sub-quantum coordinates collapse to the sentinel")
+  equal(normalize.field(meta, 1, { [1440] = { { 10, 20, 3 } } }),
+    { [1440] = { { grid(10), grid(20), 3 } } }, "non-zero phase survives beside a non-zero pair")
+  equal(normalize.field(meta, 1, { [1440] = { { 10, 20, 0 } } }),
+    { [1440] = { { grid(10), grid(20) } } }, "phase 0 is dropped — the compiler's reader emits 2 elements")
+  equal(normalize.field(meta, 1, { [1440] = { { 0.001, 0.002, 7 } } }),
+    { [1440] = { { -1, -1 } } }, "a sentinel-collapsed spawn loses its phase")
+
+  -- Waypointlist nests one level deeper and never carries a third element.
+  equal(normalize.field(meta, 2, { [85] = { { { 52.5, 47.25 }, { -1, -1 } } } }),
+    { [85] = { { { grid(52.5), grid(47.25) }, { -1, -1 } } } },
+    "waypoints quantize through the extra nesting level")
+  equal(normalize.field(meta, 2, { [85] = { { { 52.5, 47.25, 9 } } } }),
+    { [85] = { { { grid(52.5), grid(47.25) } } } },
+    "waypoint third element is dropped — the compiler's reader never returns one")
+
+  -- Trigger: only the nested spawnlist quantizes; the text is untouched.
+  equal(normalize.field(meta, 3, { "Scout the tower", { [85] = { { 52.5, 47.25 } } } }),
+    { "Scout the tower", { [85] = { { grid(52.5), grid(47.25) } } } },
+    "trigger text is verbatim, trigger coordinates quantize")
+
+  -- extraObjectives: row[1] is a spawnlist; the rest of the row is verbatim.
+  equal(normalize.field(meta, 4, { { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } } }),
+    { { { [85] = { { grid(52.5), grid(47.25) } } }, 42, "Use the thing", 1, { { "monster", 5 } } } },
+    "extraObjectives quantizes only the nested spawnlist")
+
+  -- Quantized values must round-trip the wire exactly: shortest-round-trip spelling is
+  -- spelling, never precision loss.
+  for _, c in ipairs({ 36.43, 55.89, 52.5, 0.03, 99.97, 47.25, 63.7 }) do
+    local q = grid(c)
+    local spelled = serialize.number(q)
+    equal(tonumber(spelled), q, "spelling round-trips " .. tostring(c))
+    check(#spelled <= #string.format("%.17g", q),
+      "spelling of " .. tostring(c) .. " is never longer than %.17g")
+  end
+
+  -- Quantization is deliberately NOT idempotent — `floor(q * 40.90)` on a grid value can
+  -- land one step lower through double rounding (measured: 738 of 10,000 2dp coordinates),
+  -- exactly as Questie's own compiler behaves. Every pipeline path quantizes raw source
+  -- values exactly once: generation before serializing, source mode before caching, the
+  -- overlay on authored correction values. What must never happen is re-normalizing a value
+  -- that was read back from the store; this check documents that both consumers agree when
+  -- each applies the grid once to the same raw input.
+  local viaGeneration = codec.decodeTable(encode.field(meta, 1, { [1440] = { { 8.2, 8.4 } } }))
+  local viaSourceRead = normalize.field(meta, 1, { [1440] = { { 8.2, 8.4 } } })
+  equal(viaGeneration, viaSourceRead,
+    "generation and a source-mode read quantize the same raw value identically")
+
+  -- And the encoder stores exactly the normalized form.
+  local encoded = encode.field(meta, 1, { [1440] = { { 36.43, 55.89 } } })
+  equal(codec.decodeTable(encoded), { [1440] = { { grid(36.43), grid(55.89) } } },
+    "encoded spawnlist decodes to the quantized value")
+end)
+
+--------------------------------------------------------------------------------------------
 -- Driver
 --------------------------------------------------------------------------------------------
 

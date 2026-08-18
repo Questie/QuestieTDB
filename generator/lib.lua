@@ -38,11 +38,29 @@ function lib.maxValueLengthFor(key, requested)
   return allowed
 end
 
+--- Bytes the client's TOC parser trims from the edges of a metadata value. **Measured, not
+--- assumed** — see docs/client-metadata-probes.md §1: a chunk part stored with a trailing
+--- space came back 997 bytes of 998 on Classic Era 1.15.9, and the reassembled Russian quest
+--- text was missing the space. Any part that begins or ends with one of these bytes is
+--- silently corrupted on a real client while every offline gate passes.
+lib.TRIMMABLE = { [9] = true, [10] = true, [13] = true, [32] = true }
+
 --- Split a value into parts of at most `size` bytes.
 ---
---- UTF-8 safe: the split point backs up while the *next* byte is a continuation byte
---- (0x80-0xBF), so a multi-byte sequence is never cut. Localized names make this reachable in
---- practice, not theoretical.
+--- Two constraints on every split point, both measured against a real client:
+---
+---   * UTF-8 safe — the split backs up while the *next* byte is a continuation byte
+---     (0x80-0xBF), so a multi-byte sequence is never cut. Localized names make this
+---     reachable in practice, not theoretical.
+---   * Trim safe — no part may end, and no following part may begin, with a byte the
+---     client trims (space, tab, CR, LF). The client returns each part with its edge
+---     whitespace stripped, so a split landing beside a space loses that byte during
+---     reassembly with no error anywhere.
+---
+--- The two compose: after every backup step the loop re-checks both conditions. A value
+--- carrying a whitespace run longer than a whole part cannot satisfy the invariant and is a
+--- build failure — display text with hundreds of consecutive spaces is corrupt input, not a
+--- storage problem.
 local function splitValue(value, size)
   local parts = {}
   local pos, len = 1, #value
@@ -52,10 +70,19 @@ local function splitValue(value, size)
       parts[#parts + 1] = sub(value, pos)
       break
     end
-    local nextByte = byte(value, endPos + 1)
-    while endPos > pos and nextByte >= 0x80 and nextByte <= 0xBF do
-      endPos = endPos - 1
-      nextByte = byte(value, endPos + 1)
+    while endPos > pos do
+      local nextByte = byte(value, endPos + 1)
+      if nextByte >= 0x80 and nextByte <= 0xBF then
+        endPos = endPos - 1
+      elseif lib.TRIMMABLE[nextByte] or lib.TRIMMABLE[byte(value, endPos)] then
+        endPos = endPos - 1
+      else
+        break
+      end
+    end
+    if endPos == pos and (lib.TRIMMABLE[byte(value, pos)] or lib.TRIMMABLE[byte(value, pos + 1)]) then
+      error("splitValue: value contains a whitespace run longer than a chunk part and cannot " ..
+            "be split trim-safely: " .. sub(value, pos, pos + 60), 0)
     end
     parts[#parts + 1] = sub(value, pos, endPos)
     pos = endPos + 1
@@ -73,12 +100,40 @@ end
 --- the contract; the arithmetic is just a good first guess.
 ---
 --- See docs/storage-format.md, "Chunked values".
+--- Every key written through one handle, case-folded. `GetAddOnMetadata` folds key case
+--- (measured — docs/client-metadata-probes.md §2), so two keys differing only in case are one
+--- key to the client and the second silently shadows the first. Weakly keyed so a closed
+--- handle's registry can be collected. One artifact written across two handles (entity pass,
+--- then l10n append) gets two registries; cross-family safety is covered by the static prefix
+--- test in test.lua, since the families' prefixes differ by more than case.
+local keyRegistries = setmetatable({}, { __mode = "k" })
+
+local function registerKey(out, key)
+  local registry = keyRegistries[out]
+  if not registry then registry = {}; keyRegistries[out] = registry end
+  local folded = key:lower()
+  if registry[folded] then
+    error(("writeMetadata: key %q collides case-insensitively with already-written %q — the " ..
+      "client folds key case, so one would silently shadow the other"):format(key, registry[folded]), 0)
+  end
+  registry[folded] = key
+end
+
 ---@param out file* Open output handle
 ---@param key string Metadata key, without the leading "## " or trailing ":"
 ---@param value string Encoded value
 ---@param maxLen number Upper bound on a part, before the key budget is applied
 ---@return number lines
 function lib.writeMetadata(out, key, value, maxLen)
+  -- The client trims the whole value's edges exactly as it trims a chunk part's. A value
+  -- arriving here with a trimmable edge would read back changed; the encoders are responsible
+  -- for never producing one (quoted string form, trimmed translations), and this chokepoint
+  -- turns any lapse into a build failure instead of silent in-client corruption.
+  if #value > 0 and (lib.TRIMMABLE[byte(value, 1)] or lib.TRIMMABLE[byte(value, #value)]) then
+    error(("writeMetadata: value for key %q begins or ends with a byte the client trims"):format(key), 0)
+  end
+  registerKey(out, key)
+
   if lib.TOC_LINE_OVERHEAD + #key + #value <= lib.TOC_LINE_LIMIT then
     out:write("## ", key, ": ", value, "\n")
     return 1
@@ -112,6 +167,7 @@ function lib.writeMetadata(out, key, value, maxLen)
 
   out:write("## ", key, ": ~", tostring(#parts), "~\n")
   for i = 1, #parts do
+    registerKey(out, key .. "-" .. tostring(i))
     out:write("## ", key, "-", tostring(i), ": ", parts[i], "\n")
   end
   return #parts + 1

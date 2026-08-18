@@ -17,6 +17,7 @@
 --   | table {}          | nil    — empty tables never come back
 --   | pair {0, 0}       | nil    — Questie's documented hack
 --   | unknown entity ID | nil
+--   | coordinate c      | floor(c * 40.90) / 40.90 — the compiler's 12-bit grid, ADR 0003 D1
 --
 -- Verified against Questie/Database/compiler.lua:
 --   readers["u12pair"]/["s24pair"]   `if a == 0 and b == 0 then return nil end`
@@ -30,6 +31,133 @@ local _, LibQuestieDB = ...
 local normalize = {}
 
 local type, next = type, next
+local floor = math.floor
+
+--------------------------------------------------------------------------------------------
+-- Coordinate quantization (ADR 0003, Decision 1)
+--------------------------------------------------------------------------------------------
+--
+-- "Match Questie exactly" means matching what the ~290 existing call sites observe, which is
+-- compiled reads: the compiler stores each coordinate as `floor(coord * 40.90)` in a 12-bit
+-- pair and the reader divides it back out, so every consumer sees the 40.90 grid — never the
+-- source literal. Reproduced here, in the shared normalizer, so Generation, Source mode, the
+-- Correction Overlay and the verifier all agree without a second opinion.
+--
+-- The sentinel rules come from Database/compiler.lua verbatim:
+--   * writers: a `{-1,-1}` instance spawn is stored as the zero pair.
+--   * readers: a zero pair reads back as `{-1,-1}` — so an exact-zero or sub-quantum
+--     coordinate also collapses to the instance sentinel, and a spawn's phase survives only
+--     when its quantized pair is non-zero (readers emit the 2-element form for phase 0).
+--   * waypoint rows never carry a third element on the read side.
+--
+-- Rows that do not have numeric x and y pass through untouched: shape validation belongs to
+-- the validators, and quantization must not invent an opinion about malformed data.
+--
+-- NOT idempotent, exactly like the compiler: `floor(q * 40.90)` on a grid value can land one
+-- step lower through double rounding (738 of 10,000 2dp coordinates, measured). Every path
+-- must quantize a *raw* value exactly once — never re-normalize a value read back from the
+-- store, and a Correction must supply authored coordinates, not coordinates it read out of
+-- the database.
+
+--- Quantize one spawn row. `keepPhase` distinguishes spawnlist rows (phase survives) from
+--- waypoint rows (never a third element). The grid integers are kept un-divided until the
+--- sentinel test because `floor(x * 40.90) == 0` is what "sub-quantum" means.
+local function quantizeRow(row, keepPhase)
+  if type(row) ~= "table" or type(row[1]) ~= "number" or type(row[2]) ~= "number" then
+    return row
+  end
+  local qx, qy
+  if row[1] == -1 and row[2] == -1 then
+    qx, qy = 0, 0
+  else
+    qx, qy = floor(row[1] * 40.90), floor(row[2] * 40.90)
+  end
+  if qx == 0 and qy == 0 then
+    return { -1, -1 }
+  end
+  if keepPhase and (row[3] or 0) ~= 0 then
+    return { qx / 40.90, qy / 40.90, row[3] }
+  end
+  return { qx / 40.90, qy / 40.90 }
+end
+
+--- `spawnlist`: zoneId -> { {x, y, phase?}, ... }
+local function quantizeSpawnlist(value)
+  if type(value) ~= "table" then return value end
+  local out = {}
+  for zoneId, rows in pairs(value) do
+    if type(rows) == "table" then
+      local outRows = {}
+      for i, row in pairs(rows) do
+        outRows[i] = quantizeRow(row, true)
+      end
+      out[zoneId] = outRows
+    else
+      out[zoneId] = rows
+    end
+  end
+  return out
+end
+
+--- `waypointlist`: zoneId -> { { {x, y}, ... }, ... } — one more nesting level than spawns.
+local function quantizeWaypointlist(value)
+  if type(value) ~= "table" then return value end
+  local out = {}
+  for zoneId, paths in pairs(value) do
+    if type(paths) == "table" then
+      local outPaths = {}
+      for pathIndex, path in pairs(paths) do
+        if type(path) == "table" then
+          local outPath = {}
+          for i, row in pairs(path) do
+            outPath[i] = quantizeRow(row, false)
+          end
+          outPaths[pathIndex] = outPath
+        else
+          outPaths[pathIndex] = path
+        end
+      end
+      out[zoneId] = outPaths
+    else
+      out[zoneId] = paths
+    end
+  end
+  return out
+end
+
+--- `trigger`: { text, spawnlist }. Only the nested spawnlist quantizes.
+local function quantizeTrigger(value)
+  if type(value) ~= "table" or type(value[2]) ~= "table" then return value end
+  local out = {}
+  for k, v in pairs(value) do out[k] = v end
+  out[2] = quantizeSpawnlist(value[2])
+  return out
+end
+
+--- `extraobjectives`: rows of { spawnlist, icon, text, index, reflist }. Only each row's
+--- nested spawnlist quantizes; everything else is preserved verbatim.
+local function quantizeExtraObjectives(value)
+  if type(value) ~= "table" then return value end
+  local out = {}
+  for i, row in pairs(value) do
+    if type(row) == "table" and type(row[1]) == "table" then
+      local outRow = {}
+      for k, v in pairs(row) do outRow[k] = v end
+      outRow[1] = quantizeSpawnlist(row[1])
+      out[i] = outRow
+    else
+      out[i] = row
+    end
+  end
+  return out
+end
+
+local quantizeByStructure = {
+  spawnlist = quantizeSpawnlist,
+  waypointlist = quantizeWaypointlist,
+  trigger = quantizeTrigger,
+  extraobjectives = quantizeExtraObjectives,
+}
 
 --------------------------------------------------------------------------------------------
 -- Named normalizers
@@ -92,6 +220,8 @@ function normalize.field(meta, fieldIndex, value)
     if meta.zeroPairIsNil[fieldIndex] and (value[1] or 0) == 0 and (value[2] or 0) == 0 then
       return nil
     end
+    local quantizer = meta.structures and quantizeByStructure[meta.structures[fieldIndex]]
+    if quantizer then return quantizer(value) end
     return value
   end
 

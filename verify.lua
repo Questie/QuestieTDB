@@ -140,6 +140,36 @@ local function verifyFlavor(flavor, opts)
     end
   end
 
+  -- No stored value — whole or chunk part — may begin or end with a byte the client trims.
+  -- Measured on Classic Era 1.15.9 (docs/client-metadata-probes.md §1): `GetAddOnMetadata`
+  -- strips edge whitespace from every value, so an edge-whitespace part loses a byte during
+  -- reassembly with no symptom offline. The emulator preserves those bytes, which is exactly
+  -- why only this raw-file scan can see the problem.
+  do
+    local edgeWhitespace, exampleKey = 0, nil
+    local file = assert(io.open(tocPath, "rb"))
+    for line in file:lines() do
+      line = line:gsub("\r$", "")
+      if line:sub(1, 5) == "## X-" then
+        local key, value = line:match("^## ([^:]+): (.*)$")
+        if value and #value > 0 then
+          local first, lastByte = value:byte(1), value:byte(#value)
+          if lib.TRIMMABLE[first] or lib.TRIMMABLE[lastByte] then
+            edgeWhitespace = edgeWhitespace + 1
+            exampleKey = exampleKey or key
+          end
+        end
+      end
+    end
+    file:close()
+    if edgeWhitespace > 0 then
+      io.write(("  EDGE WHITESPACE %s: %d stored values begin or end with a byte the client " ..
+        "trims (first: %s) — reassembly loses those bytes in-client\n")
+        :format(tocPath, edgeWhitespace, tostring(exampleKey)))
+      report.errors = report.errors + edgeWhitespace
+    end
+  end
+
   local normalize = LibQuestieDB.Meta.normalize
   local seenKeys = {}
 
@@ -206,15 +236,19 @@ local function verifyFlavor(flavor, opts)
         end
       end
 
-      -- An unknown entity ID must read as nil, never as a stray default.
+      -- An unknown entity ID must read as nil, never as a stray value. ADR 0003 Decision 6
+      -- gates numeric defaults on existence, so the target contract is nil for every field;
+      -- the pre-ADR runtime returned the numeric default. Both are accepted while the
+      -- runtime half lands, and anything else fails. TODO(WS4): tighten to nil-only once
+      -- src/read implements existence-gated defaults.
       local absentId = sourceIds[#sourceIds] + 1000000
       for fieldIndex = 1, meta.fieldCount do
        if not opts.fields or opts.fields[meta.names[fieldIndex]] then
         local value = entity.GetRaw(absentId, fieldIndex)
-        local expectedAbsent = normalize.default(meta, fieldIndex)
-        if value ~= expectedAbsent then
-          io.write(("  MISMATCH %s unknown id %d field %d: expected %s, got %s\n")
-            :format(entityType.name, absentId, fieldIndex, tostring(expectedAbsent), tostring(value)))
+        local legacyDefault = normalize.default(meta, fieldIndex)
+        if value ~= nil and value ~= legacyDefault then
+          io.write(("  MISMATCH %s unknown id %d field %d: expected nil (or legacy %s), got %s\n")
+            :format(entityType.name, absentId, fieldIndex, tostring(legacyDefault), tostring(value)))
           report.errors = report.errors + 1
         end
        end
@@ -260,10 +294,56 @@ local function verifyFlavor(flavor, opts)
   -- and every segment must be non-empty or absent — an empty segment means "no translation"
   -- and the reader falls back, so a stray one is a silent English string in a German client.
   local l10nFields, l10nSegments = 0, 0
+  local l10nGen = dofile("generator/l10n.lua")
+  local listFieldByType = {}
+  for typeName, typeCfg in pairs(l10nGen.types) do
+    listFieldByType[typeName] = {}
+    for fieldPos, fieldCfg in ipairs(typeCfg.fields) do
+      if fieldCfg.list then listFieldByType[typeName][fieldPos] = true end
+    end
+  end
+  local function splitLocales(joined)
+    local segments, pos = {}, 1
+    while true do
+      local s, e = joined:find(config.localeSeparator, pos, true)
+      if not s then
+        segments[#segments + 1] = joined:sub(pos)
+        return segments
+      end
+      segments[#segments + 1] = joined:sub(pos, s - 1)
+      pos = e + 1
+    end
+  end
   for key, value in pairs(map) do
     -- `X-l10n-<Type>-<id>-<fieldIndex>`. A chunk part carries a fourth number and is skipped.
-    if key:match("^X%-l10n%-%a+%-%d+%-%d+$") then
+    local typeName, fieldPos = key:match("^X%-l10n%-(%a+)%-%d+%-(%d+)$")
+    if typeName then
       l10nFields = l10nFields + 1
+      local joined = emulator.getValue(map, key)
+      local segments = splitLocales(joined)
+      if #segments > #config.locales then
+        io.write(("  L10N %s: %d locale segments, only %d locales declared\n")
+          :format(key, #segments, #config.locales))
+        report.errors = report.errors + 1
+      end
+      -- A list-valued field's segments are Lua table literals — the shape contract of
+      -- ADR 0003 Decision 3. Every non-empty segment must decode to a table.
+      if listFieldByType[typeName] and listFieldByType[typeName][tonumber(fieldPos)] then
+        for i = 1, #segments do
+          local segment = segments[i]
+          if segment ~= "" then
+            local chunk = loadstring("return " .. segment)
+            local ok, decoded = false, nil
+            if chunk then ok, decoded = pcall(chunk) end
+            if not ok or type(decoded) ~= "table" then
+              io.write(("  L10N %s segment %d does not decode to a table: %s\n")
+                :format(key, i, segment:sub(1, 80)))
+              report.errors = report.errors + 1
+              break
+            end
+          end
+        end
+      end
     end
   end
   for _, entityType in ipairs(config.entityTypes) do
