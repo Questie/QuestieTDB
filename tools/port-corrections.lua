@@ -191,15 +191,25 @@ end
 --- consumer policy, not a database fact. See DESIGN.md, the boundary rule.
 local FILES = {
   -- Era
-  { src = "classicQuestFixes.lua", dst = "Era/classicQuestFixes.lua", datatype = "Quest", expansions = { Classic = true },
+  --
+  -- The four Era fix files carry NO expansion gate. Upstream applies them unconditionally on
+  -- every expansion and layers TBC/Wotlk/Cata/MoP fixes on top by expansion floor
+  -- (QuestieCorrections:Initialize, Database/Corrections/QuestieCorrections.lua — only the
+  -- reputation fixes sit behind `if Questie.IsClassic`, with the comment "This data is only
+  -- correct for Era/SoX, for the other expansions we trust the base DB"). Classic-gating
+  -- these four stripped every Era-inherited static correction out of the TBC+ artifacts —
+  -- found by the cross-implementation differential, invisible to verify/equivalence because
+  -- generator and source mode share this manifest.
+  { src = "classicQuestFixes.lua", dst = "Era/classicQuestFixes.lua", datatype = "Quest",
     module = "QuestieQuestFixes", static = { "LoadMissingQuests", "Load" }, dynamic = { "LoadFactionFixes" } },
-  { src = "classicNPCFixes.lua", dst = "Era/classicNPCFixes.lua", datatype = "Npc", expansions = { Classic = true },
+  { src = "classicNPCFixes.lua", dst = "Era/classicNPCFixes.lua", datatype = "Npc",
     module = "QuestieNPCFixes", static = { "Load" },
     dynamic = { "LoadFactionFixes" }, parameterized = { "LoadDarkmoonFixes" } },
-  { src = "classicItemFixes.lua", dst = "Era/classicItemFixes.lua", datatype = "Item", expansions = { Classic = true },
+  { src = "classicItemFixes.lua", dst = "Era/classicItemFixes.lua", datatype = "Item",
     module = "QuestieItemFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
-  { src = "classicObjectFixes.lua", dst = "Era/classicObjectFixes.lua", datatype = "Object", expansions = { Classic = true },
+  { src = "classicObjectFixes.lua", dst = "Era/classicObjectFixes.lua", datatype = "Object",
     module = "QuestieObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+  -- Era-only per upstream's explicit `if Questie.IsClassic` gate — see the citation above.
   { src = "Automatic/classicQuestReputationFixes.lua", dst = "Era/classicQuestReputationFixes.lua",
     datatype = "Quest", expansions = { Classic = true }, module = "QuestieQuestReputationFixes",
     static = { "Load" }, generated = true },

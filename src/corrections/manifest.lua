@@ -10,10 +10,10 @@
 local _, LibQuestieDB = ...
 
 local manifest = {
-  { file = 'Era/classicQuestFixes.lua', module = 'QuestieQuestFixes', datatype = 'Quest', static = {'LoadMissingQuests','Load'}, dynamic = {'LoadFactionFixes'}, expansions = {['Classic']=true} },
-  { file = 'Era/classicNPCFixes.lua', module = 'QuestieNPCFixes', datatype = 'Npc', static = {'Load'}, dynamic = {'LoadFactionFixes'}, expansions = {['Classic']=true}, parameterized = {'LoadDarkmoonFixes'} },
-  { file = 'Era/classicItemFixes.lua', module = 'QuestieItemFixes', datatype = 'Item', static = {'Load'}, dynamic = {'LoadFactionFixes'}, expansions = {['Classic']=true} },
-  { file = 'Era/classicObjectFixes.lua', module = 'QuestieObjectFixes', datatype = 'Object', static = {'Load'}, dynamic = {'LoadFactionFixes'}, expansions = {['Classic']=true} },
+  { file = 'Era/classicQuestFixes.lua', module = 'QuestieQuestFixes', datatype = 'Quest', static = {'LoadMissingQuests','Load'}, dynamic = {'LoadFactionFixes'} },
+  { file = 'Era/classicNPCFixes.lua', module = 'QuestieNPCFixes', datatype = 'Npc', static = {'Load'}, dynamic = {'LoadFactionFixes'}, parameterized = {'LoadDarkmoonFixes'} },
+  { file = 'Era/classicItemFixes.lua', module = 'QuestieItemFixes', datatype = 'Item', static = {'Load'}, dynamic = {'LoadFactionFixes'} },
+  { file = 'Era/classicObjectFixes.lua', module = 'QuestieObjectFixes', datatype = 'Object', static = {'Load'}, dynamic = {'LoadFactionFixes'} },
   { file = 'Era/classicQuestReputationFixes.lua', module = 'QuestieClassicQuestReputationFixes', datatype = 'Quest', static = {'Load'}, expansions = {['Classic']=true}, generated = true },
   { file = 'Tbc/tbcQuestFixes.lua', module = 'QuestieTBCQuestFixes', datatype = 'Quest', static = {'Load'}, dynamic = {'LoadFactionFixes'}, minExpansionOrder = 2 },
   { file = 'Tbc/tbcNPCFixes.lua', module = 'QuestieTBCNpcFixes', datatype = 'Npc', static = {'Load'}, dynamic = {'LoadFactionFixes'}, minExpansionOrder = 2, parameterized = {'LoadDarkmoonFixes'} },

@@ -353,6 +353,24 @@ suite("corrections", function()
   check(Lib.CorrectionManifest ~= nil, "the correction manifest loaded")
   if not Lib.CorrectionManifest then return end
 
+  -- Expansion gating mirrors QuestieCorrections:Initialize: the four Era fix files apply
+  -- unconditionally on every expansion (upstream runs their Load()s ungated and layers
+  -- TBC+ fixes on top by floor); ONLY the reputation fixes sit behind `if Questie.IsClassic`.
+  -- Classic-gating the four stripped every Era-inherited static out of the TBC+ artifacts —
+  -- caught by the cross-implementation differential, invisible to verify/equivalence.
+  local ungatedEraFiles = {
+    ["Era/classicQuestFixes.lua"] = true, ["Era/classicNPCFixes.lua"] = true,
+    ["Era/classicItemFixes.lua"] = true, ["Era/classicObjectFixes.lua"] = true,
+  }
+  for _, entry in ipairs(Lib.CorrectionManifest) do
+    if ungatedEraFiles[entry.file] then
+      equal(entry.expansions, nil, "Era fix file is not expansion-gated: " .. entry.file)
+    elseif entry.file == "Era/classicQuestReputationFixes.lua" then
+      check(entry.expansions and entry.expansions.Classic == true,
+        "reputation fixes stay Classic-gated, per upstream's explicit IsClassic branch")
+    end
+  end
+
   local registry = Lib.Corrections
   runtime.loadCorrections(Lib, flavor)
 
