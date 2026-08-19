@@ -93,7 +93,8 @@ against them for years.
 | string nil | `nil` |
 | string `""` | `""` — distinct from nil |
 | table nil | `nil` |
-| table `{}` | **`nil`** — empty tables never come back |
+| table `{}` | **`nil`** — empty tables never come back… |
+| …except `startedBy`, `finishedBy`, `objectives` | **`{}`** — these three are never nil for an entity that exists |
 | pair `{0, 0}` | `nil` |
 | unknown entity ID | **`nil` for every field** — including numerics |
 | invalid id (`nil`, a string) | `nil`, never an error |
@@ -104,7 +105,16 @@ Three consequences worth stating plainly:
   Lua, so test `~= 0` rather than truthiness.
 * **An unknown id is `nil` everywhere.** A missing entity can never masquerade as a valid
   all-zero row; check `Exists(id)` when the distinction matters.
-* **Table getters return `nil`, never an empty table.** Guard before indexing.
+* **Table getters return `nil`, never an empty table — with three exceptions.** Quest
+  `startedBy`, `finishedBy` and `objectives` return `{}` rather than nil when the quest has
+  none, matching Questie's compiler, whose readers build those tables unconditionally. So a
+  table getter is *not* a presence test for those three: check contents, not truthiness. Guard
+  before indexing everywhere else.
+* **Numeric slots inside structured values default to `0`, not nil.** The field-level rule
+  applies element-wise: `objective[3]` (icon), `spellObjective[3]` (item),
+  `killCredit[4]` and `extraObjective[4]` (objectiveIndex) are numbers, never nil. `0` is
+  truthy, so test `~= 0`. String slots inside structures stay nil. See
+  [`adr/0005-element-level-nil-semantics.md`](./adr/0005-element-level-nil-semantics.md).
 
 Full detail in [`storage-format.md`](./storage-format.md).
 

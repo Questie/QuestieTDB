@@ -160,6 +160,78 @@ local quantizeByStructure = {
 }
 
 --------------------------------------------------------------------------------------------
+-- Element-level nil semantics (ADR 0004)
+--------------------------------------------------------------------------------------------
+--
+-- Questie's `nil number -> 0` rule is NOT field-level. Its tuple readers read every slot they
+-- wrote, and its writers emit `value or 0`, so an absent numeric slot *inside* a structured
+-- value reads back as 0 rather than nil. Verified against Database/compiler.lua:
+--
+--   writers["objective"]        WriteByte(pair[3] or 0)          -> entry[3] = 0
+--   writers["spellobjective"]   WriteInt24(data[3] or 0)         -> entry[3] = 0
+--   writers["objectives"]       WriteByte(killobjective[4] or 0) -> killCredit[4] = 0
+--   writers["extraobjectives"]  WriteInt24(data[4] or 0)         -> row[4] = 0
+--
+-- This matters to consumers because 0 is truthy in Lua: `if objective[3] then` is true through
+-- the compiler and was false here. String slots are written `value or ""` and read back as nil
+-- for "", so they are deliberately NOT padded.
+
+--- Copy a list of tuples, defaulting one numeric slot to 0 where it is absent.
+local function padSlot(list, slot)
+  if type(list) ~= "table" then return list end
+  local out = {}
+  for index, entry in pairs(list) do
+    if type(entry) == "table" then
+      local padded = {}
+      for k, v in pairs(entry) do padded[k] = v end
+      if padded[slot] == nil then padded[slot] = 0 end
+      out[index] = padded
+    else
+      out[index] = entry
+    end
+  end
+  return out
+end
+
+--- `objectives`: { creature, object, item, reputation, killCredits, spell }.
+--- Slots 4 (a pair) and any string slot keep their own semantics.
+local function padObjectives(value)
+  if type(value) ~= "table" then return value end
+  local out = {}
+  for k, v in pairs(value) do out[k] = v end
+  out[1] = padSlot(value[1], 3) -- creatureObjective  {id, text, icon}
+  out[2] = padSlot(value[2], 3) -- objectObjective
+  out[3] = padSlot(value[3], 3) -- itemObjective
+  out[5] = padSlot(value[5], 4) -- killCreditObjective {ids, baseId, baseText, icon}
+  out[6] = padSlot(value[6], 3) -- spellObjective     {spell, text, item}
+  return out
+end
+
+--- `extraobjectives`: rows of { spawnlist, icon, text, objectiveIndex, reflist }.
+local function padExtraObjectives(value)
+  return padSlot(value, 4)
+end
+
+local padByStructure = {
+  objectives = padObjectives,
+  extraobjectives = padExtraObjectives,
+}
+
+--- Structures whose compiler reader ALWAYS constructs a table, so the field is never nil for
+--- an entity that exists:
+---
+---   readers["questgivers"]  returns { array, array, array } unconditionally
+---   readers["objectives"]   returns { ... } unconditionally
+---
+-- Both can be empty — a quest with no starters reads `{}`, not nil — which is why
+-- `if QueryQuestSingle(id, "startedBy") then` is true upstream. Absence still encodes nil on
+-- the wire; the empty table is reconstituted on read, so this costs no stored bytes.
+normalize.neverNilStructures = {
+  questgivers = true,
+  objectives = true,
+}
+
+--------------------------------------------------------------------------------------------
 -- Named normalizers
 --------------------------------------------------------------------------------------------
 
@@ -213,15 +285,28 @@ function normalize.field(meta, fieldIndex, value)
   end
 
   if storage == "table" then
-    if value == nil then return nil end
+    local structure = meta.structures and meta.structures[fieldIndex]
+    local neverNil = structure ~= nil and normalize.neverNilStructures[structure] == true
+
+    if value == nil then
+      -- A fresh table per call, never a shared constant: every table a read hands out is the
+      -- caller's to mutate (ADR 0003 D10).
+      if neverNil then return {} end
+      return nil
+    end
     if type(value) ~= "table" then return value end
-    -- Empty tables never come back. Both nil and {} collapse to nil.
-    if next(value) == nil then return nil end
+    -- Empty tables never come back — except where the compiler's reader builds one anyway.
+    if next(value) == nil then
+      if neverNil then return {} end
+      return nil
+    end
     if meta.zeroPairIsNil[fieldIndex] and (value[1] or 0) == 0 and (value[2] or 0) == 0 then
       return nil
     end
-    local quantizer = meta.structures and quantizeByStructure[meta.structures[fieldIndex]]
-    if quantizer then return quantizer(value) end
+    local quantizer = structure and quantizeByStructure[structure]
+    if quantizer then value = quantizer(value) end
+    local padder = structure and padByStructure[structure]
+    if padder then value = padder(value) end
     return value
   end
 
@@ -233,6 +318,8 @@ end
 --- else to nil.
 function normalize.default(meta, fieldIndex)
   if meta.types[fieldIndex] == "number" then return 0 end
+  local structure = meta.structures and meta.structures[fieldIndex]
+  if structure and normalize.neverNilStructures[structure] then return {} end
   return nil
 end
 

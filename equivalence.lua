@@ -244,7 +244,10 @@ local function compareOwnership(report, entityName, entities, meta, ids)
             diverge(report, "OWNERSHIP", "%s %s %d field %d: fresh copies differ in content",
               label, entityName, id, fieldIndex)
           else
-            first[next(first)] = "equivalence scribble"
+            -- A never-nil structure legitimately reads back as `{}` (ADR 0004), so there may be
+            -- no existing key to overwrite; `next` would then index with nil and raise.
+            local existingKey = next(first)
+            if existingKey ~= nil then first[existingKey] = "equivalence scribble" end
             first.__scribble = true
             if not lib.deepEqual(entity.Get(id, fieldIndex), second) then
               diverge(report, "OWNERSHIP", "%s %s %d field %d: a caller mutation reached a later read",
@@ -254,7 +257,10 @@ local function compareOwnership(report, entityName, entities, meta, ids)
         end
       end
       -- One table-valued field per type is enough: every table field shares the producer path.
-      if type(entities.source.GetRaw(id, fieldIndex)) == "table" then return end
+      -- It has to be a POPULATED one, or the check would settle for an empty never-nil field
+      -- and never exercise a real value's copy semantics.
+      local raw = entities.source.GetRaw(id, fieldIndex)
+      if type(raw) == "table" and next(raw) ~= nil then return end
     end
   end
 end

@@ -117,6 +117,23 @@ function shared.CreateEntity(meta, backend)
   local keys = meta.keys
   local fieldCount = meta.fieldCount
 
+  -- What a field with no stored value reads as, resolved once per entity type from the single
+  -- definition in normalize.lua rather than restated here: numerics default to 0, the
+  -- never-nil structures default to `{}`, everything else stays nil (ADR 0003 D6, ADR 0005).
+  --
+  -- Stored in the cache's own convention -- a plain value for scalars, a producer for tables --
+  -- so a default can be cached exactly like a decoded one and a table default still hands out
+  -- a fresh copy per read. `nil` here means "this field really does read nil".
+  local defaults = {}
+  for fieldIndex = 1, fieldCount do
+    local default = normalize.default(meta, fieldIndex)
+    if type(default) == "table" then
+      defaults[fieldIndex] = function() return normalize.default(meta, fieldIndex) end
+    elseif default ~= nil then
+      defaults[fieldIndex] = default
+    end
+  end
+
   local entity = {
     meta = meta,
     backend = backend,
@@ -260,11 +277,16 @@ function shared.CreateEntity(meta, backend)
     -- composed view (ADR 0003 D6). An unknown id reads nil for every field, so a missing
     -- entity can no longer masquerade as a valid all-zero row.
     if value == nil then
-      if types[fieldIndex] == "number" then
+      -- Defaults apply only to an entity that exists in the composed view. An unknown id reads
+      -- nil for every field, so a missing entity can never masquerade as a valid all-zero row
+      -- or as a quest that simply has no questgivers (ADR 0003 D6).
+      local default = defaults[fieldIndex]
+      if default ~= nil then
         if not unionMap then buildUnion() end
         if unionMap[id] == true then
-          byId[fieldIndex] = 0
-          return 0
+          byId[fieldIndex] = default
+          if type(default) == "function" then return default() end
+          return default
         end
       end
       byId[fieldIndex] = NIL
@@ -320,11 +342,15 @@ function shared.CreateEntity(meta, backend)
     if not fieldIndex or fieldIndex < 1 or fieldIndex > fieldCount then return nil end
     local value = backend.readField(id, fieldIndex)
     if value == nil then
-      if types[fieldIndex] == "number" then
-        -- GetRaw's existence gate is the backend alone: it bypasses the overlay, so an
-        -- overlay-added entity legitimately has no raw row.
+      -- Same defaults, but GetRaw's existence gate is the backend alone: it bypasses the
+      -- overlay, so an overlay-added entity legitimately has no raw row.
+      local default = defaults[fieldIndex]
+      if default ~= nil then
         local _, map = backend.getAllIds()
-        if map[id] == true then return 0 end
+        if map[id] == true then
+          if type(default) == "function" then return default() end
+          return default
+        end
       end
       return nil
     end

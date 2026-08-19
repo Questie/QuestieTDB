@@ -148,6 +148,7 @@ docs/                     api.md, storage-format.md, adr/
 | [`DESIGN.md`](DESIGN.md) | architecture, locked decisions, rejected alternatives |
 | [`CONTEXT.md`](CONTEXT.md) | vocabulary |
 | [`docs/adr/`](docs/adr/) | decision records |
+| [`docs/adr/0005-element-level-nil-semantics.md`](docs/adr/0005-element-level-nil-semantics.md) | never-nil structures and element-level nil→0, which amend the storage contract |
 | [`docs/questie-handover.md`](docs/questie-handover.md) | every known divergence from Questie's compiler, its disposition, and the switch-over checklist |
 | [`docs/table.freeze.md`](docs/table.freeze.md) | live-client freeze research |
 | [`docs/retiring-the-prototypes.md`](docs/retiring-the-prototypes.md) | what was mined from `Getters` and `toc-database` |

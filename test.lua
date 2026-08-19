@@ -249,9 +249,18 @@ suite("semantics", function()
   equal(normalize.field(meta, 2, ""), "", "empty string is distinct from nil")
   equal(normalize.field(meta, 2, "x"), "x", "string passes through")
 
-  equal(normalize.field(meta, 3, nil), nil, "table nil stays nil")
-  equal(normalize.field(meta, 3, {}), nil, "empty table reads back as nil, never {}")
+  -- Field 3 is a `questgivers` structure, whose compiler reader always constructs a table, so
+  -- it is one of the never-nil fields (ADR 0004). Field 6 is a plain idarray and keeps the
+  -- ordinary rule, so both halves of the contract stay covered.
+  equal(normalize.field(meta, 3, nil), {}, "never-nil structure: nil reads back as {}")
+  equal(normalize.field(meta, 3, {}), {}, "never-nil structure: {} stays {}")
   equal(normalize.field(meta, 3, { 1 }), { 1 }, "non-empty table passes through")
+  check(normalize.field(meta, 3, nil) ~= normalize.field(meta, 3, nil),
+        "never-nil default is a fresh table per call, not a shared constant")
+
+  equal(normalize.field(meta, 6, nil), nil, "ordinary table field: nil stays nil")
+  equal(normalize.field(meta, 6, {}), nil, "ordinary table field: {} reads back as nil")
+  equal(normalize.field(meta, 6, { 3 }), { 3 }, "ordinary table field passes through")
 
   equal(normalize.field(meta, 4, { 0, 0 }), nil, "pair {0,0} reads back as nil")
   equal(normalize.field(meta, 4, { 0, 5 }), { 0, 5 }, "pair {0,n} survives")
@@ -266,13 +275,16 @@ suite("semantics", function()
 
   equal(normalize.default(meta, 1), 0, "numeric default is 0")
   equal(normalize.default(meta, 2), nil, "string default is nil")
-  equal(normalize.default(meta, 3), nil, "table default is nil")
+  equal(normalize.default(meta, 3), {}, "never-nil structure default is {}")
+  equal(normalize.default(meta, 6), nil, "ordinary table default is nil")
 
   -- Encoding must agree: whatever reads back as a default is not written at all.
   equal(encode.field(meta, 1, nil), nil, "numeric nil writes no line")
   equal(encode.field(meta, 1, 0), nil, "numeric zero writes no line")
   equal(encode.field(meta, 1, 7), "7", "numeric value writes a line")
   equal(encode.field(meta, 3, {}), nil, "empty table writes no line")
+  equal(encode.field(meta, 3, nil), nil, "never-nil structure still writes no line when absent")
+  equal(encode.field(meta, 6, {}), nil, "ordinary empty table writes no line")
   equal(encode.field(meta, 4, { 0, 0 }), nil, "zero pair writes no line")
   equal(encode.field(meta, 2, ""), codec.EMPTY_STRING, "empty string writes its marker")
 end)

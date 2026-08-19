@@ -10,11 +10,6 @@ Npc	spawns	EMPTY_VS_ABSENT	4	UNTRIAGED
 Npc	spawns	VALUE	41	OPEN
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
 Object	spawns	VALUE	13	OPEN
-Quest	extraObjectives	VALUE	54	FIX
-Quest	finishedBy	EMPTY_VS_ABSENT	527	FIX
-Quest	objectives	EMPTY_VS_ABSENT	3574	FIX
-Quest	objectives	VALUE	5200	FIX
 Quest	questFlags	VALUE	2	UNTRIAGED
 Quest	reputationReward	EMPTY_VS_ABSENT	1	UNTRIAGED
 Quest	requiredRaces	VALUE	344	OPEN
-Quest	startedBy	EMPTY_VS_ABSENT	557	FIX

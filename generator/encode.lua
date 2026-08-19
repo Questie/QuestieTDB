@@ -85,6 +85,10 @@ function encode.field(meta, fieldIndex, value)
         meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), type(normalized),
         tostring(normalized)), 0)
     end
+    -- A never-nil structure normalizes to `{}` rather than nil, but absence is still the
+    -- cheapest encoding for it: the read path reconstitutes the empty table from the field's
+    -- structure, so storing `{}` would cost bytes to say what the schema already says.
+    if next(normalized) == nil then return nil end
     return serialize.value(normalized)
   end
 

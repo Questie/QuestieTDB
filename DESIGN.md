@@ -217,6 +217,15 @@ Two implementation consequences:
   disqualified anyway — a frozen table carrying `__newindex` redirects writes rather than
   failing.
 
+**Amended by [ADR 0005](./docs/adr/0005-element-level-nil-semantics.md), after the reference
+differential measured it.** Two corrections to the table above: the `questgivers` and
+`objectives` structures read back as `{}` rather than nil, because their compiler readers
+build a table unconditionally — so quest `startedBy`, `finishedBy` and `objectives` are never
+nil for a quest that exists. And the `nil number -> 0` rule is **element-level, not
+field-level**: absent numeric slots inside `objective`, `spellobjective`, killcredit and
+`extraobjective` tuples read back as `0` too. Between them these accounted for 94% of every
+divergence from Questie's compiler.
+
 This remains the highest-risk class of bug, so the rule is enforced by exhaustive differential
 testing rather than trusted to review. Full detail in
 [`docs/storage-format.md`](./docs/storage-format.md).

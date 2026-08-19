@@ -216,6 +216,7 @@ sites.
 | string `""` | `""` | Empty is **distinct** from nil and must survive |
 | table `nil` | `nil` | |
 | table `{}` | **`nil`** | Empty tables never come back; both collapse to nil |
+| `questgivers` / `objectives` structure | **`{}`** | These two readers build a table unconditionally, so `startedBy`, `finishedBy` and `objectives` are never nil for an entity that exists (ADR 0005). Absence still encodes it — the reader reconstitutes `{}` from the structure, so no bytes are stored |
 | pair `{0, 0}` | `nil` | Questie's documented hack for coordinate-style pairs |
 | unknown entity ID | `nil` | No pointer exists |
 
@@ -236,10 +237,28 @@ nil, which means a genuine string `"nil"` is lost. QuestieTDB instead marks the 
 explicitly with `~E~`, so nothing needs to be inferred from a survey and no legitimate value
 is unrepresentable.
 
-### Field-level, mostly not nested
+### Element-level, not field-level
 
-The table above governs a *field's* value. Content nested inside a stored table is preserved
-verbatim, **with one deliberate exception**: coordinates. ADR 0003 Decision 1 resolved the
+**This section previously claimed the table above governs a *field's* value, and that nested
+content is preserved verbatim with coordinates as the sole exception. That was wrong**, and
+the reference differential (`tools/differential/compiler_diff.py`) proved it: coordinates were
+not the exception, they were the one nested case anyone had checked. Questie's `nil number ->
+0` rule applies **element-wise inside structured values too** — its tuple writers emit
+`value or 0` and its readers read back every slot they wrote:
+
+| Structure | Slot | Reads back as |
+| --- | --- | --- |
+| `objective` (creature/object/item) | `[3]` icon | `0` |
+| `spellobjective` | `[3]` item | `0` |
+| killcredit rows inside `objectives` | `[4]` icon override | `0` |
+| `extraobjectives` rows | `[4]` objectiveIndex | `0` |
+
+String slots are **not** padded: they are written `value or ""` and read back as nil for `""`.
+
+Coordinates remain a separate, deliberate nested normalization (ADR 0003 D1). The compiler's
+remaining nested behaviours — turning a nil objective text into `""` and the like — stay
+unreproduced, and are now *measured* as unreproduced rather than assumed harmless: the
+differential is at 49-872 divergences per flavour and every one is accounted for. ADR 0003 Decision 1 resolved the
 tension this section used to carry — the consumer contract is what Questie's ~290 call sites
 observe, which is *compiled* reads, so spawn and waypoint coordinates reproduce the
 compiler's 40.90 quantization and its sentinel rules (see Value encoding above). The
