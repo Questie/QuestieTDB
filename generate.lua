@@ -134,6 +134,10 @@ local function writeHeader(out, flavor, fileList)
   out:write("## X-Mode: baked\n")
   out:write("## X-BUILD-COMMIT: ", BUILD.commit, "\n")
   out:write("## X-BUILD-TIME: ", BUILD.time, "\n")
+  -- The Questie checkout is a generation input (l10n lookups are read from it, not committed
+  -- here), so the artifact is reproducible only from this commit pair — see
+  -- docs/storage-format.md, "Build metadata".
+  out:write("## X-QUESTIE-COMMIT: ", BUILD.questieCommit, "\n")
   out:write("\n")
   for _, file in ipairs(fileList) do
     out:write(file:gsub("/", "\\"), "\n")
@@ -274,7 +278,11 @@ end
 
 local opts = parseArgs(arg or {})
 QUIET = opts.quiet
-BUILD = { commit = lib.gitCommit(), time = lib.buildTime() }
+BUILD = {
+  commit = lib.gitCommit(),
+  time = lib.buildTime(),
+  questieCommit = lib.gitCommit(opts.questie or "../Questie"),
+}
 
 if opts.target == "meta" then
   generate.materializeMeta(opts.flavors[1])

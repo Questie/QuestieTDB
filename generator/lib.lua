@@ -218,10 +218,13 @@ local function trim(str)
   return (str:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
---- `git rev-parse HEAD`, or forty zeros when git is unavailable.
+--- `git rev-parse HEAD`, or forty zeros when git is unavailable. With `dir`, the commit of
+--- that checkout instead — used to record the Questie input commit.
 --- See docs/storage-format.md, "Build metadata".
-function lib.gitCommit()
-  local pipe = io.popen("git rev-parse HEAD 2>/dev/null", "r")
+function lib.gitCommit(dir)
+  local cmd = dir and ('git -C "' .. dir .. '" rev-parse HEAD 2>/dev/null')
+                   or "git rev-parse HEAD 2>/dev/null"
+  local pipe = io.popen(cmd, "r")
   if pipe then
     local output = trim(pipe:read("*a") or "")
     pipe:close()

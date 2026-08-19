@@ -62,6 +62,17 @@ for FLAVOR in "${FLAVORS[@]}"; do
     SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
     RAW=$(stat -c %s "$TOC")
 
+    # The artifact records the Questie checkout its l10n was generated from. One release is
+    # one Questie state: artifacts that disagree must never share a manifest.
+    QC=$(sed -n 's/^## X-QUESTIE-COMMIT: //p' "$TOC" | head -1 | tr -d '\r')
+    [ -n "$QC" ] || QC="$(printf '%040d' 0)"
+    if [ -z "${QUESTIE_COMMIT:-}" ]; then
+        QUESTIE_COMMIT="$QC"
+    elif [ "$QUESTIE_COMMIT" != "$QC" ]; then
+        echo "package: $TOC was generated against Questie $QC but an earlier artifact against $QUESTIE_COMMIT — regenerate all flavors from one checkout" >&2
+        exit 1
+    fi
+
     echo "packaged $ZIP  ($(( SIZE / 1048576 )) MB zipped, $(( RAW / 1048576 )) MB raw)"
     entries+=("    {\"flavor\": \"${FLAVOR}\", \"file\": \"QuestieTDB-${FLAVOR}.zip\", \"sha256\": \"${SHA}\", \"bytes\": ${SIZE}, \"rawBytes\": ${RAW}}")
 done
@@ -74,6 +85,7 @@ rm -rf "$STAGE"
 {
     printf '{\n'
     printf '  "producerCommit": "%s",\n' "$COMMIT"
+    printf '  "questieCommit": "%s",\n' "${QUESTIE_COMMIT:-$(printf '%040d' 0)}"
     printf '  "contractVersion": %s,\n' "$CONTRACT"
     printf '  "builtAt": "%s",\n' "$BUILT"
     printf '  "nolib": false,\n'
@@ -87,6 +99,7 @@ rm -rf "$STAGE"
     echo "# QuestieTDB"
     echo
     echo "Producing commit: \`$COMMIT\`"
+    echo "Questie input commit: \`${QUESTIE_COMMIT:-unknown}\`"
     echo "Contract version: \`$CONTRACT\`"
     echo
     echo "Verify a download before installing:"

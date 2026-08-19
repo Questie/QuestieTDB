@@ -2,7 +2,7 @@ name: Release
 
 # Every commit publishes a pre-release; a full release is triggered deliberately. Releases are
 # identifiable by content, not just by tag: the manifest carries per-artifact SHA-256, the
-# producing commit, the schema version and the contract version.
+# producing commit, the Questie input commit and the contract version.
 #
 # Publication is impossible on red. `publish` needs `quality`, and `quality` runs the same
 # bar CI runs — drift gates, unit tests, verification, equivalence, validators — against the

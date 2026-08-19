@@ -198,9 +198,16 @@ Every generated `.toc` carries provenance:
 ```toc
 ## X-BUILD-COMMIT: <sha or 40 zeros>
 ## X-BUILD-TIME: <ISO 8601 UTC>
+## X-QUESTIE-COMMIT: <sha or 40 zeros>
 ```
 
 `X-BUILD-COMMIT` is `git rev-parse HEAD`, or forty zeros when git is unavailable.
+
+`X-QUESTIE-COMMIT` is the same for the Questie checkout generation read (`--questie=`,
+default `../Questie`). It is provenance, not decoration: the l10n lookups — ~72% of the
+artifact — are read from that checkout rather than committed here, so an artifact is
+reproducible only from the *pair* of commits. `tools/package.sh` copies it into
+`release.json` and refuses to package artifacts that disagree about it.
 
 ## Nil and empty semantics
 

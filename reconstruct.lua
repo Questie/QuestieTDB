@@ -133,7 +133,7 @@ end
 --- because two of them (build commit/time) legitimately vary between builds.
 local HEADER_KEYS = {
   ["X-Contract-Version"] = true, ["X-Flavor"] = true, ["X-Mode"] = true,
-  ["X-BUILD-COMMIT"] = true, ["X-BUILD-TIME"] = true,
+  ["X-BUILD-COMMIT"] = true, ["X-BUILD-TIME"] = true, ["X-QUESTIE-COMMIT"] = true,
 }
 
 local function artifactLines(tocPath)
