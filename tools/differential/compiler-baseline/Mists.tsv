@@ -1,0 +1,20 @@
+# Known QuestieTDB-vs-compiler divergences for Mists.
+#
+# This is a to-do list, not an approval. Only POLICY rows are permanent;
+# every other row is work we still owe. Dispositions and rationale live in
+# docs/questie-handover.md.
+#
+# Refresh with: compiler_diff.py Mists --update-baseline
+# entityType	field	class	count	reason
+Npc	spawns	EMPTY_VS_ABSENT	4	UNTRIAGED
+Npc	spawns	VALUE	75	OPEN
+Object	spawns	EMPTY_VS_ABSENT	24	POLICY
+Object	spawns	VALUE	19	OPEN
+Quest	extraObjectives	VALUE	116	FIX
+Quest	finishedBy	EMPTY_VS_ABSENT	1175	FIX
+Quest	objectives	EMPTY_VS_ABSENT	6868	FIX
+Quest	objectives	VALUE	9451	FIX
+Quest	questFlags	VALUE	72	UNTRIAGED
+Quest	reputationReward	EMPTY_VS_ABSENT	1	UNTRIAGED
+Quest	requiredRaces	VALUE	319	OPEN
+Quest	startedBy	EMPTY_VS_ABSENT	5090	FIX

@@ -354,6 +354,37 @@ local FILES = {
 }
 
 --------------------------------------------------------------------------------------------
+-- Verbatim libraries
+--------------------------------------------------------------------------------------------
+--
+-- Not corrections, but ported under the same rule and for the same reason: a Derived Pass runs
+-- upstream's algorithm, so the algorithm is copied rather than transcribed, and CI diffs the
+-- copy. Paths are relative to the Questie checkout root, not to Database/Corrections/.
+--
+-- `OptimizeWaypoints` itself is NOT here: it is a method on QuestieCorrections, the
+-- orchestrator this project replaces, so src/derived/waypoints.lua transcribes it and the
+-- reference differential is what guards it. See docs/adr/0004-derived-passes.md.
+
+local LIBRARIES = {
+  { src = "Modules/Libs/RamerDouglasPeucker.lua", dst = "src/derived/RamerDouglasPeucker.lua" },
+}
+
+local function copyLibraries()
+  local copied, missing = 0, {}
+  for _, spec in ipairs(LIBRARIES) do
+    local src = QUESTIE .. "/" .. spec.src
+    if lib.fileExists(src) then
+      lib.mkdirp(spec.dst:match("^(.*)/[^/]+$"))
+      lib.copyFile(src, spec.dst)
+      copied = copied + 1
+    else
+      missing[#missing + 1] = spec.src
+    end
+  end
+  return copied, missing
+end
+
+--------------------------------------------------------------------------------------------
 -- Driver
 --------------------------------------------------------------------------------------------
 
@@ -444,4 +475,10 @@ lib.writeAll("src/corrections/manifest.lua", renderManifest())
 print(("Copied %d correction files, wrote src/corrections/manifest.lua"):format(copied))
 if #missing > 0 then
   print("Missing in the Questie checkout: " .. table.concat(missing, ", "))
+end
+
+local libCopied, libMissing = copyLibraries()
+print(("Copied %d verbatim libraries"):format(libCopied))
+if #libMissing > 0 then
+  print("Missing in the Questie checkout: " .. table.concat(libMissing, ", "))
 end

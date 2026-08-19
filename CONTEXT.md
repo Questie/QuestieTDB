@@ -34,6 +34,14 @@ _Avoid_: Rounding, precision trimming
 The offline process that turns raw entity data plus Static Corrections into a TOC metadata store.
 _Avoid_: Compilation, build, cooking
 
+**Derived Pass**:
+A deterministic transform over corrected entity data, run before storage, in both Generation
+and Source mode. Distinct from a Correction, which is data (`id` to field index to value) — a
+Derived Pass is code, and may read one entity type while writing another. Reproduces a
+transform Questie applies between corrections and compilation, so that reads match the
+database a player actually receives (ADR 0004).
+_Avoid_: Preprocess, precompile, postprocess, pipeline stage
+
 **Support data**:
 Game reference data consumed as whole tables rather than through the TOC metadata store —
 zone mappings, quest XP, drop tables, faction templates. Shipped as plain Lua files.

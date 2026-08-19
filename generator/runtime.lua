@@ -26,6 +26,7 @@ runtime.execute = execute
 --- schema, nil/empty semantics, the extracted constants, the corrections registry, and the
 --- compat shim. No read backend — the generator reads raw tables directly.
 function runtime.build()
+  local config = dofile("src/config.lua")
   local LibQuestieDB = {}
   local files = {
     "src/config.lua",
@@ -48,6 +49,13 @@ function runtime.build()
     execute("src/corrections/compat.lua", "QuestieTDB", LibQuestieDB)
     execute("src/corrections/manifest.lua", "QuestieTDB", LibQuestieDB)
     execute("src/corrections/register.lua", "QuestieTDB", LibQuestieDB)
+  end
+
+  -- Derived Passes share this namespace with the correction registry on purpose: Generation
+  -- and Source mode must run the same pass code over the same corrected tables, exactly as
+  -- they already share ApplyStaticToEntities. See docs/adr/0004-derived-passes.md.
+  for _, path in ipairs(config.derivedFiles) do
+    execute(path, "QuestieTDB", LibQuestieDB)
   end
 
   return LibQuestieDB

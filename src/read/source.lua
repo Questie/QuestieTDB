@@ -145,6 +145,24 @@ local function materialize(entityTypeName)
     corrections.ApplyStaticToEntities(entityTypeName, entities, source.flavor)
   end
 
+  -- Derived Passes, on corrected raw values and before the read path normalizes them. This is
+  -- the same point Generation runs them (generator/flavor.lua), which is what keeps the two
+  -- modes equivalent by construction rather than by test. A pass that reads another entity
+  -- type gets it through `materialize` here, so the dependency resolves lazily; the assignment
+  -- to `source.entities` above is the re-entrancy guard that makes that safe.
+  local derived = LibQuestieDB.Derived
+  if derived then
+    derived.Run(entityTypeName, {
+      flavor = source.flavor,
+      entities = materialize,
+      meta = function(name) return LibQuestieDB.Meta and LibQuestieDB.Meta[name] end,
+      support = function(name)
+        local support = LibQuestieDB.Support
+        return support and support.Get and support.Get(name) or nil
+      end,
+    })
+  end
+
   -- Base data is frozen after load, so neither a Correction nor a consumer can corrupt it.
   if LibQuestieDB.shared and LibQuestieDB.shared.Freeze then
     LibQuestieDB.shared.Freeze(entities)

@@ -62,6 +62,7 @@ lua5.1 validators/run.lua         # cross-entity invariants  ~4s
 lua5.1 test.lua                   # unit tests and negative controls
 
 python3 tools/differential/golden.py check Vanilla    # composed reads == committed snapshot ~5s
+python3 tools/differential/compiler_diff.py Vanilla  # composed reads == Questie's compiler ~10s
 ```
 
 The golden gate is the successor to the cross-implementation differential (built to
@@ -70,6 +71,15 @@ constants, and Titan Reforged defect chain). It guards the one class the other g
 cannot: generator and source mode being consistently wrong *together*. After an
 intentional data change, `golden.py refresh <Flavor>` regenerates the snapshot for
 review and commit.
+
+`compiler_diff.py` is the reference-implementation differential DESIGN.md phase 6 called
+for. It runs Questie's real compile path offline — the one `cli/validate-era.lua` already
+drives — and compares `QuestieDB.Query<Type>Single` against this database's composed reads,
+id by id and field by field. The golden snapshot can only catch drift from *this* tree;
+this gate is the only one that can say whether the database still matches the thing it
+replaces. It needs a Questie checkout (`--questie=../Questie`, the default) and `bit32` on
+the Lua path, which it picks up from luarocks automatically. Accepted divergences live in
+`tools/differential/compiler-baseline/`; `--update-baseline` re-records them for review.
 
 Plain Lua 5.1, no `lfs`, no luarocks, no C dependency anywhere. Inputs are enumerated in
 `src/config.lua` rather than discovered by scanning directories.
@@ -138,5 +148,6 @@ docs/                     api.md, storage-format.md, adr/
 | [`DESIGN.md`](DESIGN.md) | architecture, locked decisions, rejected alternatives |
 | [`CONTEXT.md`](CONTEXT.md) | vocabulary |
 | [`docs/adr/`](docs/adr/) | decision records |
+| [`docs/questie-handover.md`](docs/questie-handover.md) | every known divergence from Questie's compiler, its disposition, and the switch-over checklist |
 | [`docs/table.freeze.md`](docs/table.freeze.md) | live-client freeze research |
 | [`docs/retiring-the-prototypes.md`](docs/retiring-the-prototypes.md) | what was mined from `Getters` and `toc-database` |
