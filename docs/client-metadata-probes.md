@@ -161,6 +161,19 @@ Conclusions:
   trimmable set (space, tab, CR, LF) is deliberately a conservative superset and stays;
   trailing-tab was not probed (covered by that conservatism).
 
+## 7b. Live acceptance of the merged implementation (build 69109, baked mode)
+
+After the merge branch's artifacts and runtime loaded in the client (producer `dfe8ee0`
+data), the ADR 0003 contract was exercised live: the ruRU quest-10 corruption from §1 is
+**fixed on the wire** ("что стало" reads correctly through the public getter); deDE
+`objectivesText` decodes as a table (D3); `~E~` still reads as `""`; fresh-per-read
+returns distinct, mutation-isolated tables (D10); packed `GetAll` carries `n` and the
+value after a nil hole — the one the old `unpack` pattern dropped (D11); unknown and nil
+ids read nil with `Exists` false and no error (D6); a live-registered runtime correction
+outranks the ruRU translation with provenance naming the true owner (D8); 20,000 cached
+scalar reads in 9.3 ms. (The smoke correction under owner `LiveSmoke` persists for the
+session; a `/reload` clears it.)
+
 ## 8. Incidental runtime defect found while probing
 
 `Quest.Get(nil, "name")` raises `table index is nil` from the decoded-field cache
