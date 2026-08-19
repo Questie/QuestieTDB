@@ -90,7 +90,8 @@ rm -rf "$STAGE"
     printf '  "builtAt": "%s",\n' "$BUILT"
     printf '  "nolib": false,\n'
     printf '  "artifacts": [\n'
-    printf '%s\n' "$(IFS=$',\n'; echo "${entries[*]}")"
+    joined="$(printf '%s,\n' "${entries[@]}")"
+    printf '%s\n' "${joined%,}"
     printf '  ]\n'
     printf '}\n'
 } > "$DIST/release.json"
