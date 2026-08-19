@@ -29,7 +29,7 @@ local _, LibQuestieDB = ...
 local registry = {}
 
 local type, pairs, ipairs, next = type, pairs, ipairs, next
-local sort, concat = table.sort, table.concat
+local sort = table.sort
 local format = string.format
 
 --------------------------------------------------------------------------------------------
@@ -40,8 +40,10 @@ local format = string.format
 -- ones so hand corrections win.
 --
 -- `loadOrder` means "sequence within an owner", not a global sequence. Precedence is
--- two-level — outer by owner apply order, inner by loadOrder — with last applied wins. That
--- follows load order naturally: QuestieTDB < Questie < third-party.
+-- two-level — outer by the order owners FIRST applied, inner by loadOrder — and within a
+-- field the later-ranked owner wins. An owner's rank is fixed at first apply; re-applying
+-- refreshes that owner's layer in place. That follows load order naturally:
+-- QuestieTDB < Questie < third-party.
 
 registry.loadOrder = {
   EraStatic = 0,     EraDynamic = 100,
@@ -352,21 +354,38 @@ local function recompose(flavor)
 
             for fieldIndex, value in pairs(fields) do
               if type(fieldIndex) == "number" and meta and fieldIndex <= meta.fieldCount then
-                if registry.debug and provRow[fieldIndex] and provRow[fieldIndex] ~= owner then
-                  warn(format('owner "%s" overrode "%s" on %s %s field %s',
-                    owner, provRow[fieldIndex], datatype, tostring(id),
-                    tostring(meta.names[fieldIndex])))
-                end
-                -- Normalizing here rather than at read time means the overlay stores exactly
-                -- what a read must return, so `{}` deletes and `{0,0}` reads nil in the
-                -- overlay for the same reason they do in base data.
-                local normalized = normalize.field(meta, fieldIndex, value)
-                if normalized == nil then
+                -- `[key] = {}` is the delete idiom for EVERY field type, exactly as MergeInto
+                -- documents for the static path. Scalar-typed fields need it decided here:
+                -- normalize passes tables through its number/string branches untouched, and a
+                -- stored empty table would reach consumers as a fresh table where they expect
+                -- a number or string.
+                if type(value) == "table" and next(value) == nil then
                   row[fieldIndex] = registry.NIL
+                  provRow[fieldIndex] = owner
+                elseif type(value) == "table" and meta.types[fieldIndex] ~= "table" then
+                  -- A non-empty table arriving at a scalar-typed field is a correction-author
+                  -- error. Generation fails loudly on the same input; the overlay reports and
+                  -- drops the write rather than raising out of recomposition.
+                  warn(format('owner "%s" wrote a table into %s-typed %s %s field %s — dropped',
+                    owner, tostring(meta.types[fieldIndex]), datatype, tostring(id),
+                    tostring(meta.names[fieldIndex])))
                 else
-                  row[fieldIndex] = normalized
+                  if registry.debug and provRow[fieldIndex] and provRow[fieldIndex] ~= owner then
+                    warn(format('owner "%s" overrode "%s" on %s %s field %s',
+                      owner, provRow[fieldIndex], datatype, tostring(id),
+                      tostring(meta.names[fieldIndex])))
+                  end
+                  -- Normalizing here rather than at read time means the overlay stores exactly
+                  -- what a read must return, so `{0,0}` reads nil in the overlay for the same
+                  -- reason it does in base data.
+                  local normalized = normalize.field(meta, fieldIndex, value)
+                  if normalized == nil then
+                    row[fieldIndex] = registry.NIL
+                  else
+                    row[fieldIndex] = normalized
+                  end
+                  provRow[fieldIndex] = owner
                 end
-                provRow[fieldIndex] = owner
               end
             end
           end
@@ -413,15 +432,22 @@ function registry.ApplyRegisteredCorrections(owner)
   end
 
   for _, name in ipairs(owners) do
-    -- Last applied wins, so an owner re-applying moves to the end of the outer order.
-    for index, applied in ipairs(registry.appliedOrder) do
-      if applied == name then table.remove(registry.appliedOrder, index); break end
+    -- Owner rank is fixed at first apply; a re-apply refreshes the owner's layer in place.
+    -- Moving a re-applying owner to the end would let any refresh — ApplyParameterized, a
+    -- settings change — hoist QuestieTDB's whole layer above corrections consumers registered
+    -- later, inverting the documented QuestieTDB < Questie < third-party order.
+    local ranked = false
+    for _, applied in ipairs(registry.appliedOrder) do
+      if applied == name then ranked = true; break end
     end
-    registry.appliedOrder[#registry.appliedOrder + 1] = name
+    if not ranked then registry.appliedOrder[#registry.appliedOrder + 1] = name end
     registry.owners[name].pending = false
   end
 
-  recompose(LibQuestieDB.read and LibQuestieDB.read.source and LibQuestieDB.read.source.flavor)
+  -- Both read modes publish their flavor as LibQuestieDB.flavor (source.lua, baked.lua), so
+  -- entry-level expansion filters compose identically in both — reading only the Source
+  -- backend here left them inert in Baked mode.
+  recompose(LibQuestieDB.flavor)
   publish()
   return #owners
 end

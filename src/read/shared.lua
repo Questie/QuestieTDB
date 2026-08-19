@@ -283,7 +283,13 @@ function shared.CreateEntity(meta, backend)
     return value
   end
 
-  entity.GetByIndex = get
+  --- Positional access without the name mapping. Validates the index like `Get` does, so an
+  --- out-of-range or non-numeric index returns nil identically in both modes rather than
+  --- reaching the Source normalizer and raising (ADR 0003 parity).
+  function entity.GetByIndex(id, fieldIndex)
+    if type(fieldIndex) ~= "number" or fieldIndex < 1 or fieldIndex > fieldCount then return nil end
+    return get(id, fieldIndex)
+  end
 
   --- Field access by canonical name or positional index.
   function entity.Get(id, key)

@@ -335,8 +335,11 @@ This is required by load order, not a convenience: third-party addons declare
 The owner parameter selects **which layer is being refreshed**, never which layers are
 visible. Recomposition always includes every live layer.
 
-Precedence is two-level — outer by owner apply order, inner by `loadOrder` within an owner —
-with **last applied wins**. This follows load order naturally
+Precedence is two-level — outer by owner rank, inner by `loadOrder` within an owner. **An
+owner's rank is fixed at its first apply; re-applying refreshes that owner's layer in
+place, never re-ranks it** (the original "last applied wins" let any owner-scoped refresh —
+including `ApplyParameterized` — hoist a whole layer above consumer corrections; caught in
+review, fixed). First-apply order follows load order naturally
 (`QuestieTDB` < `Questie` < third-party), and must be documented, because `loadOrder` changes
 meaning from "global sequence" to "sequence within an owner".
 

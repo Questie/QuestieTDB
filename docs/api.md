@@ -205,13 +205,21 @@ apply, and constants the body reads are resolved at apply time.
 
 ### Precedence
 
-Two levels, **last applied wins**:
+Two levels, the later-ranked writer wins:
 
-* outer: the order owners called `ApplyRegisteredCorrections`
+* outer: the order owners **first** called `ApplyRegisteredCorrections` — an owner's rank is
+  fixed at first apply, and re-applying refreshes that owner's layer **in place**. A refresh
+  (including `ApplyParameterized`, which re-applies the `QuestieTDB` owner) can therefore
+  never hoist a layer above corrections registered later.
 * inner: `loadOrder` within one owner
 
 `loadOrder` means "sequence within an owner", not a global sequence. Load order makes the outer
 level fall out naturally: `QuestieTDB` < `Questie` < third-party.
+
+One idiom note: `[key] = {}` in a correction deletes the field for **every** field type — a
+deleted string or table reads `nil`, a deleted number falls to the existence-gated `0`
+default. A *non-empty* table written to a number- or string-typed field is an authoring
+error: the write is reported and dropped.
 
 ### When to apply
 

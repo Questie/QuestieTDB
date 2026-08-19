@@ -523,24 +523,37 @@ suite("overlay", function()
   registry.ApplyRegisteredCorrections("AddonA")
   equal(Quest.Get(id, "name"), "Renamed again", "re-applying repeatedly is idempotent")
 
-  -- Precedence: last applied wins across owners.
+  -- Precedence across owners: the later-RANKED owner wins, and rank is first-apply order.
   registry.RegisterRuntimeCorrection("AddonB", "Quest", "rename",
     function() return { [id] = { [1] = "Renamed by B" } } end, 1)
   registry.ApplyRegisteredCorrections("AddonB")
   equal(Quest.Get(id, "name"), "Renamed by B",
-    "last applied wins across owners, regardless of load order within them")
+    "the later-ranked owner wins, regardless of load order within owners")
   equal(registry.GetProvenance("Quest", id, "name"), "AddonB", "provenance names the winning owner")
 
-  -- Applying one owner does not disturb another: A's other field survives B's apply.
+  -- Applying one owner does not disturb another, and re-applying never changes rank: owner
+  -- precedence is fixed at first apply, so a refresh (this is ApplyParameterized's shape)
+  -- cannot hoist an early layer above corrections registered later.
   registry.RegisterRuntimeCorrection("AddonA", "Quest", "level",
     function() return { [id] = { [4] = 42 } } end, 12)
   registry.ApplyRegisteredCorrections("AddonA")
   equal(Quest.Get(id, "requiredLevel"), 42, "A's correction applies")
-  equal(Quest.Get(id, "name"), "Renamed again",
-    "A re-applying moves it last, so A's highest-load-order correction wins the contested field")
+  equal(Quest.Get(id, "name"), "Renamed by B",
+    "A re-applying refreshes in place — B keeps the contested field")
+  equal(registry.GetProvenance("Quest", id, "name"), "AddonB",
+    "provenance still names B after A's refresh")
   registry.ApplyRegisteredCorrections("AddonB")
-  equal(Quest.Get(id, "name"), "Renamed by B", "B re-applying takes the contested field back")
+  equal(Quest.Get(id, "name"), "Renamed by B", "B re-applying changes nothing")
   equal(Quest.Get(id, "requiredLevel"), 42, "B's apply did not disturb A's uncontested field")
+
+  -- The blast path the adversarial review confirmed: a QuestieTDB-side refresh (what
+  -- ApplyParameterized runs) must leave every consumer layer's precedence intact.
+  local ownersBefore = table.concat(registry.GetOwners(), "<")
+  registry.ApplyRegisteredCorrections(registry.OWNER)
+  equal(table.concat(registry.GetOwners(), "<"), ownersBefore,
+    "a QuestieTDB refresh does not reorder owners")
+  equal(Quest.Get(id, "name"), "Renamed by B",
+    "a QuestieTDB refresh does not reclaim consumer-corrected fields")
 
   -- Base data is never written to at runtime, in either read mode.
   equal(Quest.GetRaw(id, "name"), baseName, "base data is untouched by the overlay")
@@ -586,6 +599,53 @@ suite("overlay", function()
     function() return { [id] = { [5] = 2 } } end, 100)
   registry.ApplyRegisteredCorrections("AddonC")
   equal(Quest.Get(id, "questLevel"), 2, "within an owner, the higher load order wins")
+
+  -- `[key] = {}` is the delete idiom for EVERY field type, matching MergeInto's doc. A
+  -- deleted string reads nil; a deleted number falls to the existence-gated default 0; a
+  -- deleted table reads nil.
+  local otIndex = Lib.Meta.Quest.keys.objectivesText
+  registry.RegisterRuntimeCorrection("AddonD", "Quest", "deletes",
+    function() return { [id] = { [1] = {}, [4] = {}, [otIndex] = {} } } end, 10)
+  registry.ApplyRegisteredCorrections("AddonD")
+  equal(Quest.Get(id, "name"), nil, "{} deletes a string field through the overlay")
+  equal(Quest.Get(id, "requiredLevel"), 0, "{} deletes a number field - reads the 0 default")
+  equal(Quest.Get(id, "objectivesText"), nil, "{} deletes a table field")
+  equal(type(Quest.questLevel(id)), "number", "scalar named getters never leak tables")
+
+  -- A NON-empty table on a scalar-typed field is a correction-author error: reported and
+  -- dropped, never stored, never raised out of recomposition.
+  local reported = {}
+  local savedPrint = print
+  _G.print = function(message) reported[#reported + 1] = tostring(message) end
+  registry.RegisterRuntimeCorrection("AddonD", "Quest", "bad-scalar",
+    function() return { [id] = { [5] = { 60 } } } end, 11)
+  registry.ApplyRegisteredCorrections("AddonD")
+  _G.print = savedPrint
+  equal(Quest.Get(id, "questLevel"), 2, "a table written to a number field is dropped, not stored")
+  local badReported = false
+  for _, message in ipairs(reported) do
+    if message:find("wrote a table") and message:find("AddonD") then badReported = true end
+  end
+  check(badReported, "the dropped scalar-table write is reported to the author")
+  registry.UnregisterCorrection("AddonD", "Quest", "deletes")
+  registry.UnregisterCorrection("AddonD", "Quest", "bad-scalar")
+  registry.ApplyRegisteredCorrections("AddonD")
+
+  -- Entry-level expansion filters compose in Baked mode too (recompose now resolves the
+  -- flavor from LibQuestieDB.flavor, which both modes publish; it used to read only the
+  -- Source backend and passed everything in Baked mode).
+  local gated = registry.RegisterRuntimeCorrection("AddonE", "Quest", "tbc-only",
+    function() return { [id] = { [5] = 90 } } end, 10)
+  gated.expansions = { TBC = true }
+  local passing = registry.RegisterRuntimeCorrection("AddonE", "Quest", "era-only",
+    function() return { [id] = { [4] = 91 } } end, 11)
+  passing.expansions = { Classic = true }
+  registry.ApplyRegisteredCorrections("AddonE")
+  check(Quest.Get(id, "questLevel") ~= 90, "a TBC-gated entry is filtered on baked Vanilla")
+  equal(Quest.Get(id, "requiredLevel"), 91, "a Classic-gated entry applies on baked Vanilla")
+  registry.UnregisterCorrection("AddonE", "Quest", "tbc-only")
+  registry.UnregisterCorrection("AddonE", "Quest", "era-only")
+  registry.ApplyRegisteredCorrections("AddonE")
 
   client.reset()
 end)
@@ -778,6 +838,11 @@ suite("read-contract", function()
     equal(Lib.Quest.Get("2", "name"), nil, label .. ": a string id is invalid, not coerced")
     equal(Lib.Quest.GetRaw(nil, "name"), nil, label .. ": GetRaw(nil) is nil")
     equal(Lib.Quest.GetAll(nil, { "name" }), nil, label .. ": GetAll(nil) is nil")
+
+    -- GetByIndex validates like Get (was: source raised where baked returned nil).
+    equal(Lib.Quest.GetByIndex(2, 999), nil, label .. ": GetByIndex out-of-range index is nil")
+    equal(Lib.Quest.GetByIndex(2, 0), nil, label .. ": GetByIndex zero index is nil")
+    equal(Lib.Quest.GetByIndex(nil, 1), nil, label .. ": GetByIndex nil id is nil")
 
     -- GetRaw bounds parity (was: source raised where baked returned nil).
     equal(Lib.Quest.GetRaw(2, 999), nil, label .. ": GetRaw out-of-range index is nil")

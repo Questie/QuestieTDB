@@ -66,6 +66,17 @@ jobs:
         working-directory: QuestieTDB
         run: lua5.1 test.lua
 
+      - name: Reconstruct Vanilla
+        working-directory: QuestieTDB
+        # Byte-exact gate: re-derives every data directive with the current generator and
+        # compares exact bytes against the artifact. The determinism check covers
+        # regeneration stability; this covers generator-vs-artifact drift, key by key.
+        run: lua5.1 reconstruct.lua Vanilla --questie=../Questie
+
+      - name: Reconstruct Mists
+        working-directory: QuestieTDB
+        run: lua5.1 reconstruct.lua Mists --questie=../Questie
+
   database:
     name: ${{ matrix.flavor }}
     runs-on: ubuntu-latest
