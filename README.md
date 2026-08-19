@@ -47,7 +47,9 @@ LibQuestieDB.GetRegistrar("MyAddon")
 Two behaviours to internalise before writing anything:
 
 * **Numeric getters return `0`, never `nil`.** Test `~= 0`, not truthiness.
-* **Reads return frozen values the database owns.** `CopyTable` before modifying.
+* **Every table read returns a fresh, deeply independent copy you own.** Mutate it freely;
+  the next read is unaffected, and `CopyTable` is wasted work. `GetAllIds` is the one
+  exception: it hands back a shared table, so treat that one as read-only.
 
 ---
 
