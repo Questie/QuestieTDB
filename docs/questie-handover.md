@@ -101,5 +101,9 @@ lost by deleting the compiler and its neighbours.
    regression. Confirmed unrelated to the derived pass: the counts are identical with the pass
    disabled, and no validator reads `waypoints`. Needs a deliberate re-record and review.
 
-4. **The differential is not wired into CI yet.** It is green on all five flavours and has a
-   working self-proof, so it is ready; `.github/workflows/ci.yml` has not been touched.
+4. **The differential runs in CI** (`.github/workflows/ci.yml`, job `differential`, all five
+   flavours, part of the terminal `gates` job). It is deliberately a separate job: Questie's
+   mocks need `bit32`, and the toolchain that provides it installs `lua` rather than the
+   `lua5.1` the other jobs use. It is **not** yet in `release.yml`'s quality bar — adding it
+   there means resolving the same interpreter clash in a job that already uses apt's `lua5.1`,
+   which is worth doing deliberately rather than blind.

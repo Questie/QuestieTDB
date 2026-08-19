@@ -157,13 +157,55 @@ jobs:
           path: QuestieTDB/.out/dist/*
           retention-days: 14
 
+  differential:
+    name: Compiler differential (${{ matrix.flavor }})
+    runs-on: ubuntu-latest
+    # The only gate that compares against the database QuestieTDB replaces. Every other gate
+    # compares the two sides of this project's own seam, so a shared wrong assumption passes
+    # them all. Needs no generated artifact: both dumps read source mode and a live compile.
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [Vanilla, TBC, Wrath, Cata, Mists]
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: QuestieTDB }
+      - uses: actions/checkout@v4
+        with:
+          repository: Questie/Questie
+          path: Questie
+
+      # Questie's apiMocks require bit32, and this is the toolchain Questie's own CI uses to
+      # provide it — so the oracle is built the same way upstream builds it. It installs `lua`
+      # rather than `lua5.1`, which is why the differential runs in its own job instead of
+      # sharing the apt-installed interpreter the other jobs use.
+      - name: Install Lua 5.1
+        uses: leafo/gh-actions-lua@v13.0.0
+        with:
+          luaVersion: "5.1"
+      - name: Install luarocks
+        uses: leafo/gh-actions-luarocks@v6.1.0
+        with:
+          luaRocksVersion: "3.13.0"
+      - name: Install bit32
+        run: luarocks install bit32 5.3.5.1-1
+
+      - name: QuestieTDB vs Questie's compiler
+        working-directory: QuestieTDB
+        # Fails on a divergence class that is new or has grown against
+        # tools/differential/compiler-baseline/, and prints what is still owed either way.
+        # --self-check perturbs one agreeing value and requires exactly one detection.
+        run: >-
+          python3 tools/differential/compiler_diff.py ${{ matrix.flavor }}
+          --questie=../Questie --lua=lua --self-check
+
   gates:
     name: All gates
     runs-on: ubuntu-latest
     # Terminal aggregate: branch protection requires exactly this one status. `always()` keeps
     # it running when a dependency fails or is cancelled; the explicit checks then fail it, so
     # a skipped or cancelled gate can never read as green.
-    needs: [test, database]
+    needs: [test, database, differential]
     if: always()
     steps:
       - name: Fail unless every gate succeeded
@@ -171,4 +213,5 @@ jobs:
           ok=1
           [ "${{ needs.test.result }}" = "success" ] || { echo "::error::Unit tests: ${{ needs.test.result }}"; ok=0; }
           [ "${{ needs.database.result }}" = "success" ] || { echo "::error::Database matrix: ${{ needs.database.result }}"; ok=0; }
+          [ "${{ needs.differential.result }}" = "success" ] || { echo "::error::Compiler differential: ${{ needs.differential.result }}"; ok=0; }
           [ "$ok" = "1" ]

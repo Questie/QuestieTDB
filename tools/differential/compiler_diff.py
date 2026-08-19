@@ -47,10 +47,14 @@ FLAVORS = ["Vanilla", "TBC", "Wrath", "Cata", "Mists"]
 SAMPLES = 3
 
 
-def lua_env():
-    """Questie's apiMocks require `bit32`, which luarocks installs outside the default path."""
+def lua_env(lua="lua5.1"):
+    """Questie's apiMocks require `bit32`, which luarocks installs outside the default path.
+
+    Probed with the interpreter this run will actually use, not a hardcoded one: CI builds the
+    oracle on the same leafo toolchain Questie's own CI uses, where the binary is `lua`.
+    """
     env = os.environ.copy()
-    probe = subprocess.run(["lua5.1", "-e", "require('bit32')"], capture_output=True)
+    probe = subprocess.run([lua, "-e", "require('bit32')"], capture_output=True)
     if probe.returncode == 0:
         return env
     paths = subprocess.run(["luarocks", "path", "--lua-version=5.1"],
@@ -80,7 +84,7 @@ def dump_both(flavor, questie, lua, season):
     os.makedirs(DUMP_DIR, exist_ok=True)
     tdb = os.path.join(DUMP_DIR, "tdb-%s.tsv" % flavor)
     comp = os.path.join(DUMP_DIR, "compiler-%s.tsv" % flavor)
-    env = lua_env()
+    env = lua_env(lua)
 
     run([lua, "tools/differential/dump_a.lua", flavor, tdb], ROOT, env, "QuestieTDB dump")
 
