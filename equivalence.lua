@@ -62,6 +62,8 @@ local function parseArgs(argv)
       opts.sample = tonumber(val)
     elseif key == "toc-dir" then
       opts.tocDir = val
+    elseif key == "baked-root" then
+      opts.bakedRoot = val
     elseif value == "--freeze" then
       opts.freeze = true
     elseif value == "--no-self-proof" then
@@ -140,13 +142,17 @@ end
 
 --- `mutate(map)` may alter the parsed metadata before install — the self-proof's injection
 --- point, at the data level rather than a wrapper over the comparison's own calls.
+---
+--- `--baked-root=<dir>` resolves the TOC's file list against another root, so the baked side
+--- can be an unpacked release package — the runtime a user installs, static-stripped by
+--- tools/strip-static.lua — while source mode keeps reading the working tree.
 local function loadBakedMode(tocPath, clientOpts, mutate)
   client.reset()
   client.install(clientOpts or {})
   local map = emulator.parse(tocPath)
   if mutate then mutate(map) end
   emulator.install(config.addonName, map)
-  local Lib = emulator.loadAddon(tocPath, config.addonName)
+  local Lib = emulator.loadAddon(tocPath, config.addonName, opts.bakedRoot)
   if opts.freeze then freezeLib.install(Lib) end
   return Lib
 end
@@ -468,7 +474,7 @@ local function selfProof(flavor, tocPath)
   local map = emulator.parse(tocPath)
   mutate(map)
   emulator.install(config.addonName, map)
-  local bakedLib = emulator.loadAddon(tocPath, config.addonName)
+  local bakedLib = emulator.loadAddon(tocPath, config.addonName, opts.bakedRoot)
 
   -- The divergences this pass finds are the injected ones — expected, so not reported.
   local report = { errors = 0, fields = 0, entities = 0, byKind = {}, silent = true }

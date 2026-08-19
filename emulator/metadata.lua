@@ -122,10 +122,16 @@ end
 --- Execute the Lua files a generated TOC lists, in order, inside a mocked addon environment.
 --- This is what makes the offline harness exercise the *shipped* reader rather than a copy of
 --- it: the same src/ files the client loads, loaded the same way.
+---
+--- `baseDir` resolves the listed files against another root — pointing it at an unpacked
+--- release zip loads the runtime a user actually installs (with its static correction bodies
+--- stripped by tools/strip-static.lua) instead of the working tree's copies.
 ---@param tocPath string
 ---@param addonName string?
+---@param baseDir string? Root the TOC's file list resolves against; default the working dir
 ---@return table addonTable The addon namespace, i.e. LibQuestieDB
-function emulator.loadAddon(tocPath, addonName)
+---@return table files The file list the TOC declared, as loaded
+function emulator.loadAddon(tocPath, addonName, baseDir)
   addonName = addonName or "QuestieTDB"
   local addonTable = {}
 
@@ -140,13 +146,14 @@ function emulator.loadAddon(tocPath, addonName)
   file:close()
 
   for _, relativePath in ipairs(files) do
-    local chunk, err = loadfile(relativePath)
+    local path = baseDir and (baseDir .. "/" .. relativePath) or relativePath
+    local chunk, err = loadfile(path)
     if not chunk then
-      error("Cannot load " .. relativePath .. ": " .. tostring(err), 0)
+      error("Cannot load " .. path .. ": " .. tostring(err), 0)
     end
     local ok, execErr = pcall(chunk, addonName, addonTable)
     if not ok then
-      error("Error loading " .. relativePath .. ": " .. tostring(execErr), 0)
+      error("Error loading " .. path .. ": " .. tostring(execErr), 0)
     end
   end
 
