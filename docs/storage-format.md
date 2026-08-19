@@ -7,6 +7,15 @@ The on-disk contract for the TOC metadata store, extracted from the validated `G
 format is written down; `DESIGN.md` phase 11 removes them. Treat this file as the spec, not
 the generated `.toc` files.
 
+One property of the store shapes everything below: the client indexes metadata by key, and
+**lookup cost does not vary with artifact size.** The same 25 MB artifact answers a lookup in
+0.26 µs for a constant key and 1.35 µs for one built per call, and a 21 MB artifact measured
+no faster than the 25 MB one. What costs is building the key and marshalling the value back,
+not how many keys sit beside it: the client call proper is 0.26 µs.
+Storage volume is a disk and client-memory question, never a read-latency one, so the format
+can afford to be verbose where that buys clarity.
+Measurements in [`read-performance.md`](./read-performance.md).
+
 ## Metadata line
 
 Every stored value is one TOC metadata directive:

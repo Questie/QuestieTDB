@@ -18,6 +18,8 @@ architecture as designed; where it and the code disagree, read the ADRs in `docs
   fixed, standing guarantees, ready-to-file future work, retirement checklist
 - `docs/client-metadata-probes.md` — measured live-client behavior (trimming, key
   case-folding, the 1,023-byte line limit, freeze ownership, read-path costs)
+- `docs/read-performance.md` — what a read costs and why, measured against the `Getters`
+  prototype and Questie's compiler; the cost model behind the caching design
 - `docs/table.freeze.md` — live-client research on `table.freeze` / `table.isfrozen`
 - `docs/pi/` — the retired `-pi` sibling: unadopted design ideas and its defect ledger
 
