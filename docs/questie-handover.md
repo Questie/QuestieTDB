@@ -38,12 +38,12 @@ what is still owed on every run, so a known defect cannot quietly become permane
 | Class | Vanilla | TBC | Wrath | Cata | Mists | Status | Disposition |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | `Object.spawns` absent-vs-value | 24 | 24 | 24 | 24 | 24 | **POLICY** | Gathering nodes. QuestieTDB keeps all 17,191 spawn points; Questie suppresses them with a registered Dynamic Correction. Permanent and correct. |
-| `Npc.spawns` value | 9 | 11 | 41 | 57 | 75 | **OPEN** | Correction Overlay coordinates. `QuerySingle` returns override values verbatim, bypassing the 40.90 grid; QuestieTDB normalizes them. Matching means reproducing an inconsistency. Undecided. |
-| `Object.spawns` value | 9 | 11 | 13 | 18 | 19 | **OPEN** | Same cause. |
-| `Quest.requiredRaces` value | 7 | 38 | 344 | 696 | 319 | **OPEN** | Derived faction inference. Materialize into explicit corrections, do not port the loop. See `TASK-derived-requiredRaces.md`. |
-| `Npc.spawns` absent-vs-value | – | – | 4 | 4 | 4 | **UNTRIAGED** | Never investigated. |
-| `Quest.questFlags` value | – | – | 2 | 72 | 72 | **UNTRIAGED** | Never investigated. Wrath samples showed TDB `8` vs compiler `0` on quests 5640/5678. |
-| `Quest.reputationReward` absent-vs-value | – | – | 1 | 1 | 1 | **UNTRIAGED** | Never investigated. Quest 7670: TDB has a value, compiler has none. |
+| `Npc.spawns` value | 9 | 11 | 41 | 57 | 75 | **OPEN** ([#3](https://github.com/Questie/QuestieTDB/issues/3)) | Correction Overlay coordinates. `QuerySingle` returns override values verbatim, bypassing the 40.90 grid; QuestieTDB normalizes them. Matching means reproducing an inconsistency. Undecided. |
+| `Object.spawns` value | 9 | 11 | 13 | 18 | 19 | **OPEN** ([#3](https://github.com/Questie/QuestieTDB/issues/3)) | Same cause. |
+| `Quest.requiredRaces` value | 7 | 38 | 344 | 696 | 319 | **OPEN** ([#1](https://github.com/Questie/QuestieTDB/issues/1)) | Derived faction inference. Materialize into explicit corrections, do not port the loop. See `TASK-derived-requiredRaces.md`. |
+| `Npc.spawns` absent-vs-value | – | – | 4 | 4 | 4 | **UNTRIAGED** ([#2](https://github.com/Questie/QuestieTDB/issues/2)) | Never investigated. |
+| `Quest.questFlags` value | – | – | 2 | 72 | 72 | **UNTRIAGED** ([#2](https://github.com/Questie/QuestieTDB/issues/2)) | Never investigated. Wrath samples showed TDB `8` vs compiler `0` on quests 5640/5678. |
+| `Quest.reputationReward` absent-vs-value | – | – | 1 | 1 | 1 | **UNTRIAGED** ([#2](https://github.com/Questie/QuestieTDB/issues/2)) | Never investigated. Quest 7670: TDB has a value, compiler has none. |
 
 Entity **id sets match exactly** on all five flavours and all four types — zero
 `ID_ONLY_IN_*` rows. Storage, generation and enumeration are not implicated in anything above.
@@ -91,6 +91,27 @@ lost by deleting the compiler and its neighbours.
       removing it.
 - [ ] **Check `QuestieInit.lua:118-134` for anything added since 2026-08-19.** A new pre-compile
       transform would be invisible to every gate we have except this differential.
+
+## Tracked on GitHub
+
+Everything outstanding is filed at
+[`Questie/QuestieTDB`](https://github.com/Questie/QuestieTDB/issues). This file stays the
+measurement record; the issues carry the work.
+
+| | |
+| --- | --- |
+| [#1](https://github.com/Questie/QuestieTDB/issues/1) | Materialize the derived `requiredRaces` patch |
+| [#2](https://github.com/Questie/QuestieTDB/issues/2) | Triage the three unexplained divergence classes |
+| [#3](https://github.com/Questie/QuestieTDB/issues/3) | Decide whether the overlay quantizes coordinates |
+| [#4](https://github.com/Questie/QuestieTDB/issues/4) | Validator baseline is stale, 78 new findings |
+| [#5](https://github.com/Questie/QuestieTDB/issues/5) | Baked artifacts ship static correction bodies |
+| [#6](https://github.com/Questie/QuestieTDB/issues/6) | Mists in-client acceptance at 112 MiB |
+| [#7](https://github.com/Questie/QuestieTDB/issues/7) | Differential missing from `release.yml` |
+| [#8](https://github.com/Questie/QuestieTDB/issues/8) | Pin the Questie input checkout the l10n is generated from |
+| [#9](https://github.com/Questie/QuestieTDB/issues/9) | Decide where corrections are authored after phase 13 |
+| [#10](https://github.com/Questie/QuestieTDB/issues/10) | Institutionalize the live-client probe ritual |
+| [#11](https://github.com/Questie/QuestieTDB/issues/11) | Decide the decoded-cache budget |
+| [#12](https://github.com/Questie/QuestieTDB/issues/12) | Distribution polish: flavor table, wrong-flavor no-op, `builtAt` |
 
 ## Open questions
 
