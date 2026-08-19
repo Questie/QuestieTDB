@@ -24,6 +24,7 @@ mkdir -p "$DIST"
 COMMIT="$(git rev-parse HEAD 2>/dev/null || printf '%040d' 0)"
 CONTRACT="$(grep -oE 'config\.contractVersion = [0-9]+' src/config.lua | grep -oE '[0-9]+$')"
 BUILT="$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y-%m-%dT%H:%M:%SZ)"
+LUA="${LUA:-lua5.1}"
 
 # The addon folder must be named QuestieTDB in the zip, because that is what
 # `## Dependencies: QuestieTDB` resolves against.
@@ -54,6 +55,12 @@ for FLAVOR in "${FLAVORS[@]}"; do
             cp "$rel" "$STAGE/QuestieTDB/$rel"
         fi
     done < "$TOC"
+
+    # Mixed correction files ship for their Dynamic functions, but their Static bodies are
+    # already folded into the metadata store — 94-96% of the bytes (issue #5). Strip the
+    # staged copies; src/corrections/ in the repo stays byte-identical to upstream, which is
+    # what the drift gate and port-corrections compare.
+    "$LUA" tools/strip-static.lua "$STAGE/QuestieTDB"
 
     ZIP="$DIST/QuestieTDB-${FLAVOR}.zip"
     (cd "$STAGE" && zip -qr9X "../../$ZIP" QuestieTDB)
