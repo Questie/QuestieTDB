@@ -11,6 +11,7 @@
 -- Options:
 --   --types=Quest,Npc      restrict entity types
 --   --fields=name,zoneOrSort   restrict fields (tracer-bullet slices only)
+--   --no-base-toc          skip rewriting the committed base TOC (parallel-safe)
 --   --quiet
 --
 -- Runs on a plain Lua 5.1 interpreter. No `lfs`, no other C dependency — inputs are
@@ -52,6 +53,8 @@ local function parseArgs(argv)
       opts.questie = val
     elseif value == "--no-l10n" then
       opts.noL10n = true
+    elseif value == "--no-base-toc" then
+      opts.noBaseToc = true
     elseif value == "--quiet" then
       opts.quiet = true
     elseif value:sub(1, 2) == "--" then
@@ -296,7 +299,12 @@ else
   end
 end
 
-generate.baseToc()
+-- The base TOC is not flavour-scoped, so every invocation would rewrite the same file. That is
+-- harmless sequentially and a race when flavours are generated in parallel (tools/check.sh),
+-- which writes it once up front and then passes --no-base-toc.
+if not opts.noBaseToc then
+  generate.baseToc()
+end
 
 for _, flavor in ipairs(flavors) do
   generate.flavor(flavor, opts)

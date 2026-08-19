@@ -65,6 +65,21 @@ python3 tools/differential/golden.py check Vanilla    # composed reads == commit
 python3 tools/differential/compiler_diff.py Vanilla  # composed reads == Questie's compiler ~10s
 ```
 
+Or run the whole sweep at once:
+
+```sh
+tools/check.sh                    # verify, equivalence, reconstruct, validators, differential
+tools/check.sh all                # + generate and the unit tests
+tools/check.sh verify --flavors=Vanilla,Mists
+```
+
+25 jobs in **1m44s** against roughly 9½ minutes run one at a time. It parallelises by memory
+budget rather than core count, because the jobs are wildly uneven — equivalence on Mists peaks
+at 1.66 GB and 57 s, on Vanilla at 0.42 GB and 19 s — so a flat `-j N` either thrashes a
+laptop or leaves a workstation idle. The budget comes from `MemAvailable` at startup;
+`--budget-mb=N` overrides it and `--sequential` turns fan-out off. Per-job logs land in
+`.out/checks/`.
+
 The golden gate is the successor to the cross-implementation differential (built to
 compare this tree against the independent `-pi` sibling, where it caught the Era-gating,
 constants, and Titan Reforged defect chain). It guards the one class the other gates
