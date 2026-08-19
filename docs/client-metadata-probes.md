@@ -132,18 +132,34 @@ field shapes, which voids DESIGN.md's stated reason for rejecting fresh-per-read
 and retires the frozen-shared-value contract for reads. `CopyTable` is 4–5× slower than
 either native path at every size. CBOR-as-storage is rejected for artifact diffability.
 
-## 7. Deferred: synthetic-TOC probes (need a probe addon + full client restart)
+## 7. Synthetic-TOC probes — MEASURED (TDBProbe addon, build 69109)
 
-TOC files are read at client start, so these need a crafted addon and a restart slot:
+The deferred battery ran via `tools/probe-addon/` after a full client restart:
 
-1. Exact truncation boundary on current builds (1,023 / 1,024 / 1,027-byte lines).
-2. A directive with an empty value — `""` or `nil`?
-3. A value that is exactly `~3~` (marker-lookalike) read back raw.
-4. A value with interior-only whitespace vs edge whitespace, CRLF line endings, and a
-   value ending in a UTF-8 continuation-byte split.
+| Directive | Line bytes | Returned |
+| --- | ---: | --- |
+| `X-P-L1023` (value 1,009 B, tail `01234567`) | 1,023 | **1,009 B intact**, tail `01234567` |
+| `X-P-L1024` (value 1,010 B) | 1,024 | 1,009 B, tail `a0123456` — **exactly 1 byte lost** |
+| `X-P-L1027` (value 1,013 B) | 1,027 | 1,009 B, tail `aaaa0123` — **exactly 4 bytes lost** |
+| `X-P-Empty` / `X-P-Colon-NoSpace` / `X-P-OnlyWs` | | **`""`** — empty string, never nil |
+| `X-P-Marker` `~3~` / `X-P-QMarker` `~Q~test` | | verbatim, byte-intact |
+| `X-P-InnerWs` `alpha␣␣beta⇥gamma` | | 17 B intact — interior spaces AND tabs preserved |
+| `X-P-LeadWs` / `X-P-TrailWs` (edge spaces) | | trimmed, as §1 measured |
+| `X-P-Tab` (leading tab) | | **10 B intact, tab preserved** |
 
-None block the merge program: the merged format keeps the line budget (1), `~E~` makes raw
-empties unrepresentable (2), and `~Q~` escapes lookalikes (3).
+Conclusions:
+
+- **The truncation boundary is exactly 1,023 line bytes on build 69109** — the original
+  measurement re-confirmed to the byte, from both sides.
+- **An empty or whitespace-only value returns `""`, not nil** (absent key returns nil), so
+  empty-vs-absent is distinguishable even raw. `~E~` stays as the explicit representation —
+  it keeps empties representable inside joined/chunked contexts and is now belt-and-braces
+  rather than load-bearing.
+- The client performs no marker interpretation; `~Q~` guards only our own decoder, as
+  designed.
+- **Edge trimming is spaces only on this build — a leading tab survives.** The splitter's
+  trimmable set (space, tab, CR, LF) is deliberately a conservative superset and stays;
+  trailing-tab was not probed (covered by that conservatism).
 
 ## 8. Incidental runtime defect found while probing
 
