@@ -106,6 +106,14 @@ function register.FromManifest(flavor, moduleFor)
   local expansionOrder = registry.expansionOrder
   local registered, skipped = 0, 0
 
+  -- Baked mode never applies Static Corrections: Generation already folded them into the
+  -- metadata store, and ApplyStaticToEntities is only called by Source mode and the
+  -- generator. Skip the registrations rather than build wrap() closures nothing can ever
+  -- run — the packaged copies of these files have their static bodies stripped anyway
+  -- (tools/strip-static.lua, issue #5). Offline (`generator/runtime.lua`) and in Source
+  -- mode `LibQuestieDB.mode` is never "baked", so statics register there as before.
+  local registerStatics = LibQuestieDB.mode ~= "baked"
+
   for index, spec in ipairs(manifest) do
     local applies = true
     if flavor then
@@ -128,16 +136,18 @@ function register.FromManifest(flavor, moduleFor)
       -- own expansion makes that class of mistake unrepresentable.
       local window = spec.window or register.WindowFor(spec)
 
-      for offset, functionName in ipairs(spec.static or {}) do
-        if type(module[functionName]) == "function" then
-          local entry = registry.RegisterCorrection(registry.OWNER, spec.datatype,
-            spec.file .. ":" .. functionName,
-            wrap(module, functionName, spec.datatype),
-            order[window .. "Static"] + (spec.generated and 1 or 10) + offset)
-          entry.expansions = spec.expansions
-          entry.minExpansionOrder = spec.minExpansionOrder
-          entry.options = spec.options
-          registered = registered + 1
+      if registerStatics then
+        for offset, functionName in ipairs(spec.static or {}) do
+          if type(module[functionName]) == "function" then
+            local entry = registry.RegisterCorrection(registry.OWNER, spec.datatype,
+              spec.file .. ":" .. functionName,
+              wrap(module, functionName, spec.datatype),
+              order[window .. "Static"] + (spec.generated and 1 or 10) + offset)
+            entry.expansions = spec.expansions
+            entry.minExpansionOrder = spec.minExpansionOrder
+            entry.options = spec.options
+            registered = registered + 1
+          end
         end
       end
 
