@@ -117,7 +117,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ inputs.tag }}"
-          if [ -z "$TAG" ]; then TAG="build-$(git rev-parse --short HEAD)"; fi
+          if [ -z "$TAG" ]; then TAG="build-$(git rev-parse --short=7 HEAD)"; fi
           PRERELEASE="--prerelease"
           if [ "${{ inputs.release }}" = "true" ]; then PRERELEASE=""; fi
           gh release create "$TAG" .out/dist/* \

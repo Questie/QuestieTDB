@@ -128,7 +128,9 @@ local function writeHeader(out, flavor, fileList)
   out:write("## Title: QuestieTDB\n")
   out:write("## Notes: The database Questie consumes.\n")
   out:write("## Author: Questie contributors\n")
-  out:write("## Version: 0.0.0\n")
+  -- The version a user sees in the addon list names the GitHub release: release.yml tags
+  -- `build-<short sha>`, so "what version are you running?" has a useful answer.
+  out:write("## Version: ", BUILD.version, "\n")
   out:write("## X-Contract-Version: ", tostring(config.contractVersion), "\n")
   out:write("## X-Flavor: ", flavor.name, "\n")
   out:write("## X-Mode: baked\n")
@@ -283,6 +285,7 @@ BUILD = {
   time = lib.buildTime(),
   questieCommit = lib.gitCommit(opts.questie or "../Questie"),
 }
+BUILD.version = BUILD.commit:match("^0+$") and "0.0.0" or ("build-" .. BUILD.commit:sub(1, 7))
 
 if opts.target == "meta" then
   generate.materializeMeta(opts.flavors[1])
