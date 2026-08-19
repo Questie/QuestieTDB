@@ -129,6 +129,15 @@ jobs:
           lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie --quiet
           sha256sum -c first.sha
 
+      - name: Golden composed reads
+        working-directory: QuestieTDB
+        # A-vs-golden gate: composed public reads hashed per entity against the committed
+        # snapshot. Successor to the cross-implementation differential that caught the
+        # Era-gating defect chain - it guards the class of bug where generator and source
+        # mode are consistently wrong together, which verify and equivalence cannot see.
+        # --self-check perturbs one hash in memory and requires exactly one detection.
+        run: python3 tools/differential/golden.py check ${{ matrix.flavor }} --lua=lua5.1 --self-check
+
       - name: Upload validator diagnostics
         if: always()
         uses: actions/upload-artifact@v4

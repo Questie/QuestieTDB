@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Compare two canonical composed-read dumps (A = this tree, B = the -pi sibling).
 
+Historical: this comparator ran against the retired independent `-pi` implementation and
+caught the Era-gating / era-frozen-constants / Titan Reforged defect chain. The ongoing
+regression gate is golden.py (A vs committed per-entity hashes); this file and dump_b.lua
+stay as the record of how the two-implementation comparison was driven.
+
 Usage: python3 tools/differential/compare.py <a.tsv> <b.tsv>
 
 Classifies divergences:

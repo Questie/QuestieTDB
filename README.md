@@ -60,7 +60,16 @@ lua5.1 equivalence.lua            # source == baked, all read forms + self-proof
 lua5.1 reconstruct.lua Vanilla    # artifact == byte-exact re-derivation ~8s
 lua5.1 validators/run.lua         # cross-entity invariants  ~4s
 lua5.1 test.lua                   # unit tests and negative controls
+
+python3 tools/differential/golden.py check Vanilla    # composed reads == committed snapshot ~5s
 ```
+
+The golden gate is the successor to the cross-implementation differential (built to
+compare this tree against the independent `-pi` sibling, where it caught the Era-gating,
+constants, and Titan Reforged defect chain). It guards the one class the other gates
+cannot: generator and source mode being consistently wrong *together*. After an
+intentional data change, `golden.py refresh <Flavor>` regenerates the snapshot for
+review and commit.
 
 Plain Lua 5.1, no `lfs`, no luarocks, no C dependency anywhere. Inputs are enumerated in
 `src/config.lua` rather than discovered by scanning directories.
@@ -112,7 +121,7 @@ test.lua                  unit tests and negative controls
 generator/                offline internals
 emulator/                 metadata emulator, client stubs, freeze substitute
 validators/               data-invariant checks
-tools/                    port, package, bootstrap
+tools/                    port, package, bootstrap, differential golden gate
 docs/                     api.md, storage-format.md, adr/
 ```
 
