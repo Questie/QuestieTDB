@@ -30,6 +30,57 @@ The same counts, with a reason per row, are committed under
 `tools/differential/compiler-baseline/`. The gate fails on anything new or grown and prints
 what is still owed on every run, so a known defect cannot quietly become permanent.
 
+## Confirmed in a live client, 2026-08-19
+
+The offline differential compares two Lua processes. This run compared the shipped artifact
+against a running Questie inside the game, which is the only way to prove the client's real
+metadata reader behaves like the offline emulator.
+
+**Client:** Classic Era 1.15.9, enUS, Alliance. **Artifact:** `QuestieTDB_Vanilla.toc`, baked
+mode, producer `build-7169b67`. **Compared against:** Questie 11.36.1 as loaded.
+**Scope:** every field of every entity, 4,257 quests, 10,122 NPCs, 14,899 items, 6,666
+objects. **590,128 field comparisons, 54 divergences.**
+
+Entity id sets matched exactly on all four types, zero ids on either side alone.
+
+The four baselined Vanilla classes reproduced **to the row**: `Object.spawns` absent-vs-value
+24, `Npc.spawns` value 9, `Object.spawns` value 9, `Quest.requiredRaces` value 7. Forty-nine,
+the recorded baseline.
+
+The five extra rows are all upstream data drift between 11.33.2, which
+`tools/port-corrections.lua` was last run against, and the 11.36.1 in the client. Each was
+confirmed at the source line, so all five should disappear on the next re-sync and none of
+them is a QuestieTDB defect:
+
+| Entity | Field(s) | 11.33.2 (ours) | 11.36.1 (client) |
+| --- | --- | --- | --- |
+| Quest 1271 | `preQuestGroup`, `preQuestSingle` | `preQuestGroup = {1204,1222}` | `preQuestSingle = {1222}`, `preQuestGroup = {}` |
+| Quest 4144 | `specialFlags` | `specialFlags.REPEATABLE` | correction removed upstream |
+| Quest 5151 | `extraObjectives` | `Questie.ICON_TYPE_INTERACT` (17) | `Questie.ICON_TYPE_OBJECT` (4) |
+| Object 188135 | `name` | not set | `objectKeys.name = "Ice Stone"` |
+
+Quest 5151 doubles as an independent check on the constants pipeline: 17 and 4 are exactly
+what the live `Questie.ICON_TYPE_*` globals hold and what
+`src/corrections/enum/constants.lua` records, so the symbolic constants resolved correctly on
+both sides and only the source file changed.
+
+Two further sweeps ran clean in the same session:
+
+* **Storage contract**, 1,050,268 reads across all four types: zero numeric nils, zero empty
+  tables leaking through, zero never-nil violations, zero wrong types.
+* **Correction Overlay**: `Apply()` 1.45 ms, withdrawal 1.22 ms. A `{}` correction cleared a
+  field without touching its siblings, an added entity was readable and enumerable with
+  `Exists` true, `GetRaw` still returned base data, `GetProvenance` named the registrar for
+  touched fields and `QuestieTDB` for untouched ones, and withdrawal restored the original
+  coordinates exactly. This is the mechanism the gathering-node POLICY row depends on,
+  verified end to end.
+
+All ten locale variants resolved, CJK and Cyrillic included, with `esMX` distinct from
+`esES`.
+
+Read cost and memory from the same session are in
+[`read-performance.md`](./read-performance.md).
+
 ## Divergence register
 
 `FIX` = we intend to match Questie. `POLICY` = permanent and correct, the consumer closes it.
