@@ -27,8 +27,11 @@ LibQuestieDB.Object  -- ObjectDB
 
 ### `Entity.Get(id, key) -> value`
 
-`key` is a canonical field name or a positional index. Both are equivalent; the name is
-clearer and costs one table lookup.
+`key` is a canonical field name or a positional index. Both return the same value, but the
+name is the faster path as well as the clearer one: a name resolves in a single lookup, a
+number misses that map and falls through to a type check. The gap is small, 0.55 µs against
+0.63 µs warm, and `GetByIndex` closes most of it if you need positional access. See
+[`read-performance.md`](./read-performance.md).
 
 ```lua
 QuestDB.Get(2, "name")           --> "Sharptalon's Claw"
@@ -78,6 +81,10 @@ they are shared, not copies.
 Base data only, bypassing the Correction Overlay and localization. For tooling and
 debugging — use `Get` for anything a player sees. An overlay-added entity has no raw row, so
 `GetRaw` legitimately returns nil for it.
+
+**`GetRaw` is not cached.** It reaches the backend on every call, so it stays at roughly
+2.7 µs no matter how often you read the same field, where `Get` drops to 0.6 µs once warm.
+Do not reach for it in a loop.
 
 ---
 
