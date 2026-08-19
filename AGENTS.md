@@ -13,8 +13,13 @@ architecture as designed; where it and the code disagree, read the ADRs in `docs
 - `DESIGN.md` — architecture, locked decisions, rejected alternatives, phasing
 - `CONTEXT.md` — glossary
 - `docs/storage-format.md` — the on-disk TOC contract and nil/empty rules
-- `docs/adr/` — decision records
+- `docs/adr/` — decision records; `0003` is the current contract
+- `docs/merge-program.md` — how the two parallel implementations became one: defects
+  fixed, standing guarantees, ready-to-file future work, retirement checklist
+- `docs/client-metadata-probes.md` — measured live-client behavior (trimming, key
+  case-folding, the 1,023-byte line limit, freeze ownership, read-path costs)
 - `docs/table.freeze.md` — live-client research on `table.freeze` / `table.isfrozen`
+- `docs/pi/` — the retired `-pi` sibling: unadopted design ideas and its defect ledger
 
 ## Agent skills
 

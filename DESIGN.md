@@ -625,11 +625,18 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
 
 ## Open risks and gates
 
-### 1. TOC size in the live client — CLEARED
+### 1. TOC size in the live client — CLEARED at 85 MB; recheck open at 118 MB
 
 Previously the blocking gate. **Resolved by prior in-client testing**: both `toc-database` and
 `Getters` were tested deeply against real clients at full size and load fast, with no parse or
-memory problem at the 20–85 MB range.
+memory problem at the 20–85 MB range. The merged Vanilla artifact (25.4 MB) is additionally
+live-validated end-to-end on build 69109
+([`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md) §7b).
+
+The post-merge Mists artifact is 117.7 MB — above the historically cleared range — so one
+Mists-client acceptance session (load time, metadata reads, memory, one non-enUS locale)
+remains an open item; see `docs/merge-program.md` future work. This is a regression check,
+not a return to an undecided storage architecture.
 
 This also settles the l10n-in-TOC decision — keeping all nine locales in the store is
 validated, not assumed. Splitting l10n out remains a known mitigation if the artifact grows
@@ -659,10 +666,11 @@ Deriving the schema (see Schema) converts this from a silent divergence into a b
 The residual risk is narrower: an unrecognised **compiler type** halts generation and needs a
 storage decision, and the type map must be materialized before phase 13 removes its source.
 
-### 4. Mutation audit
+### 4. Mutation audit — MOOT
 
-Freezing makes this self-executing, but the volume is unknown until it runs. `GetQuest` is one
-site; there will be others, invisible today because current semantics forgive them.
+Retired with the frozen-value contract itself: ADR 0003 D10 (revised) made every table
+read a fresh mutable copy the caller owns — Questie's original semantics — so consumer
+mutation sites like `GetQuest`'s are harmless by construction and no audit is needed.
 
 ## Rejected alternatives
 
