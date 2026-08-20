@@ -27,7 +27,7 @@ architecture as designed; where it and the code disagree, read the ADRs in `docs
 
 ### Issue tracker
 
-Issues live in GitHub Issues at `Questie/QuestieTDB`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues, specs, and Wayfinder maps live in GitHub Issues at `Questie/QuestieTDB`, via the `gh` CLI. This repository configuration overrides Wayfinder's default local Markdown tracker. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
