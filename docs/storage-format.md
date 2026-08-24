@@ -187,8 +187,9 @@ field 1.
 - **A list-valued field's segments are Lua table literals** (ADR 0003, Decision 3): quest
   `objectivesText` stores each locale's list as `{'…','…'}`, decoded with the same
   `loadstring("return " .. segment)` codec entity fields use. Structure travels in the value,
-  so the field keeps its table shape — including element count — identically in every locale.
-  There is no second, element-level separator.
+  so the field stays a table in every locale. Element counts follow the upstream lookup and
+  may differ, notably where zhCN or zhTW combines objectives. There is no second,
+  element-level separator.
 - Scalar segments are raw text, trimmed at extraction — the client trims value edges, and
   which segment sits at a value's edge depends on which other locales are present, so
   untrimmed translations would vary by position. Control characters are stripped at
@@ -212,11 +213,14 @@ Every generated `.toc` carries provenance:
 
 `X-BUILD-COMMIT` is `git rev-parse HEAD`, or forty zeros when git is unavailable.
 
-`X-QUESTIE-COMMIT` is the same for the Questie checkout generation read (`--questie=`,
-default `../Questie`). It is provenance, not decoration: the l10n lookups — ~72% of the
-artifact — are read from that checkout rather than committed here, so an artifact is
-reproducible only from the *pair* of commits. `tools/package.sh` copies it into
-`release.json` and refuses to package artifacts that disagree about it.
+`X-QUESTIE-COMMIT` is the same for the Questie checkout Generation reads (`--questie=`,
+default `QUESTIE_PATH` or `../Questie`). It is provenance, not decoration: the l10n lookups —
+~72% of the artifact — are read from that checkout rather than committed here, so an artifact
+is reproducible only from the *pair* of commits. `QUESTIE_COMMIT` pins the reviewed input;
+Generation, Reconstruction, the compiler differential, and the Correction port reject a
+different commit, and both workflows read that pin through the shared checkout action.
+`tools/package.sh` copies
+the commit into `release.json` and refuses to package artifacts that disagree about it.
 
 ## Nil and empty semantics
 

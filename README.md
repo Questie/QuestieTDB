@@ -19,11 +19,13 @@ existing.**
 | TOC | `QuestieTDB.toc` (committed) | `QuestieTDB_Vanilla.toc` etc. (generated, gitignored) |
 | Reads resolve from | raw entity data | the TOC metadata store |
 | Static Corrections | applied live | already folded in |
-| Requires | nothing but a clone | one bootstrap command, or `lua generate.lua` |
+| Requires | nothing but a clone | one bootstrap command, or Generation against pinned Questie |
 
 A fresh clone junctioned into `AddOns` is a working development environment — no download, no
 Lua toolchain. Generating an artifact switches the same folder to baked mode with no code
-change.
+change. Generation reads localization from the Questie commit recorded in `QUESTIE_COMMIT` and
+fails before writing output if the checkout or required lookup files do not match. Use
+`--no-l10n` only for an intentional partial artifact.
 
 ---
 
@@ -71,16 +73,18 @@ Or run the whole sweep at once:
 
 ```sh
 tools/check.sh                    # verify, equivalence, reconstruct, validators, differential
-tools/check.sh all                # + generate and the unit tests
+tools/check.sh all                # Generation, every gate, and the unit tests
 tools/check.sh verify --flavors=Vanilla,Mists
+tools/check.sh determinism freeze --flavors=Vanilla
 ```
 
-25 jobs in **1m44s** against roughly 9½ minutes run one at a time. It parallelises by memory
-budget rather than core count, because the jobs are wildly uneven — equivalence on Mists peaks
-at 1.66 GB and 57 s, on Vanilla at 0.42 GB and 19 s — so a flat `-j N` either thrashes a
-laptop or leaves a workstation idle. The budget comes from `MemAvailable` at startup;
-`--budget-mb=N` overrides it and `--sequential` turns fan-out off. Per-job logs land in
-`.out/checks/`.
+The sweep parallelises by memory budget rather than core count, because the jobs are wildly
+uneven — equivalence on Mists peaks at 1.66 GB and 57 s, on Vanilla at 0.42 GB and 19 s — so a
+flat `-j N` either thrashes a laptop or leaves a workstation idle. `all` finishes Generation
+for every selected flavor before any artifact reader or unit test starts. Determinism and
+freeze checks remain available as explicit gates. The budget comes from `MemAvailable` at
+startup; `--budget-mb=N` overrides it and `--sequential` turns fan-out off. Per-job logs land
+in `.out/checks/`.
 
 The golden gate is the successor to the cross-implementation differential (built to
 compare this tree against the independent `-pi` sibling, where it caught the Era-gating,
@@ -99,7 +103,9 @@ the Lua path, which it picks up from luarocks automatically. Accepted divergence
 `tools/differential/compiler-baseline/`; `--update-baseline` re-records them for review.
 
 Plain Lua 5.1, no `lfs`, no luarocks, no C dependency anywhere. Inputs are enumerated in
-`src/config.lua` rather than discovered by scanning directories.
+`src/config.lua` rather than discovered by scanning directories. `tools/check.sh --questie=`
+propagates one checkout path through Generation, fidelity tests, Reconstruction, and the
+compiler differential; `QUESTIE_PATH` provides the same default for nested tools.
 
 To refresh a local install instead of regenerating:
 
@@ -113,12 +119,16 @@ Two things derive from Questie and are committed here, so drift is a build failu
 a discovery months later. CI runs both and fails on any diff.
 
 ```sh
-lua5.1 generate.lua meta ../Questie          # schema -> src/meta/*Meta.lua
-lua5.1 tools/port-corrections.lua ../Questie # corrections + constants
+git -C ../Questie checkout "$(cat QUESTIE_COMMIT)"
+lua5.1 generate.lua meta --questie=../Questie # schema -> src/meta/*Meta.lua
+lua5.1 tools/port-corrections.lua ../Questie  # corrections + constants
 ```
 
 The ported correction files are **byte-identical copies** of Questie's; a compat shim supplies
-the module surface they import. Re-syncing is a file copy, not a rewrite.
+the module surface they import. Re-syncing is a file copy, not a rewrite. To advance Questie,
+change `QUESTIE_COMMIT` first, check out that commit, then review schema drift, the Correction
+re-port, validators, compiler differential, and Golden snapshots in the same working tree.
+Automation reads the same pin through `.github/actions/checkout-questie`.
 
 ---
 
