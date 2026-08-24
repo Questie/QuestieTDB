@@ -4,10 +4,9 @@ name: Release
 # identifiable by content, not just by tag: the manifest carries per-artifact SHA-256, the
 # producing commit, the Questie input commit and the contract version.
 #
-# Publication is impossible on red. `publish` needs `quality`, and `quality` runs the same
-# bar CI runs — drift gates, unit tests, verification, equivalence, validators — against the
-# exact tree being released. The token-bearing job runs no build code: everything it uploads
-# came through the quality bar, unmodified, via the workflow artifact.
+# Publication is impossible on red. `publish` needs both the artifact quality bar and the
+# compiler differential. The token-bearing job runs no build code: everything it uploads came
+# through those gates, unmodified, via the workflow artifact.
 #
 # NOTE FOR THE MAINTAINER: this workflow needs secrets that are not configured here.
 #   GITHUB_TOKEN    provided automatically; used for the GitHub release
@@ -38,10 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { path: QuestieTDB }
-      - uses: actions/checkout@v4
-        with:
-          repository: Questie/Questie
-          path: Questie
+      - uses: ./QuestieTDB/.github/actions/checkout-questie
 
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
@@ -58,8 +54,8 @@ jobs:
         working-directory: QuestieTDB
         run: |
           lua5.1 tools/port-corrections.lua ../Questie
-          git diff --exit-code src/corrections/ || {
-            echo "::error::Ported corrections differ from Questie's. Review and commit the re-port."
+          git diff --exit-code src/corrections/ src/derived/RamerDouglasPeucker.lua || {
+            echo "::error::Ported Corrections or copied libraries differ from Questie's. Review and commit the re-port."
             exit 1
           }
 
@@ -67,14 +63,32 @@ jobs:
         working-directory: QuestieTDB
         run: lua5.1 generate.lua all --questie=../Questie
 
+      - name: Determinism
+        working-directory: QuestieTDB
+        # Regenerate before the read gates. The artifacts they approve are therefore the exact
+        # second-generation bytes this check proved identical to the first generation.
+        run: |
+          sha256sum QuestieTDB_{Vanilla,TBC,Wrath,Cata,Mists}.toc > first.sha
+          lua5.1 generate.lua all --questie=../Questie --quiet
+          sha256sum -c first.sha
+
       - name: Unit tests
         working-directory: QuestieTDB
         # Defense in depth: the same suite CI runs, here against the artifacts being released.
         run: lua5.1 test.lua
 
+      - name: Reconstruct every artifact
+        working-directory: QuestieTDB
+        run: lua5.1 reconstruct.lua Vanilla TBC Wrath Cata Mists --questie=../Questie
+
       - name: Verify every flavor
         working-directory: QuestieTDB
         run: lua5.1 verify.lua
+
+      - name: Verify ownership under freezing
+        working-directory: QuestieTDB
+        # Match CI's smallest/largest coverage without doubling every flavor's runtime.
+        run: lua5.1 verify.lua Vanilla Mists --freeze
 
       - name: Source/baked equivalence
         working-directory: QuestieTDB
@@ -83,6 +97,13 @@ jobs:
       - name: Validate every flavor
         working-directory: QuestieTDB
         run: lua5.1 validators/run.lua
+
+      - name: Golden composed reads
+        working-directory: QuestieTDB
+        run: |
+          for flavor in Vanilla TBC Wrath Cata Mists; do
+            python3 tools/differential/golden.py check "$flavor" --lua=lua5.1 --self-check
+          done
 
       - name: Package and write the manifest
         working-directory: QuestieTDB
@@ -96,10 +117,41 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  differential:
+    name: Compiler differential (${{ matrix.flavor }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [Vanilla, TBC, Wrath, Cata, Mists]
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: QuestieTDB }
+      - uses: ./QuestieTDB/.github/actions/checkout-questie
+
+      # Questie's compiler oracle needs bit32. Keep this in its own job so the artifact job
+      # can continue using the apt-installed interpreter used by the rest of the quality bar.
+      - name: Install Lua 5.1
+        uses: leafo/gh-actions-lua@v13.0.0
+        with:
+          luaVersion: "5.1"
+      - name: Install luarocks
+        uses: leafo/gh-actions-luarocks@v6.1.0
+        with:
+          luaRocksVersion: "3.13.0"
+      - name: Install bit32
+        run: luarocks install bit32 5.3.5.1-1
+
+      - name: QuestieTDB vs Questie's compiler
+        working-directory: QuestieTDB
+        run: >-
+          python3 tools/differential/compiler_diff.py ${{ matrix.flavor }}
+          --questie=../Questie --lua=lua --self-check
+
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    needs: quality
+    needs: [quality, differential]
     permissions:
       contents: write
     steps:

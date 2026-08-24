@@ -1,8 +1,7 @@
 name: CI
 
-# Every commit produces a verified, downloadable database. The gates below are the ones
-# QuestieTDB cannot ship without: round-trip verification, source/baked equivalence, and the
-# data validators. All three block merge.
+# Every commit produces a verified, downloadable database. The terminal `gates` job makes
+# every matrix and unit result mandatory for branch protection.
 
 on:
   push:
@@ -23,12 +22,9 @@ jobs:
       - uses: actions/checkout@v4
         with: { path: QuestieTDB }
 
-      # The localization lookup tree and Questie's schema files are generation inputs and are
-      # read from a checkout rather than duplicated here.
-      - uses: actions/checkout@v4
-        with:
-          repository: Questie/Questie
-          path: Questie
+      # Localization, schema and Corrections all come from the reviewed commit in
+      # QUESTIE_COMMIT. Bumping that file makes upstream drift an explicit repository change.
+      - uses: ./QuestieTDB/.github/actions/checkout-questie
 
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
@@ -47,8 +43,8 @@ jobs:
         working-directory: QuestieTDB
         run: |
           lua5.1 tools/port-corrections.lua ../Questie
-          git diff --exit-code src/corrections/ || {
-            echo "::error::Ported corrections differ from Questie's. Review and commit the re-port."
+          git diff --exit-code src/corrections/ src/derived/RamerDouglasPeucker.lua || {
+            echo "::error::Ported Corrections or copied libraries differ from Questie's. Review and commit the re-port."
             exit 1
           }
 
@@ -87,10 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { path: QuestieTDB }
-      - uses: actions/checkout@v4
-        with:
-          repository: Questie/Questie
-          path: Questie
+      - uses: ./QuestieTDB/.github/actions/checkout-questie
 
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
@@ -98,6 +91,15 @@ jobs:
       - name: Generate
         working-directory: QuestieTDB
         run: lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie
+
+      - name: Determinism
+        working-directory: QuestieTDB
+        # Run this before any reader. Every later gate therefore approves the exact
+        # second-generation bytes whose hash matched the first Generation.
+        run: |
+          sha256sum QuestieTDB_${{ matrix.flavor }}.toc > first.sha
+          lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie --quiet
+          sha256sum -c first.sha
 
       - name: Round-trip verification
         working-directory: QuestieTDB
@@ -120,15 +122,6 @@ jobs:
         working-directory: QuestieTDB
         run: lua5.1 validators/run.lua ${{ matrix.flavor }}
 
-      - name: Determinism
-        working-directory: QuestieTDB
-        # Identical input must produce byte-identical output, or every regeneration produces a
-        # spurious diff and checksums stop meaning anything.
-        run: |
-          sha256sum QuestieTDB_${{ matrix.flavor }}.toc > first.sha
-          lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie --quiet
-          sha256sum -c first.sha
-
       - name: Golden composed reads
         working-directory: QuestieTDB
         # A-vs-golden gate: composed public reads hashed per entity against the committed
@@ -142,7 +135,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: validator-report-${{ matrix.flavor }}
+          name: validator-diagnostics-${{ matrix.flavor }}
           path: QuestieTDB/.out/validators/
           if-no-files-found: ignore
 
@@ -170,10 +163,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { path: QuestieTDB }
-      - uses: actions/checkout@v4
-        with:
-          repository: Questie/Questie
-          path: Questie
+      - uses: ./QuestieTDB/.github/actions/checkout-questie
 
       # Questie's apiMocks require bit32, and this is the toolchain Questie's own CI uses to
       # provide it — so the oracle is built the same way upstream builds it. It installs `lua`

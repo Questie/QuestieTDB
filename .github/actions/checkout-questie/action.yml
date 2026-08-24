@@ -1,0 +1,25 @@
+name: Checkout pinned Questie
+description: Check out the Questie commit recorded by QuestieTDB
+
+runs:
+  using: composite
+  steps:
+    - name: Read Questie pin
+      id: pin
+      shell: bash
+      env:
+        QUESTIE_PIN_FILE: ${{ github.action_path }}/../../../QUESTIE_COMMIT
+      run: |
+        commit="$(cat "$QUESTIE_PIN_FILE")"
+        if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::QUESTIE_COMMIT must contain one lowercase 40-character Git SHA."
+          exit 1
+        fi
+        echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+    - name: Check out Questie
+      uses: actions/checkout@v4
+      with:
+        repository: Questie/Questie
+        ref: ${{ steps.pin.outputs.commit }}
+        path: Questie
