@@ -300,9 +300,9 @@ LibQuestieDB.l10n.onLocaleChanged[#… + 1] = function(locale) … end
 
 Nine locales — `deDE esES esMX frFR koKR ptBR ruRU zhCN zhTW`. `enUS` means "no overlay",
 because base data is already English. Missing translations fall back to English. Changing
-locale needs no regeneration and no rebuild. A translated `objectivesText` keeps the base
-field's exact table shape — element counts never differ per locale — and a field a
-Correction supplied is never overridden by a translation (see Corrections above).
+locale needs no regeneration and no rebuild. A translated `objectivesText` remains a table;
+element counts follow the upstream lookup and may differ where a locale combines objectives.
+A field a Correction supplied is never overridden by a translation (see Corrections above).
 
 Translated fields: quest `name` and `objectivesText`, npc `name` and `subName`, item `name`,
 object `name`.

@@ -112,7 +112,7 @@ Entity **id sets match exactly** on all five flavours and all four types — zer
 | `Quest.extraObjectives` value | 7 / 25 / 54 / 99 / 116 | Same rule, row slot `[4]` (objectiveIndex). |
 | `Npc.waypoints` value | 454 / 808 / 1,095 / 1,153 / 1,158 | `src/derived/waypoints.lua`, the first Derived Pass. Verified at **zero** on all five flavours, with `verify`, `equivalence`, `reconstruct` and determinism all green. |
 | `Object.waypoints` value | – / – / – / 3 / 3 | Same pass. |
-| Phantom entities from inherited Corrections | 0 / 0 / 1 / 4 / 99 ids, plus inherited fields | `sourceExpansionOrder` in the generated Correction manifest now applies Questie's `noNewEntries` rule. Older Corrections can update surviving rows but only a field-1/name Correction may create a missing entity. |
+| Phantom entities from inherited Corrections | 0 / 0 / 1 / 4 / 99 ids, plus inherited fields | The Correction registry derives each file's source expansion and applies Questie's `noNewEntries` rule when a later flavor inherits it. Older Corrections can update surviving rows, but only a field-1/name Correction may create a missing entity. |
 | `Quest.questFlags` value | – / – / 2 / 72 / 72 | Resolved by the pinned Correction re-port. |
 | `Quest.reputationReward` absent-vs-value | – / – / 1 / 1 / 1 | Resolved by the pinned Correction re-port. |
 | WotLK NPC Static Correction order | – / – / 20 / 20 / 20 | The generated manifest now follows Questie: `LoadAutomatics()` first, then hand-authored `Load()`. This removed 16 wrong-value and four absent-vs-value spawn divergences per affected flavor. A real overlap on NPC 30208 guards the order. |
@@ -161,7 +161,7 @@ yet been closed.
 | [#2](https://github.com/Questie/QuestieTDB/issues/2) | Triage the three unexplained divergence classes | Resolved by the pinned re-port and WotLK order fix |
 | [#3](https://github.com/Questie/QuestieTDB/issues/3) | Decide whether the overlay quantizes coordinates | Open |
 | [#4](https://github.com/Questie/QuestieTDB/issues/4) | Validator baseline is stale, 78 new findings | Reviewed and refreshed in `validator-baseline-review.md` |
-| [#5](https://github.com/Questie/QuestieTDB/issues/5) | Baked artifacts ship static correction bodies | Resolved by package-time Static-body stripping |
+| [#5](https://github.com/Questie/QuestieTDB/issues/5) | Baked artifacts ship static correction bodies | Implemented by package-time stripping; live-client acceptance remains with #6 |
 | [#6](https://github.com/Questie/QuestieTDB/issues/6) | Mists in-client acceptance at 112 MiB | Open |
 | [#7](https://github.com/Questie/QuestieTDB/issues/7) | Differential missing from `release.yml` | Resolved; release publication depends on the matrix |
 | [#8](https://github.com/Questie/QuestieTDB/issues/8) | Pin the Questie input checkout | Resolved by `QUESTIE_COMMIT` and shared workflow checkout |

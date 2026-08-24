@@ -245,10 +245,11 @@ Two consequences for implementation:
 - **Numeric getters must default to `0`, never `nil`.** An absent metadata key means the field
   was nil at source, and Questie returns `0` there. Note `0` is truthy in Lua, so consumers
   already test `~= 0` rather than truthiness — returning `nil` instead would change behaviour.
-- **Table getters must return `nil`, never an empty table.** The prototypes' `EMPTY` sentinel
-  (`{"startedBy", "table", EMPTY}`) contradicts this and must be removed. It is independently
-  disqualified anyway: a frozen table carrying `__newindex` redirects writes instead of
-  failing — see `docs/table.freeze.md`.
+- **Ordinary table getters return `nil`, never an empty table.** The three never-nil structures
+  above are explicit exceptions. The prototypes' `EMPTY` sentinel (`{"startedBy", "table",
+  EMPTY}`) contradicts the general rule and must be removed. It is independently disqualified
+  anyway: a frozen table carrying `__newindex` redirects writes instead of failing — see
+  `docs/table.freeze.md`.
 
 Empty strings need an explicit representation, since an absent key already means `nil`.
 Questie's compiler solves this with a literal `"nil"` sentinel in the opposite direction —
@@ -277,8 +278,9 @@ String slots are **not** padded: they are written `value or ""` and read back as
 
 Coordinates remain a separate, deliberate nested normalization (ADR 0003 D1). The compiler's
 remaining nested behaviours — turning a nil objective text into `""` and the like — stay
-unreproduced, and are now *measured* as unreproduced rather than assumed harmless: the
-differential is at 49-872 divergences per flavour and every one is accounted for. ADR 0003 Decision 1 resolved the
+unreproduced, and are now *measured* as unreproduced rather than assumed harmless. The
+differential accounts for every remaining divergence; current counts live in
+[`questie-handover.md`](./questie-handover.md). ADR 0003 Decision 1 resolved the
 tension this section used to carry — the consumer contract is what Questie's ~290 call sites
 observe, which is *compiled* reads, so spawn and waypoint coordinates reproduce the
 compiler's 40.90 quantization and its sentinel rules (see Value encoding above). The

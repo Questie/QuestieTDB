@@ -19,9 +19,9 @@
 --   * Composed enumeration: an entity added by a runtime Dynamic Correction is readable,
 --     enumerable and existing in both modes, and withdrawal removes all three (ADR 0003 D7).
 --   * Baked localization shape: every locale's segment of every localized field decodes, and
---     a list-typed field's element count never varies by locale (ADR 0003 D3). Source mode
---     deliberately has no l10n store, so this is a baked-side invariant sweep; the cross-mode
---     comparison itself runs under enUS, where both modes read base data.
+--     list-typed fields remain tables (ADR 0003 D3). Source mode deliberately has no l10n
+--     store, so this is a baked-side invariant sweep; the cross-mode comparison itself runs
+--     under enUS, where both modes read base data.
 --   * A season pass for Classic: with Season of Discovery active in both modes, the SoD
 --     Dynamic sets must register and compose identically (ADR 0003 D9).
 --
@@ -310,9 +310,9 @@ local function compareComposedAdd(report, Lib, entityName, sourceEntity, bakedEn
   end
 end
 
---- Baked l10n shape (ADR D3): every locale's segment decodes, and list-typed fields keep the
---- base element count in every locale. Source mode has no l10n store by design, so this is a
---- baked-side invariant rather than a cross-mode comparison.
+--- Baked l10n shape (ADR D3): every locale's segment decodes and keeps the field's type.
+--- Source mode has no l10n store by design, so this is a baked-side invariant rather than a
+--- cross-mode comparison. Legitimate locale-specific element counts are reported separately.
 local function checkBakedL10nShape(report, bakedLib, entityName, bakedEntity, meta, ids)
   local l10n = bakedLib.l10n
   local typeFields = l10n.fields[entityName]

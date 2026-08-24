@@ -3,8 +3,8 @@
 The database Questie consumes. Stores entity data as WoW addon TOC metadata, readable at
 runtime with no file I/O, and owns the offline generator that produces it.
 
-Quests, NPCs, items and objects for Classic Era, TBC, Wrath, Cataclysm and Mists — with
-corrections applied, nine locales, and the same values in a fresh clone as in a shipped build.
+Quests, NPCs, items and objects for Classic Era, TBC, Wrath, Cataclysm and Mists. Baked
+artifacts include nine locales; Source and Baked modes return the same base entity values.
 
 ---
 
@@ -102,10 +102,12 @@ replaces. It needs a Questie checkout (`--questie=../Questie`, the default) and 
 the Lua path, which it picks up from luarocks automatically. Accepted divergences live in
 `tools/differential/compiler-baseline/`; `--update-baseline` re-records them for review.
 
-Plain Lua 5.1, no `lfs`, no luarocks, no C dependency anywhere. Inputs are enumerated in
-`src/config.lua` rather than discovered by scanning directories. `tools/check.sh --questie=`
-propagates one checkout path through Generation, fidelity tests, Reconstruction, and the
-compiler differential; `QUESTIE_PATH` provides the same default for nested tools.
+Generation and the addon tooling use plain Lua 5.1 with no `lfs`, luarocks, or C dependency.
+Inputs are enumerated in `src/config.lua` rather than discovered by scanning directories. The
+compiler differential is the one exception because Questie's mocks require `bit32`.
+`tools/check.sh --questie=` propagates one checkout path through Generation, fidelity tests,
+Reconstruction, and the compiler differential; `QUESTIE_PATH` provides the same default for
+nested tools.
 
 To refresh a local install instead of regenerating:
 
