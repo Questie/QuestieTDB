@@ -269,6 +269,8 @@ if [ "${1:-}" = "generate.lua" ]; then
   case "${2:-}" in
     Vanilla|Mists) printf 'artifact\n' > "QuestieTDB_${2}.toc" ;;
   esac
+elif [ "${1:-}" = "verify.lua" ]; then
+  printf '[PASS] fixture summary %0100d summary-tail\n' 0
 fi
 ]])
   lib.writeAll(root .. "/fake-bin/python3", [[#!/usr/bin/env bash
@@ -286,6 +288,8 @@ printf 'python\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
   local logPath = rootAbs .. "/commands.log"
   local outputPath = rootAbs .. "/output.log"
 
+  ---@param arguments string
+  ---@return boolean succeeded
   local function runFlow(arguments)
     commandSucceeded("rm -f " .. shellQuote(logPath) .. " " ..
       shellQuote(rootAbs .. "/QuestieTDB_Vanilla.toc") .. " " ..
@@ -298,6 +302,9 @@ printf 'python\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
     return commandSucceeded(command)
   end
 
+  ---@param log string
+  ---@param needle string
+  ---@return integer[] positions
   local function positionsOf(log, needle)
     local positions, position = {}, 1
     while true do
@@ -314,6 +321,18 @@ printf 'python\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
   }
 
   check(runFlow("all --flavors=Vanilla,Mists"), "fake full flow passes")
+  local output = lib.readAll(outputPath)
+  check(output:find("generate:toc%s+%d+%.%ds") ~= nil,
+    "base TOC Generation reports its duration")
+  check(output:find("generate:Vanilla%s+%d+%.%ds") ~= nil,
+    "scheduled Generation reports each job duration")
+  check(output:find("Generation results %(%d+%.%ds%)") ~= nil,
+    "Generation reports its wall-clock duration")
+  check(output:find("all stages passed in %d+%.%ds") ~= nil,
+    "the full flow reports its wall-clock duration")
+  check(output:find("summary%-tail") ~= nil,
+    "job summaries longer than 96 characters remain intact")
+
   local log = lib.readAll(logPath)
   local vanillaGenerations = positionsOf(log, "generate.lua Vanilla")
   local mistsGenerations = positionsOf(log, "generate.lua Mists")

@@ -103,6 +103,27 @@ command_string() {
     printf '%q ' "$@"
 }
 
+# `wait -n -p` already requires Bash 5.1, which provides this clock without GNU `date`.
+now_ms() {
+    local epoch_realtime="$EPOCHREALTIME"
+    local seconds="${epoch_realtime%%.*}"
+    local milliseconds="${epoch_realtime#*.}"
+    milliseconds="${milliseconds:0:3}"
+    printf '%d\n' "$(( seconds * 1000 + 10#$milliseconds ))"
+}
+
+elapsed_ms_since() {
+    local elapsed_ms=$(( $(now_ms) - $1 ))
+    # A wall-clock correction should not turn a duration into a negative number.
+    [ "$elapsed_ms" -lt 0 ] && elapsed_ms=0
+    printf '%d\n' "$elapsed_ms"
+}
+
+format_duration() {
+    local rounded_ms=$(( $1 + 50 ))
+    printf '%d.%01ds' "$(( rounded_ms / 1000 ))" "$(( rounded_ms % 1000 / 100 ))"
+}
+
 labels=()
 cmds=()
 weights=()
@@ -121,15 +142,15 @@ run_jobs() {
     [ "$total" -eq 0 ] && return 0
 
     local -a order
-    local idx label log summary
+    local idx label log summary duration
     order=($(for idx in "${!weights[@]}"; do echo "${weights[$idx]} $idx"; done |
         sort -rn | awk '{print $2}'))
 
     echo "==> $phase: ${total} jobs, budget ${BUDGET_MB} MB$([ "$SEQUENTIAL" = 1 ] && echo ', sequential')"
-    local started
-    started=$(date +%s)
+    local phase_started_ms
+    phase_started_ms=$(now_ms)
 
-    local -A PID_LABEL PID_WEIGHT RESULT
+    local -A PID_LABEL PID_WEIGHT PID_STARTED_MS RESULT DURATION_MS
     local used=0 next=0 inflight=0
 
     reap_one() {
@@ -138,12 +159,19 @@ run_jobs() {
         rc=$?
         [ -z "${pid:-}" ] && return 1
         local finished_label="${PID_LABEL[$pid]}"
+        local elapsed_ms
+        elapsed_ms=$(elapsed_ms_since "${PID_STARTED_MS[$pid]}")
+        duration=$(format_duration "$elapsed_ms")
         RESULT["$finished_label"]=$rc
+        DURATION_MS["$finished_label"]=$elapsed_ms
         used=$(( used - PID_WEIGHT[$pid] ))
         inflight=$(( inflight - 1 ))
-        unset 'PID_LABEL[$pid]' 'PID_WEIGHT[$pid]'
-        if [ "$rc" -eq 0 ]; then printf '    ok   %s\n' "$finished_label"
-        else printf '    FAIL %s (exit %d)\n' "$finished_label" "$rc"; fi
+        unset 'PID_LABEL[$pid]' 'PID_WEIGHT[$pid]' 'PID_STARTED_MS[$pid]'
+        if [ "$rc" -eq 0 ]; then
+            printf '    ok   %-22s %8s\n' "$finished_label" "$duration"
+        else
+            printf '    FAIL %-22s %8s (exit %d)\n' "$finished_label" "$duration" "$rc"
+        fi
         return 0
     }
 
@@ -157,9 +185,13 @@ run_jobs() {
             [ "$SEQUENTIAL" = 1 ] && [ "$inflight" -gt 0 ] && break
             label="${labels[$idx]}"
             printf '  start %-22s (%4d MB, %d in flight)\n' "$label" "$weight" "$(( inflight + 1 ))"
+            local job_started_ms pid
+            job_started_ms=$(now_ms)
             bash -c "${cmds[$idx]}" > "$LOGDIR/${label//[:\/]/_}.log" 2>&1 &
-            PID_LABEL[$!]="$label"
-            PID_WEIGHT[$!]=$weight
+            pid=$!
+            PID_LABEL[$pid]="$label"
+            PID_WEIGHT[$pid]=$weight
+            PID_STARTED_MS[$pid]=$job_started_ms
             used=$(( used + weight ))
             inflight=$(( inflight + 1 ))
             next=$(( next + 1 ))
@@ -167,21 +199,25 @@ run_jobs() {
         [ "$inflight" -gt 0 ] && reap_one
     done
 
-    local elapsed=$(( $(date +%s) - started ))
+    local phase_elapsed_ms
+    phase_elapsed_ms=$(elapsed_ms_since "$phase_started_ms")
     local failed=0 rc
     echo
-    echo "==> $phase results (${elapsed}s)"
+    echo "==> $phase results ($(format_duration "$phase_elapsed_ms"))"
     for idx in "${!labels[@]}"; do
         label="${labels[$idx]}"
         rc="${RESULT[$label]:-1}"
+        duration=$(format_duration "${DURATION_MS[$label]:-0}")
         log="$LOGDIR/${label//[:\/]/_}.log"
         summary=$(grep -E '^\[(PASS|FAIL)\]|^[0-9]+ checks|no regressions|divergences:' "$log" 2>/dev/null | tail -1)
         if [ "$rc" -eq 0 ]; then
-            printf '  \033[32mPASS\033[0m %-22s %s\n' "$label" "${summary:0:96}"
+            printf '  \033[32mPASS\033[0m %-22s %8s' "$label" "$duration"
         else
             failed=$(( failed + 1 ))
-            printf '  \033[31mFAIL\033[0m %-22s %s\n' "$label" "${summary:0:96}"
+            printf '  \033[31mFAIL\033[0m %-22s %8s' "$label" "$duration"
         fi
+        [ -n "$summary" ] && printf '  %s' "$summary"
+        printf '\n'
     done
     echo
 
@@ -189,10 +225,10 @@ run_jobs() {
         echo "$failed of $total failed in $phase. Logs in $LOGDIR/"
         return 1
     fi
-    echo "all $total $phase jobs passed in ${elapsed}s"
+    echo "all $total $phase jobs passed in $(format_duration "$phase_elapsed_ms")"
 }
 
-started_all=$(date +%s)
+started_all_ms=$(now_ms)
 
 # ---- phase 1: Generation -----------------------------------------------------------------
 
@@ -206,7 +242,16 @@ done
 
 if [ "$run_generation" -eq 1 ]; then
     echo "==> generating base TOC"
-    "$LUA" generate.lua toc --quiet || { echo "base TOC generation failed" >&2; exit 1; }
+    base_started_ms=$(now_ms)
+    if "$LUA" generate.lua toc --quiet; then
+        base_elapsed_ms=$(elapsed_ms_since "$base_started_ms")
+        printf '    ok   %-22s %8s\n' "generate:toc" "$(format_duration "$base_elapsed_ms")"
+    else
+        base_elapsed_ms=$(elapsed_ms_since "$base_started_ms")
+        printf '    FAIL %-22s %8s\n' "generate:toc" "$(format_duration "$base_elapsed_ms")"
+        echo "base TOC generation failed" >&2
+        exit 1
+    fi
 
     labels=(); cmds=(); weights=()
     for flavor in "${FLAVOURS[@]}"; do
@@ -292,5 +337,6 @@ elif [ "$run_generation" -eq 0 ] && [ "$run_determinism" -eq 0 ]; then
     exit 0
 fi
 
+all_elapsed_ms=$(elapsed_ms_since "$started_all_ms")
 echo
-echo "all stages passed in $(( $(date +%s) - started_all ))s"
+echo "all stages passed in $(format_duration "$all_elapsed_ms")"
