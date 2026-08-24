@@ -83,7 +83,7 @@ def run(cmd, cwd, env, label):
 
 
 def assert_questie_input(questie, lua):
-    """Validate the checkout through the same pin and dirty-input policy as Generation."""
+    """Validate the checkout through the same commit-pin policy as Generation."""
     questie_root = questie if os.path.isabs(questie) else os.path.join(ROOT, questie)
     if not os.path.isdir(questie_root):
         sys.exit("Questie checkout not found: %s (pass --questie=<path>)" % questie_root)
@@ -385,7 +385,7 @@ def main():
         targets = ["Vanilla"]
 
     # Validate before either dump starts. Otherwise a direct invocation could compare against
-    # dirty or floating Questie input while reporting the pinned commit as its provenance.
+    # a floating Questie commit while reporting it as reviewed input.
     questie = assert_questie_input(questie, lua)
 
     status = 0
