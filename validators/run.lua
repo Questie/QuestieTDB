@@ -216,6 +216,17 @@ local function fingerprintCountError(failed, structuredFindings, parsedCount)
   return nil
 end
 
+---Counts validator execution or fingerprint errors.
+---@param results table[]
+---@return integer count
+local function countResultErrors(results)
+  local count = 0
+  for _, result in ipairs(results) do
+    if result.error then count = count + 1 end
+  end
+  return count
+end
+
 ---Consumes one accepted occurrence, reporting whether the fingerprint is new.
 ---@param fingerprint string
 ---@param accepted table<string, integer>
@@ -253,6 +264,8 @@ local function selfCheckFingerprints()
     "validator fingerprint self-check: partial parse loss was accepted")
   assert(fingerprintCountError(true, structured, 4) == nil,
     "validator fingerprint self-check: complete parse was rejected")
+  assert(countResultErrors({ { error = "partial parse" }, { findings = 1 } }) == 1,
+    "validator fingerprint self-check: result errors were not counted")
 
   local duplicate = parsed[1]
   local accepted = { [duplicate] = 1 }
@@ -357,8 +370,17 @@ local function validateFlavor(flavor)
 
   table.sort(fingerprints)
 
+  local errored = countResultErrors(results)
   local baselinePath = "validators/baseline/" .. flavor.name .. ".txt"
   if opts.updateBaseline then
+    if errored > 0 then
+      say(("[FAIL] %s: baseline not updated because %d checks produced invalid evidence")
+        :format(flavor.name, errored))
+      for _, result in ipairs(results) do
+        if result.error then say(("    ERROR %-30s %s"):format(result.name, result.error)) end
+      end
+      return errored
+    end
     lib.mkdirp("validators/baseline")
     lib.writeAll(baselinePath, table.concat(fingerprints, "\n") .. "\n")
     say(("[BASELINE] %s: recorded %d accepted findings -> %s")
@@ -389,9 +411,6 @@ local function validateFlavor(flavor)
 
   local fixed = 0
   for _, remaining in pairs(baseline) do fixed = fixed + remaining end
-
-  local errored = 0
-  for _, result in ipairs(results) do if result.error then errored = errored + 1 end end
 
   local status = (#regressions == 0 and errored == 0) and "PASS" or "FAIL"
   say(("[%s] %s: %d/%d checks clean, %d findings (%d baselined, %d new, %d fixed), %.1fs  (%s)")
