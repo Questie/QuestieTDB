@@ -166,10 +166,12 @@ local function serializeTable(value, depth)
   end
 
   local intKeys, otherKeys
+  local maxIntKey = 0
   for key in pairs(value) do
     if isArrayIndex(key) then
       intKeys = intKeys or {}
       intKeys[#intKeys + 1] = key
+      if key > maxIntKey then maxIntKey = key end
     else
       otherKeys = otherKeys or {}
       otherKeys[#otherKeys + 1] = key
@@ -179,17 +181,21 @@ local function serializeTable(value, depth)
   local parts = {}
 
   if intKeys then
-    sort(intKeys)
-    -- Sparse arrays keep their holes — `{{12676},nil,{16305}}` — and the decoder relies on
-    -- Lua's own table constructor semantics to restore them. Trailing nils are neither
-    -- representable nor observable, so they fall out naturally.
-    local arrayLength = arrayPrefixLength(intKeys)
+    local dense = #intKeys == maxIntKey
+    if not dense then sort(intKeys) end
+
+    -- Dense tuples and coordinate rows need neither sorting nor sparse-prefix analysis. Sparse
+    -- arrays keep their holes, and distant keys stay explicit so zone IDs never create a huge
+    -- run of `nil` slots.
+    local arrayLength = dense and maxIntKey or arrayPrefixLength(intKeys)
     for i = 1, arrayLength do
       parts[#parts + 1] = serializeValue(value[i], depth + 1)
     end
-    for _, key in ipairs(intKeys) do
-      if key > arrayLength then
-        parts[#parts + 1] = "[" .. encodeKey(key) .. "]=" .. serializeValue(value[key], depth + 1)
+    if not dense then
+      for _, key in ipairs(intKeys) do
+        if key > arrayLength then
+          parts[#parts + 1] = "[" .. encodeKey(key) .. "]=" .. serializeValue(value[key], depth + 1)
+        end
       end
     end
   end
