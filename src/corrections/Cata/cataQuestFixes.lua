@@ -1249,7 +1249,7 @@ function CataQuestFixes.Load()
         [9634] = { -- Alien Predators
             [questKeys.breadcrumbs] = {9625,28559}, -- TO DO: check if "fake" breadcrumb 9625
         },
-        [9645] = {
+        [9645] = { -- The Master's Terrace
             [questKeys.triggerEnd] = {"Journal Entry Read", {[zoneIDs.KARAZHAN_MASTERS_TERRACE]={{45.92,90.39}},[zoneIDs.KARAZHAN]={{-1,-1}}}},
         },
         [9672] = { -- The Bloodcurse Legacy
@@ -1559,14 +1559,8 @@ function CataQuestFixes.Load()
         [10482] = { -- Fel Orc Scavengers
             [questKeys.preQuestSingle] = {},
         },
-        [10567] = { -- Creating the Pendant
-            [questKeys.breadcrumbs] = {10615},
-        },
         [10595] = { -- Besieged!
             [questKeys.preQuestSingle] = {},
-        },
-        [10615] = { -- Ruuan Weald
-            [questKeys.breadcrumbForQuestId] = 10567,
         },
         [10624] = { -- A Haunted History
             [questKeys.preQuestSingle] = {},
@@ -2406,7 +2400,7 @@ function CataQuestFixes.Load()
         [13557] = { -- Bearer of Good Fortune
             [questKeys.objectives] = {nil,nil,nil,nil,{{{33023,33024},33023,nil,Questie.ICON_TYPE_EVENT}}},
             [questKeys.requiredRaces] = raceIDs.ALL_ALLIANCE,
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",194124},{"object",194133}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",194124},{"object",194133}}}},
         },
         [13558] = { -- Call Down the Thunder
             [questKeys.objectives] = {nil,{{194145}},{{44929}}},
@@ -3479,7 +3473,7 @@ function CataQuestFixes.Load()
         [14297] = { -- Pro-liberation
             [questKeys.preQuestSingle] = {14391},
             [questKeys.requiredSourceItems] = {49533},
-            [questKeys.extraObjectives] = {{nil, Questie.ICON_TYPE_INTERACT, l10n("Open the cage"), 0, {{"object", 197332}}}},
+            [questKeys.extraObjectives] = {{nil, Questie.ICON_TYPE_OBJECT, l10n("Open the cage"), 0, {{"object", 197332}}}},
             [questKeys.objectives] = {{{36722,nil,Questie.ICON_TYPE_EVENT}}},
         },
         [14299] = { -- Xylem's Asylum
@@ -3743,7 +3737,7 @@ function CataQuestFixes.Load()
         },
         [14422] = { -- Raptor Raptor Rocket
             [questKeys.extraObjectives] = {
-                {nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",196486}}},
+                {nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",196486}}},
                 {nil,Questie.ICON_TYPE_EVENT,l10n("Bring the raptors to The Velocistar"),0,{{"monster",36527}}},
             },
             [questKeys.objectives] = {{{36509,nil,Questie.ICON_TYPE_EVENT}}},
@@ -4095,7 +4089,7 @@ function CataQuestFixes.Load()
         },
         [24529] = { -- Bad to Worse
             [questKeys.objectives] = {{{37487,nil,Questie.ICON_TYPE_EVENT}},nil,nil,nil,{{{3261,37511,38884},3261}}},
-            [questKeys.extraObjectives] = {{nil, Questie.ICON_TYPE_INTERACT, l10n("Open the cage"), 0, {{"object", 201724}}}},
+            [questKeys.extraObjectives] = {{nil, Questie.ICON_TYPE_OBJECT, l10n("Open the cage"), 0, {{"object", 201724}}}},
         },
         [24530] = { -- Oh, A Hunter's Life For Me
             [questKeys.objectives] = {{{44389}},nil,nil,nil,nil,{{56641}}},
@@ -4627,7 +4621,7 @@ function CataQuestFixes.Load()
         [24852] = { -- Our Tribe, Imprisoned
             [questKeys.requiredRaces] = raceIDs.ALL_HORDE,
             [questKeys.zoneOrSort] = 215,
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",202112}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",202112}}}},
             [questKeys.objectives] = {{{38345,nil,Questie.ICON_TYPE_EVENT}}},
         },
         [24854] = { -- Finding Stormclaw
@@ -6003,7 +5997,7 @@ function CataQuestFixes.Load()
         [25662] = { -- Free Our Sisters
             [questKeys.preQuestSingle] = {25652},
             [questKeys.objectives] = {{{41070,nil,Questie.ICON_TYPE_EVENT}}},
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",430027}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",430027}}}},
             [questKeys.requiredSourceItems] = {55200},
         },
         [25663] = { -- An Offering for Aviana
@@ -6021,7 +6015,7 @@ function CataQuestFixes.Load()
         },
         [25669] = { -- Rumble in the Lumber... Mill
             [questKeys.objectives] = {{{41071,nil,Questie.ICON_TYPE_EVENT}}},
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",430028}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",430028}}}},
             [questKeys.requiredSourceItems] = {55213},
         },
         [25670] = { -- DUN-dun-DUN-dun-DUN-dun
@@ -6392,7 +6386,7 @@ function CataQuestFixes.Load()
             [questKeys.exclusiveTo] = {},
             [questKeys.requiredSourceItems] = {56081},
             [questKeys.objectives] = {{{41410,nil,Questie.ICON_TYPE_EVENT}}},
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",203282}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",203282}}}},
         },
         [25868] = { -- Yorla Darksnare
             [questKeys.preQuestSingle] = {},
@@ -7029,7 +7023,7 @@ function CataQuestFixes.Load()
         [26144] = { -- Prisoners
             [questKeys.preQuestSingle] = {26140},
             [questKeys.objectives] = {{{42225,nil,Questie.ICON_TYPE_EVENT}}},
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",203709}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",203709}}}},
         },
         [26145] = { -- The Trogg Threat
             [questKeys.preQuestSingle] = {},
@@ -7040,7 +7034,7 @@ function CataQuestFixes.Load()
         [26149] = { -- Prisoners
             [questKeys.preQuestSingle] = {26140},
             [questKeys.objectives] = {{{42234,nil,Questie.ICON_TYPE_EVENT}}},
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",203709}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",203709}}}},
         },
         [26150] = { -- A Visit With Maybell
             [questKeys.preQuestSingle] = {60},
@@ -7346,7 +7340,7 @@ function CataQuestFixes.Load()
         [26284] = { -- Missing in Action
             [questKeys.zoneOrSort] = zoneIDs.CHILL_BREEZE_VALLEY,
             [questKeys.objectives] = {{{42645,nil,Questie.ICON_TYPE_EVENT}}},
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",430003}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",430003}}}},
             [questKeys.requiredRaces] = raceIDs.GNOME,
             [questKeys.requiredClasses] = classIDs.WARRIOR + classIDs.MAGE + classIDs.WARLOCK + classIDs.ROGUE + classIDs.PRIEST, -- gnome DKs don't get these quests
         },
@@ -8291,7 +8285,7 @@ function CataQuestFixes.Load()
         },
         [26736] = { -- Spared from Madness
             [questKeys.objectives] = {nil,nil,nil,nil,{{{43886,43921},43886,nil,Questie.ICON_TYPE_EVENT},{{43885,43920},43885,nil,Questie.ICON_TYPE_EVENT},{{43884,43919},43884,nil,Questie.ICON_TYPE_EVENT}}},
-            [questKeys.extraObjectives] = {{nil, Questie.ICON_TYPE_INTERACT, l10n("Open the cage"), 0, {{"object",430026}}}},
+            [questKeys.extraObjectives] = {{nil, Questie.ICON_TYPE_OBJECT, l10n("Open the cage"), 0, {{"object",430026}}}},
         },
         [26739] = { -- I Think She's Hungry
             [questKeys.objectives] = {{{689}}},
@@ -8727,7 +8721,7 @@ function CataQuestFixes.Load()
         },
         [26955] = { -- Zen'Kiki and the Cultists
             [questKeys.preQuestGroup] = {26954,27057},
-            [questKeys.extraObjectives] = {{nil, Questie.ICON_TYPE_INTERACT, l10n("Open the cage"), 0, {{"object", 430023}}}},
+            [questKeys.extraObjectives] = {{nil, Questie.ICON_TYPE_OBJECT, l10n("Open the cage"), 0, {{"object", 430023}}}},
             [questKeys.objectives] = {{{44902,nil,Questie.ICON_TYPE_EVENT}}},
         },
         [26956] = { -- I Ain't Sayin' You a Gourd-Digger...
@@ -9337,7 +9331,7 @@ function CataQuestFixes.Load()
             [questKeys.preQuestSingle] = {27242},
             [questKeys.requiredSourceItems] = {33061},
             [questKeys.objectives] = {{{23720,nil,Questie.ICON_TYPE_EVENT}}},
-            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_INTERACT,l10n("Open the cage"),0,{{"object",410020}}}},
+            [questKeys.extraObjectives] = {{nil,Questie.ICON_TYPE_OBJECT,l10n("Open the cage"),0,{{"object",410020}}}},
         },
         [27251] = { -- They Call Him Smiling Jim
             [questKeys.nextQuestInChain] = 27249,
@@ -15317,7 +15311,7 @@ function CataQuestFixes.Load()
                 [zoneIDs.WINTERGRASP] = {{50.02,15.16}},
             }},
         },
-        [82948] = {
+        [82948] = { -- Hero's Call Board
             [questKeys.name] = "Hero's Call Board",
             [questKeys.startedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
             [questKeys.finishedBy] = {{12480}},
@@ -15327,7 +15321,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Use the scroll of teleportation from your inventory to reach Stormwind City and speak to Melris Malagan."},
             [questKeys.zoneOrSort] = zoneIDs.STORMWIND_CITY,
         },
-        [82949] = {
+        [82949] = { -- Warchief's Command Board
             [questKeys.name] = "Warchief's Command Board",
             [questKeys.startedBy] = {{3324,3328,3344,3353,23128,45339,47246,47788}},
             [questKeys.finishedBy] = {{49750}},
@@ -15337,7 +15331,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Use the scroll of teleportation from your inventory to reach Orgrimmar and speak to the Warchief's Herald."},
             [questKeys.zoneOrSort] = zoneIDs.ORGRIMMAR,
         },
-        [82983] = {
+        [82983] = { -- Hero's Call Board
             [questKeys.name] = "Hero's Call Board",
             [questKeys.startedBy] = {{29194,29195,29196}},
             [questKeys.finishedBy] = {{12480}},
@@ -15348,7 +15342,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Use the scroll of teleportation from your inventory to reach Stormwind City and speak to Melris Malagan."},
             [questKeys.zoneOrSort] = zoneIDs.STORMWIND_CITY,
         },
-        [82985] = {
+        [82985] = { -- Warchief's Command Board
             [questKeys.name] = "Warchief's Command Board",
             [questKeys.startedBy] = {{29194,29195,29196}},
             [questKeys.finishedBy] = {{49750}},
@@ -15359,7 +15353,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Use the scroll of teleportation from your inventory to reach Orgrimmar and speak to the Warchief's Herald."},
             [questKeys.zoneOrSort] = zoneIDs.ORGRIMMAR,
         },
-        [82989] = {
+        [82989] = { -- Warchief's Command Board
             [questKeys.name] = "Warchief's Command Board",
             [questKeys.startedBy] = {{3036}},
             [questKeys.finishedBy] = {{49750}},
@@ -15372,7 +15366,7 @@ function CataQuestFixes.Load()
         },
 
         ----- Boosted character quests -----
-        [84385] = {
+        [84385] = { -- Shiny New Wears
             [questKeys.name] = "Shiny New Wears",
             [questKeys.startedBy] = {{29156}},
             [questKeys.finishedBy] = {},
@@ -15382,7 +15376,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Speak with a Repurposed Arcane Titan in The Silver Enclave in Dalaran."},
             [questKeys.zoneOrSort] = zoneIDs.THE_SILVER_ENCLAVE,
         },
-        [88776] = {
+        [88776] = { -- A New Beginning
             [questKeys.name] = "A New Beginning",
             [questKeys.startedBy] = {}, -- This quest is auto accept
             [questKeys.finishedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
@@ -15392,7 +15386,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Meet with a class trainer in Stormwind."},
             [questKeys.zoneOrSort] = 1519,
         },
-        [88777] = {
+        [88777] = { -- A New Beginning
             [questKeys.name] = "A New Beginning",
             [questKeys.startedBy] = {}, -- This quest is auto accept
             [questKeys.finishedBy] = {{29196}},
@@ -15402,7 +15396,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Meet with a Death Knight trainer in Acherus: The Ebon Hold."},
             [questKeys.zoneOrSort] = 4281,
         },
-        [88778] = {
+        [88778] = { -- A New Beginning
             [questKeys.name] = "A New Beginning",
             [questKeys.startedBy] = {}, -- This quest is auto accept
             [questKeys.finishedBy] = {{3324,3328,3344,3353,23128,45339,47246,47788}},
@@ -15412,7 +15406,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Meet with a class trainer in Orgrimmar."},
             [questKeys.zoneOrSort] = 1637,
         },
-        [88779] = {
+        [88779] = { -- A New Beginning
             [questKeys.name] = "A New Beginning",
             [questKeys.startedBy] = {}, -- This quest is auto accept
             [questKeys.finishedBy] = {{3036}},
@@ -15423,7 +15417,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Meet with a Druid trainer in Thunder Bluff."},
             [questKeys.zoneOrSort] = 1638,
         },
-        [88780] = {
+        [88780] = { -- Tools for Survival
             [questKeys.name] = "Tools for Survival",
             [questKeys.startedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
             [questKeys.finishedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
@@ -15434,7 +15428,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{410010}, {410011}}},
             [questKeys.zoneOrSort] = 1519,
         },
-        [88781] = {
+        [88781] = { -- Tools for Survival
             [questKeys.name] = "Tools for Survival",
             [questKeys.startedBy] = {{29196}},
             [questKeys.finishedBy] = {{29196}},
@@ -15445,7 +15439,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{420045}, {420046}}},
             [questKeys.zoneOrSort] = 4281,
         },
-        [88782] = {
+        [88782] = { -- Tools for Survival
             [questKeys.name] = "Tools for Survival",
             [questKeys.startedBy] = {{3036,3324,3328,3344,3353,23128,45339,47246,47788}},
             [questKeys.finishedBy] = {{3036,3324,3328,3344,3353,23128,45339,47246,47788}},
@@ -15456,7 +15450,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{430031}, {430032}}},
             [questKeys.zoneOrSort] = 1637,
         },
-        [88783] = {
+        [88783] = { -- Combat Training
             [questKeys.name] = "Combat Training",
             [questKeys.startedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
             [questKeys.finishedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
@@ -15467,7 +15461,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,nil,nil,nil,{{{376,914,928,5495,5497,5515,13283,20407,44395},376,nil,Questie.ICON_TYPE_TALK}}},
             [questKeys.zoneOrSort] = 1519,
         },
-        [88784] = {
+        [88784] = { -- Combat Training
             [questKeys.name] = "Combat Training",
             [questKeys.startedBy] = {{29196}},
             [questKeys.finishedBy] = {{29196}},
@@ -15478,7 +15472,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {{{29196,nil,Questie.ICON_TYPE_TALK}}},
             [questKeys.zoneOrSort] = 4281,
         },
-        [88785] = {
+        [88785] = { -- Combat Training
             [questKeys.name] = "Combat Training",
             [questKeys.startedBy] = {{3036,3324,3328,3344,3353,23128,45339,47246,47788}},
             [questKeys.finishedBy] = {{3036,3324,3328,3344,3353,23128,45339,47246,47788}},
@@ -15489,7 +15483,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,nil,nil,nil,{{{3324,3328,3344,3353,23128,45339,47246,47788},3324,nil,Questie.ICON_TYPE_TALK}}},
             [questKeys.zoneOrSort] = 1637,
         },
-        [88786] = {
+        [88786] = { -- Talented
             [questKeys.name] = "Talented",
             [questKeys.startedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
             [questKeys.finishedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
@@ -15500,7 +15494,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{410013}}},
             [questKeys.zoneOrSort] = 1519,
         },
-        [88787] = {
+        [88787] = { -- Talented
             [questKeys.name] = "Talented",
             [questKeys.startedBy] = {{29196}},
             [questKeys.finishedBy] = {{29196}},
@@ -15512,7 +15506,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{420044}}},
             [questKeys.zoneOrSort] = 4281,
         },
-        [88788] = {
+        [88788] = { -- Talented
             [questKeys.name] = "Talented",
             [questKeys.startedBy] = {{29196}},
             [questKeys.finishedBy] = {{29196}},
@@ -15524,7 +15518,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{420044}}},
             [questKeys.zoneOrSort] = 4281,
         },
-        [88789] = {
+        [88789] = { -- Talented
             [questKeys.name] = "Talented",
             [questKeys.startedBy] = {{3324,3328,3344,3353,23128,45339,47246,47788}},
             [questKeys.finishedBy] = {{3324,3328,3344,3353,23128,45339,47246,47788}},
@@ -15535,7 +15529,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{410008}}},
             [questKeys.zoneOrSort] = 1637,
         },
-        [88790] = {
+        [88790] = { -- Talented
             [questKeys.name] = "Talented",
             [questKeys.startedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
             [questKeys.finishedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
@@ -15546,7 +15540,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{410013}}},
             [questKeys.zoneOrSort] = 1519,
         },
-        [88793] = {
+        [88793] = { -- Talented
             [questKeys.name] = "Talented",
             [questKeys.startedBy] = {{3036}},
             [questKeys.finishedBy] = {{3036}},
@@ -15558,7 +15552,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{410009}}},
             [questKeys.zoneOrSort] = 1637,
         },
-        [88794] = {
+        [88794] = { -- Talented
             [questKeys.name] = "Talented",
             [questKeys.startedBy] = {},
             [questKeys.finishedBy] = {},
@@ -15569,7 +15563,7 @@ function CataQuestFixes.Load()
             [questKeys.objectives] = {nil,{{410009}}},
             [questKeys.zoneOrSort] = 1637,
         },
-        [88796] = {
+        [88796] = { -- Hero's Call Board
             [questKeys.name] = "Hero's Call Board",
             [questKeys.startedBy] = {{376,914,928,5495,5497,5515,13283,20407,44395}},
             [questKeys.finishedBy] = {{12480}},
@@ -15579,7 +15573,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Head to the Trade District in Stormwind and speak to Melris Malagan."},
             [questKeys.zoneOrSort] = 1519,
         },
-        [88797] = {
+        [88797] = { -- Hero's Call Board
             [questKeys.name] = "Hero's Call Board",
             [questKeys.startedBy] = {{29196}},
             [questKeys.finishedBy] = {{12480}},
@@ -15591,7 +15585,7 @@ function CataQuestFixes.Load()
             [questKeys.sourceItemId] = 224452,
             [questKeys.zoneOrSort] = 1519,
         },
-        [88798] = {
+        [88798] = { -- Warchief's Command Board
             [questKeys.name] = "Warchief's Command Board",
             [questKeys.startedBy] = {{29196}},
             [questKeys.finishedBy] = {{49750}},
@@ -15603,7 +15597,7 @@ function CataQuestFixes.Load()
             [questKeys.sourceItemId] = 224458,
             [questKeys.zoneOrSort] = 1637,
         },
-        [88800] = {
+        [88800] = { -- Warchief's Command Board
             [questKeys.name] = "Warchief's Command Board",
             [questKeys.startedBy] = {{3324,3328,3344,3353,23128,45339,47246,47788}},
             [questKeys.finishedBy] = {{49750}},
@@ -15613,7 +15607,7 @@ function CataQuestFixes.Load()
             [questKeys.objectivesText] = {"Head to the Valley of Strength in Orgrimmar and speak to the Warchief's Herald."},
             [questKeys.zoneOrSort] = 1637,
         },
-        [88801] = {
+        [88801] = { -- Warchief's Command Board
             [questKeys.name] = "Warchief's Command Board",
             [questKeys.startedBy] = {{3036}},
             [questKeys.finishedBy] = {{49750}},

@@ -9,4 +9,6 @@
 Npc	spawns	VALUE	11	OPEN
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
 Object	spawns	VALUE	11	OPEN
-Quest	requiredRaces	VALUE	38	OPEN
+Quest	preQuestGroup	EMPTY_VS_ABSENT	1	POLICY
+Quest	preQuestSingle	EMPTY_VS_ABSENT	2	POLICY
+Quest	requiredRaces	VALUE	27	OPEN

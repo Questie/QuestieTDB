@@ -9,4 +9,4 @@
 Npc	spawns	VALUE	9	OPEN
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
 Object	spawns	VALUE	9	OPEN
-Quest	requiredRaces	VALUE	7	OPEN
+Quest	requiredRaces	VALUE	1	OPEN

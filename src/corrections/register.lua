@@ -145,6 +145,9 @@ function register.FromManifest(flavor, moduleFor)
               order[window .. "Static"] + (spec.generated and 1 or 10) + offset)
             entry.expansions = spec.expansions
             entry.minExpansionOrder = spec.minExpansionOrder
+            -- Expansion-gated files start in their minimum expansion. Only ungated Era files
+            -- need a separate source order in the manifest.
+            entry.sourceExpansionOrder = spec.sourceExpansionOrder or spec.minExpansionOrder
             entry.options = spec.options
             registered = registered + 1
           end

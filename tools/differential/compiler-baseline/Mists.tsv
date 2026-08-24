@@ -6,10 +6,7 @@
 #
 # Refresh with: compiler_diff.py Mists --update-baseline
 # entityType	field	class	count	reason
-Npc	spawns	EMPTY_VS_ABSENT	4	UNTRIAGED
-Npc	spawns	VALUE	75	OPEN
+Npc	spawns	VALUE	59	OPEN
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
 Object	spawns	VALUE	19	OPEN
-Quest	questFlags	VALUE	72	UNTRIAGED
-Quest	reputationReward	EMPTY_VS_ABSENT	1	UNTRIAGED
-Quest	requiredRaces	VALUE	319	OPEN
+Quest	requiredRaces	VALUE	315	OPEN

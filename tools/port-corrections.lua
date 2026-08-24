@@ -23,7 +23,7 @@ local lib = dofile("generator/lib.lua")
 local loader = dofile("generator/loader.lua")
 local serialize = dofile("generator/serialize.lua")
 
-local QUESTIE = arg and arg[1] or "../Questie"
+local QUESTIE = (arg and arg[1]) or os.getenv("QUESTIE_PATH") or "../Questie"
 
 --------------------------------------------------------------------------------------------
 -- Constant extraction
@@ -260,29 +260,35 @@ local FILES = {
   -- found by the cross-implementation differential, invisible to verify/equivalence because
   -- generator and source mode share this manifest.
   { src = "classicQuestFixes.lua", dst = "Era/classicQuestFixes.lua", datatype = "Quest",
-    module = "QuestieQuestFixes", static = { "LoadMissingQuests", "Load" }, dynamic = { "LoadFactionFixes" } },
+    sourceExpansionOrder = 1, module = "QuestieQuestFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   { src = "classicNPCFixes.lua", dst = "Era/classicNPCFixes.lua", datatype = "Npc",
-    module = "QuestieNPCFixes", static = { "Load" },
+    sourceExpansionOrder = 1, module = "QuestieNPCFixes", static = { "Load" },
     dynamic = { "LoadFactionFixes" }, parameterized = { "LoadDarkmoonFixes" } },
   { src = "classicItemFixes.lua", dst = "Era/classicItemFixes.lua", datatype = "Item",
-    module = "QuestieItemFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    sourceExpansionOrder = 1, module = "QuestieItemFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   { src = "classicObjectFixes.lua", dst = "Era/classicObjectFixes.lua", datatype = "Object",
-    module = "QuestieObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    sourceExpansionOrder = 1, module = "QuestieObjectFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   -- Era-only per upstream's explicit `if Questie.IsClassic` gate — see the citation above.
   { src = "Automatic/classicQuestReputationFixes.lua", dst = "Era/classicQuestReputationFixes.lua",
-    datatype = "Quest", expansions = { Classic = true }, module = "QuestieQuestReputationFixes",
-    static = { "Load" }, generated = true },
+    datatype = "Quest", expansions = { Classic = true },
+    module = "QuestieQuestReputationFixes", static = { "Load" }, generated = true },
 
   -- TBC
   { src = "tbcQuestFixes.lua", dst = "Tbc/tbcQuestFixes.lua", datatype = "Quest", minExpansion = 2,
-    module = "QuestieTBCQuestFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    module = "QuestieTBCQuestFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   { src = "tbcNPCFixes.lua", dst = "Tbc/tbcNPCFixes.lua", datatype = "Npc", minExpansion = 2,
     module = "QuestieTBCNpcFixes", static = { "Load" },
     dynamic = { "LoadFactionFixes" }, parameterized = { "LoadDarkmoonFixes" } },
   { src = "tbcItemFixes.lua", dst = "Tbc/tbcItemFixes.lua", datatype = "Item", minExpansion = 2,
-    module = "QuestieTBCItemFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    module = "QuestieTBCItemFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   { src = "tbcObjectFixes.lua", dst = "Tbc/tbcObjectFixes.lua", datatype = "Object", minExpansion = 2,
-    module = "QuestieTBCObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    module = "QuestieTBCObjectFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
 
   -- Wotlk
   --
@@ -292,28 +298,34 @@ local FILES = {
   -- lives in src/corrections/register.lua (`variantActive`), mirroring upstream's detection
   -- (`Modules/VersionCheck.lua:89`: a Wrath client with active season 109).
   { src = "wotlkQuestFixes.lua", dst = "Wotlk/wotlkQuestFixes.lua", datatype = "Quest", minExpansion = 3,
-    module = "QuestieWotlkQuestFixes", static = { "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
+    module = "QuestieWotlkQuestFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
     gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
   { src = "wotlkNPCFixes.lua", dst = "Wotlk/wotlkNPCFixes.lua", datatype = "Npc", minExpansion = 3,
-    module = "QuestieWotlkNpcFixes", static = { "Load", "LoadAutomatics" },
-    dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
+    module = "QuestieWotlkNpcFixes",
+    static = { "LoadAutomatics", "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
     gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
   { src = "wotlkItemFixes.lua", dst = "Wotlk/wotlkItemFixes.lua", datatype = "Item", minExpansion = 3,
     module = "QuestieWotlkItemFixes", static = { "Load" },
     dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
     gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
   { src = "wotlkObjectFixes.lua", dst = "Wotlk/wotlkObjectFixes.lua", datatype = "Object", minExpansion = 3,
-    module = "QuestieWotlkObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    module = "QuestieWotlkObjectFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
 
   -- Cata
   { src = "cataQuestFixes.lua", dst = "Cata/cataQuestFixes.lua", datatype = "Quest", minExpansion = 4,
-    module = "QuestieCataQuestFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    module = "QuestieCataQuestFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   { src = "cataNPCFixes.lua", dst = "Cata/cataNPCFixes.lua", datatype = "Npc", minExpansion = 4,
-    module = "QuestieCataNpcFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    module = "QuestieCataNpcFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   { src = "cataItemFixes.lua", dst = "Cata/cataItemFixes.lua", datatype = "Item", minExpansion = 4,
-    module = "QuestieCataItemFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    module = "QuestieCataItemFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   { src = "cataObjectFixes.lua", dst = "Cata/cataObjectFixes.lua", datatype = "Object", minExpansion = 4,
-    module = "QuestieCataObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    module = "QuestieCataObjectFixes",
+    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
 
   -- MoP
   { src = "mopQuestFixes.lua", dst = "MoP/mopQuestFixes.lua", datatype = "Quest", minExpansion = 5,
@@ -369,19 +381,27 @@ local LIBRARIES = {
   { src = "Modules/Libs/RamerDouglasPeucker.lua", dst = "src/derived/RamerDouglasPeucker.lua" },
 }
 
-local function copyLibraries()
-  local copied, missing = 0, {}
-  for _, spec in ipairs(LIBRARIES) do
-    local src = QUESTIE .. "/" .. spec.src
-    if lib.fileExists(src) then
-      lib.mkdirp(spec.dst:match("^(.*)/[^/]+$"))
-      lib.copyFile(src, spec.dst)
-      copied = copied + 1
-    else
-      missing[#missing + 1] = spec.src
-    end
+local function correctionSourcePath(spec)
+  return "Database/Corrections/" .. spec.src
+end
+
+---Copy one declared Questie source with a useful error when the pin no longer provides it.
+local function copyDeclaredSource(relativeSource, destination)
+  local source = QUESTIE .. "/" .. relativeSource
+  if not lib.fileExists(source) then
+    error("port: declared Questie source is missing: " .. relativeSource, 0)
   end
-  return copied, missing
+  lib.mkdirp(destination:match("^(.*)/[^/]+$"))
+  lib.copyFile(source, destination)
+end
+
+local function copyLibraries()
+  local copied = 0
+  for _, spec in ipairs(LIBRARIES) do
+    copyDeclaredSource(spec.src, spec.dst)
+    copied = copied + 1
+  end
+  return copied
 end
 
 --------------------------------------------------------------------------------------------
@@ -389,24 +409,18 @@ end
 --------------------------------------------------------------------------------------------
 
 local function copyCorrections()
-  local copied, missing = 0, {}
+  local copied = 0
   for _, spec in ipairs(FILES) do
-    local src = QUESTIE .. "/Database/Corrections/" .. spec.src
-    if lib.fileExists(src) then
-      local dst = "src/corrections/" .. spec.dst
-      lib.mkdirp(dst:match("^(.*)/[^/]+$"))
-      lib.copyFile(src, dst)
-      local derived = moduleNameOf(dst)
-      if spec.module and spec.module ~= derived then
-        print(("  note: %s registers as %s, not %s"):format(spec.dst, derived, spec.module))
-      end
-      spec.module = derived
-      copied = copied + 1
-    else
-      missing[#missing + 1] = spec.src
+    local dst = "src/corrections/" .. spec.dst
+    copyDeclaredSource(correctionSourcePath(spec), dst)
+    local derived = moduleNameOf(dst)
+    if spec.module and spec.module ~= derived then
+      print(("  note: %s registers as %s, not %s"):format(spec.dst, derived, spec.module))
     end
+    spec.module = derived
+    copied = copied + 1
   end
-  return copied, missing
+  return copied
 end
 
 local function renderManifest()
@@ -418,28 +432,30 @@ local function renderManifest()
   out[#out + 1] = "-- Which correction file provides which functions, and whether each is Static or"
   out[#out + 1] = "-- Dynamic. The classification is declared by the author, never inferred — folder names"
   out[#out + 1] = "-- are not a reliable signal, as `Sod/static/sodItemQuestStartFixes.lua` registering"
-  out[#out + 1] = "-- dynamic in the prototype demonstrates."
+  out[#out + 1] = "-- dynamic in the prototype demonstrates. `minExpansionOrder` also identifies the source"
+  out[#out + 1] = "-- expansion; only ungated Era entries need an explicit `sourceExpansionOrder`."
   out[#out + 1] = ""
   out[#out + 1] = "local _, LibQuestieDB = ..."
   out[#out + 1] = ""
   out[#out + 1] = "local manifest = {"
   for _, spec in ipairs(FILES) do
-    if lib.fileExists(QUESTIE .. "/Database/Corrections/" .. spec.src) then
-      local parts = {
-        "file = " .. serialize.quote(spec.dst),
-        "module = " .. serialize.quote(spec.module),
-        "datatype = " .. serialize.quote(spec.datatype),
-      }
-      if spec.static then parts[#parts + 1] = "static = " .. serialize.value(spec.static) end
-      if spec.dynamic then parts[#parts + 1] = "dynamic = " .. serialize.value(spec.dynamic) end
-      if spec.gatedDynamic then parts[#parts + 1] = "gatedDynamic = " .. serialize.value(spec.gatedDynamic) end
-      if spec.expansions then parts[#parts + 1] = "expansions = " .. serialize.value(spec.expansions) end
-      if spec.minExpansion then parts[#parts + 1] = "minExpansionOrder = " .. spec.minExpansion end
-      if spec.parameterized then parts[#parts + 1] = "parameterized = " .. serialize.value(spec.parameterized) end
-      if spec.options then parts[#parts + 1] = "options = " .. serialize.value(spec.options) end
-      if spec.generated then parts[#parts + 1] = "generated = true" end
-      out[#out + 1] = "  { " .. table.concat(parts, ", ") .. " },"
+    local parts = {
+      "file = " .. serialize.quote(spec.dst),
+      "module = " .. serialize.quote(spec.module),
+      "datatype = " .. serialize.quote(spec.datatype),
+    }
+    if spec.static then parts[#parts + 1] = "static = " .. serialize.value(spec.static) end
+    if spec.dynamic then parts[#parts + 1] = "dynamic = " .. serialize.value(spec.dynamic) end
+    if spec.gatedDynamic then parts[#parts + 1] = "gatedDynamic = " .. serialize.value(spec.gatedDynamic) end
+    if spec.expansions then parts[#parts + 1] = "expansions = " .. serialize.value(spec.expansions) end
+    if spec.minExpansion then parts[#parts + 1] = "minExpansionOrder = " .. spec.minExpansion end
+    if spec.sourceExpansionOrder then
+      parts[#parts + 1] = "sourceExpansionOrder = " .. spec.sourceExpansionOrder
     end
+    if spec.parameterized then parts[#parts + 1] = "parameterized = " .. serialize.value(spec.parameterized) end
+    if spec.options then parts[#parts + 1] = "options = " .. serialize.value(spec.options) end
+    if spec.generated then parts[#parts + 1] = "generated = true" end
+    out[#out + 1] = "  { " .. table.concat(parts, ", ") .. " },"
   end
   out[#out + 1] = "}"
   out[#out + 1] = ""
@@ -452,9 +468,7 @@ local function renderManifest()
   return table.concat(out, "\n")
 end
 
-if not lib.fileExists(QUESTIE .. "/Database/Corrections/classicQuestFixes.lua") then
-  error("port: no Questie checkout at " .. QUESTIE, 0)
-end
+lib.assertQuestiePin(QUESTIE)
 
 lib.mkdirp("src/corrections/enum")
 local perExpansion = {}
@@ -470,15 +484,9 @@ print(("Extracted %d constant tables across %d expansions: %s"):format(
   #names, #EXPANSIONS, table.concat(names, ", ")))
 print(("Expansion-varying: %s"):format(#varying > 0 and table.concat(varying, ", ") or "none"))
 
-local copied, missing = copyCorrections()
+local copied = copyCorrections()
 lib.writeAll("src/corrections/manifest.lua", renderManifest())
 print(("Copied %d correction files, wrote src/corrections/manifest.lua"):format(copied))
-if #missing > 0 then
-  print("Missing in the Questie checkout: " .. table.concat(missing, ", "))
-end
 
-local libCopied, libMissing = copyLibraries()
+local libCopied = copyLibraries()
 print(("Copied %d verbatim libraries"):format(libCopied))
-if #libMissing > 0 then
-  print("Missing in the Questie checkout: " .. table.concat(libMissing, ", "))
-end
