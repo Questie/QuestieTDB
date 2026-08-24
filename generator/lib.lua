@@ -214,25 +214,58 @@ end
 -- Build provenance
 --------------------------------------------------------------------------------------------
 
+---@param str string
+---@return string trimmed
 local function trim(str)
   return (str:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+---Quotes one value for the POSIX shell used by the offline Git helper.
+---@param value string
+---@return string quoted
+local function shellQuote(value)
+  return "'" .. value:gsub("'", "'\\''") .. "'"
 end
 
 --- `git rev-parse HEAD`, or forty zeros when git is unavailable. With `dir`, the commit of
 --- that checkout instead — used to record the Questie input commit.
 --- See docs/storage-format.md, "Build metadata".
+---@param dir string? Git checkout, defaulting to the current directory.
+---@return string commit
 function lib.gitCommit(dir)
-  local cmd = dir and ('git -C "' .. dir .. '" rev-parse HEAD 2>/dev/null')
+  local cmd = dir and ("git -C " .. shellQuote(dir) .. " rev-parse HEAD 2>/dev/null")
                    or "git rev-parse HEAD 2>/dev/null"
   local pipe = io.popen(cmd, "r")
   if pipe then
     local output = trim(pipe:read("*a") or "")
     pipe:close()
-    if output:match("^[0-9a-fA-F]+$") and #output == 40 then
-      return output
-    end
+    if output:match("^[0-9a-fA-F]+$") and #output == 40 then return output end
   end
   return rep("0", 40)
+end
+
+---Fails unless a Questie checkout is at the reviewed input commit.
+---@param questiePath string Questie checkout to validate.
+---@param pinPath string? Pin file, defaulting to `QUESTIE_COMMIT`.
+---@return string commit The validated Questie commit.
+function lib.assertQuestiePin(questiePath, pinPath)
+  pinPath = pinPath or "QUESTIE_COMMIT"
+  if not lib.fileExists(pinPath) then
+    error("Questie pin file not found: " .. pinPath, 0)
+  end
+
+  local expected = trim(lib.readAll(pinPath))
+  if #expected ~= 40 or not expected:match("^[0-9a-f]+$") then
+    error(pinPath .. " must contain one lowercase 40-character Git SHA", 0)
+  end
+
+  local actual = lib.gitCommit(questiePath)
+  if actual ~= expected then
+    error(("Questie checkout %s is at %s, expected pinned commit %s. Check out the pin or " ..
+      "update QUESTIE_COMMIT and review the resulting schema, Correction, differential, and " ..
+      "Golden changes."):format(questiePath, actual, expected), 0)
+  end
+  return actual
 end
 
 --- SOURCE_DATE_EPOCH is honoured so a release build can be byte-reproducible.

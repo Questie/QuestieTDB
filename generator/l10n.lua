@@ -76,6 +76,40 @@ function l10n.lookupPath(questiePath, flavor, typeCfg, locale)
     :format(questiePath, flavor.expansion, typeCfg.dir, locale)
 end
 
+---Fails before Generation opens an artifact when any required lookup file is absent.
+---A missing tree is allowed only through the caller's explicit `--no-l10n` choice.
+---@param questiePath string Questie checkout used as the localization source.
+---@param flavors table[] Flavors selected for Generation.
+---@param typeFilter table<string, boolean>? Entity types selected for Generation.
+---@return nil
+function l10n.assertInputs(questiePath, flavors, typeFilter)
+  local missing = {}
+
+  for _, flavor in ipairs(flavors) do
+    for typeName, typeCfg in pairs(l10n.types) do
+      if not typeFilter or typeFilter[typeName] then
+        for _, locale in ipairs(config.locales) do
+          local path = l10n.lookupPath(questiePath, flavor, typeCfg, locale)
+          if not lib.fileExists(path) then missing[#missing + 1] = path end
+        end
+      end
+    end
+  end
+
+  if #missing == 0 then return end
+
+  table.sort(missing)
+  local shown = {}
+  for index = 1, math.min(#missing, 5) do shown[#shown + 1] = "  " .. missing[index] end
+  if #missing > #shown then
+    shown[#shown + 1] = ("  ... and %d more"):format(#missing - #shown)
+  end
+
+  error(("l10n: %d required Questie lookup files are missing. Pass the correct Questie " ..
+    "checkout with --questie=<path>, or explicitly generate without localization with " ..
+    "--no-l10n:\n%s"):format(#missing, table.concat(shown, "\n")), 0)
+end
+
 --------------------------------------------------------------------------------------------
 -- Extraction
 --------------------------------------------------------------------------------------------

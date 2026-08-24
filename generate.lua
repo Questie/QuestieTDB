@@ -9,8 +9,10 @@
 --   lua generate.lua Vanilla [TBC ...]    named flavors
 --
 -- Options:
+--   --questie=<path>       Questie checkout used for schema and localization input
 --   --types=Quest,Npc      restrict entity types
 --   --fields=name,zoneOrSort   restrict fields (tracer-bullet slices only)
+--   --no-l10n              explicitly generate without localization
 --   --no-base-toc          skip rewriting the committed base TOC (parallel-safe)
 --   --quiet
 --
@@ -26,6 +28,8 @@ local encode = dofile("generator/encode.lua")
 local corrections = dofile("generator/corrections.lua")
 local flavorLoader = dofile("generator/flavor.lua")
 local l10nGen = dofile("generator/l10n.lua")
+
+local DEFAULT_QUESTIE_PATH = os.getenv("QUESTIE_PATH") or "../Questie"
 
 -- The correction manifest drives which files each TOC lists. It is optional: a bare data
 -- round-trip works before any corrections are ported.
@@ -83,7 +87,7 @@ end
 --- compiler. Materializing captures the type map before it disappears; the key enum keeps
 --- deriving afterwards because every data file carries its own copy.
 function generate.materializeMeta(questiePath)
-  questiePath = questiePath or "../Questie"
+  questiePath = questiePath or DEFAULT_QUESTIE_PATH
   lib.mkdirp("src/meta")
 
   for _, entityType in ipairs(config.entityTypes) do
@@ -244,28 +248,24 @@ function generate.flavor(flavor, opts)
   -- same store rather than a separate addon because TOC metadata is client-side storage, not
   -- Lua heap: a German user never touches the other eight locales' strings.
   if not opts.noL10n then
-    local questiePath = opts.questie or "../Questie"
-    if lib.fileExists(questiePath .. "/Localization/lookups/" .. flavor.expansion) then
-      out = assert(io.open(tocPath, "ab"), "Cannot append to " .. tocPath)
-      for _, entityType in ipairs(config.entityTypes) do
-        local entry = loaded[entityType.name]
-        if entry then
-          local knownIds = {}
-          for id in pairs(entry.entities) do knownIds[id] = true end
-          local values, stats = l10nGen.extract(questiePath, flavor, entityType.name, knownIds)
-          local entries, fields = l10nGen.writeMetadata(out, entityType.name, values)
-          totals.l10nEntries = (totals.l10nEntries or 0) + entries
-          totals.l10nFields = (totals.l10nFields or 0) + fields
-          say(string.format("  l10n %-7s %6d entities  %8d fields  (%d locales, %d filtered)",
-            entityType.name, entries, fields, stats.locales, stats.filtered))
-          values = nil
-          collectgarbage()
-        end
+    local questiePath = opts.questie or DEFAULT_QUESTIE_PATH
+    out = assert(io.open(tocPath, "ab"), "Cannot append to " .. tocPath)
+    for _, entityType in ipairs(config.entityTypes) do
+      local entry = loaded[entityType.name]
+      if entry then
+        local knownIds = {}
+        for id in pairs(entry.entities) do knownIds[id] = true end
+        local values, stats = l10nGen.extract(questiePath, flavor, entityType.name, knownIds)
+        local entries, fields = l10nGen.writeMetadata(out, entityType.name, values)
+        totals.l10nEntries = (totals.l10nEntries or 0) + entries
+        totals.l10nFields = (totals.l10nFields or 0) + fields
+        say(string.format("  l10n %-7s %6d entities  %8d fields  (%d locales, %d filtered)",
+          entityType.name, entries, fields, stats.locales, stats.filtered))
+        values = nil
+        collectgarbage()
       end
-      out:close()
-    else
-      say("  l10n: skipped, no Questie lookup tree at " .. questiePath)
     end
+    out:close()
   end
 
   local size = #lib.readAll(tocPath)
@@ -283,12 +283,14 @@ QUIET = opts.quiet
 BUILD = {
   commit = lib.gitCommit(),
   time = lib.buildTime(),
-  questieCommit = lib.gitCommit(opts.questie or "../Questie"),
+  questieCommit = lib.gitCommit(opts.questie or DEFAULT_QUESTIE_PATH),
 }
 BUILD.version = BUILD.commit:match("^0+$") and "0.0.0" or ("build-" .. BUILD.commit:sub(1, 7))
 
 if opts.target == "meta" then
-  generate.materializeMeta(opts.flavors[1])
+  local questiePath = opts.questie or opts.flavors[1] or DEFAULT_QUESTIE_PATH
+  lib.assertQuestiePin(questiePath)
+  generate.materializeMeta(questiePath)
   os.exit(0)
 end
 
@@ -308,6 +310,14 @@ else
     end
     flavors[#flavors + 1] = flavor
   end
+end
+
+-- Missing localization input must fail before either TOC is opened. `--no-l10n` is the only
+-- supported way to request a partial artifact, so an incorrect checkout cannot look successful.
+if not opts.noL10n then
+  local questiePath = opts.questie or DEFAULT_QUESTIE_PATH
+  lib.assertQuestiePin(questiePath)
+  l10nGen.assertInputs(questiePath, flavors, opts.types)
 end
 
 -- The base TOC is not flavour-scoped, so every invocation would rewrite the same file. That is

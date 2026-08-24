@@ -20,6 +20,7 @@
 --   lua reconstruct.lua Cata Mists     named flavors
 --   lua reconstruct.lua --toc-dir=.out/x --questie=../Questie --count-only --quiet
 --
+-- `--questie` overrides `QUESTIE_PATH`, whose fallback is `../Questie`.
 -- `--count-only` prints a single number (the mismatch count) for negative-control harnesses.
 -- Exits non-zero on any mismatch.
 
@@ -39,7 +40,13 @@ local MAX_REPORTED = 10
 -- Arguments
 --------------------------------------------------------------------------------------------
 
-local opts = { flavors = {}, tocDir = ".", questie = "../Questie", quiet = false, countOnly = false }
+local opts = {
+  flavors = {},
+  tocDir = ".",
+  questie = os.getenv("QUESTIE_PATH") or "../Questie",
+  quiet = false,
+  countOnly = false,
+}
 for _, value in ipairs(arg or {}) do
   local key, val = value:match("^%-%-([%w%-]+)=(.*)$")
   if key == "toc-dir" then
@@ -56,6 +63,10 @@ for _, value in ipairs(arg or {}) do
     opts.flavors[#opts.flavors + 1] = value
   end
 end
+
+-- Reconstruction re-reads Questie's localization source. Validate it before artifact bytes
+-- are compared so direct invocations enforce the same provenance as Generation.
+lib.assertQuestiePin(opts.questie)
 
 local function say(...)
   if not opts.quiet then print(...) end

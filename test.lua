@@ -20,6 +20,9 @@ local emulator = dofile("emulator/metadata.lua")
 local client = dofile("emulator/client.lua")
 local config = dofile("src/config.lua")
 
+local LUA_BIN = os.getenv("LUA") or "lua5.1"
+local QUESTIE_PATH = os.getenv("QUESTIE_PATH") or "../Questie"
+
 --------------------------------------------------------------------------------------------
 -- Harness
 --------------------------------------------------------------------------------------------
@@ -31,6 +34,23 @@ local function suite(name, fn)
 end
 
 local current
+
+---Quotes one argument for the POSIX shell used by the offline test commands.
+---@param value string
+---@return string quoted
+local function shellQuote(value)
+  return "'" .. value:gsub("'", "'\\''") .. "'"
+end
+
+---Runs one POSIX-shell command and normalizes Lua 5.1/5.2 exit-status shapes.
+---@param command string
+---@return boolean succeeded
+local function commandSucceeded(command)
+  local ok = os.execute(command)
+  if type(ok) == "number" then return ok == 0 end
+  return ok == true
+end
+
 local function check(condition, message)
   current.total = current.total + 1
   if not condition then
@@ -138,6 +158,192 @@ suite("codec", function()
   equal(codec.localeSegment(joined, 3, sep), "dos", "middle locale segment")
   equal(codec.localeSegment(joined, 4, sep), "un", "last locale segment")
   equal(codec.localeSegment(joined, 5, sep), nil, "segment past the end")
+end)
+
+--------------------------------------------------------------------------------------------
+-- Generation inputs
+--------------------------------------------------------------------------------------------
+
+suite("generation-inputs", function()
+  local l10nGen = dofile("generator/l10n.lua")
+  local flavor = config.flavorByName.Vanilla
+  local typeFilter = { Quest = true }
+  local root = ".out/test-questie-input"
+  local paths = {}
+  for _, locale in ipairs(config.locales) do
+    local path = l10nGen.lookupPath(root, flavor, l10nGen.types.Quest, locale)
+    paths[#paths + 1] = path
+    os.remove(path)
+  end
+
+  local ok, err = pcall(l10nGen.assertInputs, root, { flavor }, typeFilter)
+  check(not ok and tostring(err):find("%-%-no%-l10n"),
+    "missing localization input fails with the explicit partial-output escape hatch")
+
+  -- A type-filtered Generation needs only that entity type's nine locale files.
+  for _, path in ipairs(paths) do
+    lib.mkdirp(path:match("^(.*)/[^/]+$"))
+    lib.writeAll(path, "-- localization input fixture\n")
+  end
+
+  local present, presentErr = pcall(l10nGen.assertInputs, root, { flavor }, typeFilter)
+  check(present, "a complete selected lookup set passes preflight: " .. tostring(presentErr))
+
+  -- When a checkout is supplied, local tests enforce the same reviewed commit as automation.
+  if lib.gitCommit(QUESTIE_PATH) ~= string.rep("0", 40) then
+    local pinned, pinErr = pcall(lib.assertQuestiePin, QUESTIE_PATH)
+    check(pinned, "the configured Questie checkout matches QUESTIE_COMMIT: " .. tostring(pinErr))
+  end
+
+  for _, path in ipairs(paths) do os.remove(path) end
+end)
+
+--------------------------------------------------------------------------------------------
+-- Questie input integrity
+--------------------------------------------------------------------------------------------
+
+suite("questie-input-integrity", function()
+  local root = ".out/test-questie-pin"
+  local pinPath = root .. "/PIN"
+  lib.mkdirp(root)
+
+  local commit = lib.gitCommit(".")
+  check(commit ~= string.rep("0", 40), "test repository commit is available")
+
+  lib.writeAll(pinPath, commit .. "\n")
+  local pinned, pinnedErr = pcall(lib.assertQuestiePin, ".", pinPath)
+  check(pinned, "a checkout at the pinned commit passes: " .. tostring(pinnedErr))
+
+  lib.writeAll(pinPath, string.rep("0", 40) .. "\n")
+  local wrong, wrongErr = pcall(lib.assertQuestiePin, ".", pinPath)
+  check(not wrong and tostring(wrongErr):find(commit, 1, true) ~= nil,
+    "a checkout at the wrong commit is rejected with its actual commit")
+
+  lib.writeAll(pinPath, "not-a-commit\n")
+  local malformed, malformedErr = pcall(lib.assertQuestiePin, ".", pinPath)
+  check(not malformed and tostring(malformedErr):find("40%-character"),
+    "a malformed pin is rejected")
+
+  os.remove(pinPath)
+end)
+
+--------------------------------------------------------------------------------------------
+-- Workflow contracts
+--------------------------------------------------------------------------------------------
+
+suite("workflow-contracts", function()
+  local release = lib.readAll(".github/workflows/release.yml")
+  check(release:find("needs: [quality, differential]", 1, true) ~= nil,
+    "release publication depends on the quality and compiler differential jobs")
+  check(release:find("--questie=../Questie --lua=lua --self-check", 1, true) ~= nil,
+    "release compiler differential runs its sensitivity self-check")
+  check(release:find(
+    "git diff --exit-code src/corrections/ src/derived/RamerDouglasPeucker.lua", 1, true) ~= nil,
+    "release drift gate covers Corrections and the copied waypoint library")
+
+  local checkout = lib.readAll(".github/actions/checkout-questie/action.yml")
+  check(checkout:find("ref: ${{ steps.pin.outputs.commit }}", 1, true) ~= nil,
+    "automation checks out the commit read from QUESTIE_COMMIT")
+
+  local pin = lib.readAll("QUESTIE_COMMIT"):gsub("%s+$", "")
+  check(#pin == 40 and pin:match("^[0-9a-f]+$") ~= nil,
+    "Questie pin is one lowercase commit SHA")
+end)
+
+--------------------------------------------------------------------------------------------
+-- Local full-flow ordering
+--------------------------------------------------------------------------------------------
+
+suite("check-flow", function()
+  local root = ".out/test-check-flow"
+  commandSucceeded("rm -rf " .. shellQuote(root))
+  lib.mkdirp(root .. "/tools")
+  lib.mkdirp(root .. "/fake-bin")
+  lib.copyFile("tools/check.sh", root .. "/tools/check.sh")
+
+  local fakeLua = root .. "/fake-lua"
+  lib.writeAll(fakeLua, [[#!/usr/bin/env bash
+set -eu
+printf 'lua\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
+if [ "${1:-}" = "generate.lua" ]; then
+  case "${2:-}" in
+    Vanilla|Mists) printf 'artifact\n' > "QuestieTDB_${2}.toc" ;;
+  esac
+fi
+]])
+  lib.writeAll(root .. "/fake-bin/python3", [[#!/usr/bin/env bash
+set -eu
+printf 'python\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
+]])
+  check(commandSucceeded("chmod +x " .. shellQuote(root .. "/tools/check.sh") .. " " ..
+    shellQuote(fakeLua) .. " " .. shellQuote(root .. "/fake-bin/python3")),
+    "full-flow fixture executables prepared")
+
+  local pwdPipe = assert(io.popen("pwd", "r"))
+  local repoRoot = (pwdPipe:read("*a") or ""):gsub("%s+$", "")
+  pwdPipe:close()
+  local rootAbs = repoRoot .. "/" .. root
+  local logPath = rootAbs .. "/commands.log"
+  local outputPath = rootAbs .. "/output.log"
+
+  local function runFlow(arguments)
+    commandSucceeded("rm -f " .. shellQuote(logPath) .. " " ..
+      shellQuote(rootAbs .. "/QuestieTDB_Vanilla.toc") .. " " ..
+      shellQuote(rootAbs .. "/QuestieTDB_Mists.toc"))
+    local command = "cd " .. shellQuote(rootAbs) .. " && PATH=" ..
+      shellQuote(rootAbs .. "/fake-bin") .. ":\"$PATH\" CHECK_FLOW_LOG=" ..
+      shellQuote(logPath) .. " bash tools/check.sh " .. arguments ..
+      " --sequential --questie=/tmp/fake-questie --lua=" .. shellQuote(rootAbs .. "/fake-lua") ..
+      " > " .. shellQuote(outputPath) .. " 2>&1"
+    return commandSucceeded(command)
+  end
+
+  local function positionsOf(log, needle)
+    local positions, position = {}, 1
+    while true do
+      local startAt, endAt = log:find(needle, position, true)
+      if not startAt then return positions end
+      positions[#positions + 1] = startAt
+      position = endAt + 1
+    end
+  end
+
+  local readerNeedles = {
+    "verify.lua ", "equivalence.lua ", "reconstruct.lua ", "validators/run.lua ",
+    "compiler_diff.py ", "golden.py check ", "\ttest.lua",
+  }
+
+  check(runFlow("all --flavors=Vanilla,Mists"), "fake full flow passes")
+  local log = lib.readAll(logPath)
+  local vanillaGenerations = positionsOf(log, "generate.lua Vanilla")
+  local mistsGenerations = positionsOf(log, "generate.lua Mists")
+  equal(#vanillaGenerations, 1, "full flow generates Vanilla once")
+  equal(#mistsGenerations, 1, "full flow generates Mists once")
+  local generationBoundary = math.max(vanillaGenerations[1] or 0, mistsGenerations[1] or 0)
+  local readers = 0
+  for _, needle in ipairs(readerNeedles) do
+    for _, readerAt in ipairs(positionsOf(log, needle)) do
+      readers = readers + 1
+      check(readerAt > generationBoundary,
+        "artifact reader starts after every selected flavor finishes Generation: " .. needle)
+    end
+  end
+  check(readers >= 13, "full-flow fixture observed every reader family")
+  check(log:find("questie=/tmp/fake-questie\tgenerate.lua Vanilla", 1, true) ~= nil and
+        log:find("questie=/tmp/fake-questie\ttest.lua", 1, true) ~= nil,
+    "custom Questie path reaches Generation and unit tests through the environment")
+  check(log:find("reconstruct.lua Vanilla --questie=/tmp/fake-questie", 1, true) ~= nil,
+    "custom Questie path reaches Reconstruction")
+  check(log:find("compiler_diff.py Vanilla --questie=/tmp/fake-questie", 1, true) ~= nil,
+    "custom Questie path reaches the compiler differential")
+
+  check(runFlow("test"), "the standalone unit-test gate needs no Questie checkout")
+  local testLog = lib.readAll(logPath)
+  check(testLog:find("\ttest.lua", 1, true) ~= nil and
+        testLog:find("assertQuestiePin", 1, true) == nil,
+    "standalone unit tests run without the Questie pin preflight")
+
+  commandSucceeded("rm -rf " .. shellQuote(root))
 end)
 
 --------------------------------------------------------------------------------------------
@@ -309,7 +515,8 @@ suite("negative-controls", function()
 
   local function runVerify(content, label)
     lib.writeAll(".out/corrupt/" .. sourceToc, content)
-    local command = ("lua5.1 verify.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1")
+    local command = shellQuote(LUA_BIN) ..
+      " verify.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1"
     local ok, kind, code = os.execute(command)
     -- Lua 5.1 returns the raw exit status; 5.2+ returns ok, "exit", code.
     local failed
@@ -374,13 +581,25 @@ suite("corrections", function()
     ["Era/classicQuestFixes.lua"] = true, ["Era/classicNPCFixes.lua"] = true,
     ["Era/classicItemFixes.lua"] = true, ["Era/classicObjectFixes.lua"] = true,
   }
+  local wotlkNpcSpec
   for _, entry in ipairs(Lib.CorrectionManifest) do
     if ungatedEraFiles[entry.file] then
       equal(entry.expansions, nil, "Era fix file is not expansion-gated: " .. entry.file)
     elseif entry.file == "Era/classicQuestReputationFixes.lua" then
       check(entry.expansions and entry.expansions.Classic == true,
         "reputation fixes stay Classic-gated, per upstream's explicit IsClassic branch")
+    elseif entry.file == "Wotlk/wotlkNPCFixes.lua" then
+      wotlkNpcSpec = entry
     end
+    if entry.static and not entry.generated then
+      check(type(entry.sourceExpansionOrder or entry.minExpansionOrder) == "number",
+        "a flavor-owned Static Correction records or implies its source expansion: " .. entry.file)
+    end
+  end
+  check(wotlkNpcSpec ~= nil, "WotLK NPC Correction manifest entry exists")
+  if wotlkNpcSpec then
+    equal(wotlkNpcSpec.static, { "LoadAutomatics", "Load" },
+      "WotLK NPC statics preserve Questie's automatic-then-hand-authored order")
   end
 
   local registry = Lib.Corrections
@@ -443,6 +662,38 @@ suite("corrections", function()
   registry.ApplyStaticToEntities("Quest", scratch2, flavor, "TestOwner")
   equal(scratch2[999001], nil, "deleting the correction removes its effect")
 
+  -- Questie prevents an older expansion's Correction from resurrecting an entity removed by
+  -- the target expansion. Field 1 is the exception: a named row defines a genuinely missing
+  -- entity and may still be created.
+  local inheritedField = registry.RegisterCorrection("InheritanceTest", "Quest", "field-only",
+    function() return { [999101] = { [5] = 42 } } end, 44)
+  inheritedField.sourceExpansionOrder = 1
+  local inheritedNamed = registry.RegisterCorrection("InheritanceTest", "Quest", "named",
+    function() return { [999102] = { [1] = "Defined Missing Quest", [5] = 42 } } end, 45)
+  inheritedNamed.sourceExpansionOrder = 1
+
+  local inheritedTarget = {}
+  registry.ApplyStaticToEntities(
+    "Quest", inheritedTarget, config.flavorByName.TBC, "InheritanceTest")
+  equal(inheritedTarget[999101], nil,
+    "an inherited field-only Correction does not create an absent entity")
+  equal(inheritedTarget[999102] and inheritedTarget[999102][1], "Defined Missing Quest",
+    "an inherited named Correction may create an absent entity")
+
+  local sourceTarget = {}
+  registry.ApplyStaticToEntities(
+    "Quest", sourceTarget, config.flavorByName.Vanilla, "InheritanceTest")
+  equal(sourceTarget[999101] and sourceTarget[999101][5], 42,
+    "a same-expansion Correction keeps normal entity creation")
+
+  local explicitNoNew = {}
+  registry.MergeInto(explicitNoNew, {
+    [999103] = { [5] = 42 },
+    [999104] = { [1] = "Named Merge Exception" },
+  }, { noNewEntries = true })
+  equal(explicitNoNew[999103], nil, "noNewEntries skips an unnamed absent entity")
+  equal(explicitNoNew[999104], nil, "noNewEntries also skips a named absent entity")
+
   -- The delete idiom: an empty table reads back as nil, so writing {} clears a field.
   local meta = Lib.Meta.Quest
   equal(Lib.Meta.normalize.field(meta, meta.keys.preQuestSingle, {}), nil,
@@ -490,6 +741,18 @@ suite("corrections", function()
   local eraContext = corrections.prepare(flavor)
   equal(eraContext.lib.CorrectionCompat.modules.QuestieDB.raceKeys.ALL_ALLIANCE, 77,
     "compat serves Era race masks to the Vanilla flavor")
+
+  -- Pinned Questie applies WotLK's automatic NPC rows first and the hand-authored Load()
+  -- second. NPC 30208 exists in both: the automatic set adds a spawn, then Load() deletes it.
+  -- This real overlap catches a manifest that lists both valid functions in the wrong order.
+  local wrath = config.flavorByName.Wrath
+  local wrathContext = corrections.prepare(wrath)
+  local wrathNpcs = { [30208] = { [1] = "Stormforged Ambusher" } }
+  wrathContext.lib.Corrections.ApplyStaticToEntities(
+    "Npc", wrathNpcs, wrath, wrathContext.lib.Corrections.OWNER)
+  local finalSpawns = wrathNpcs[30208][7]
+  check(type(finalSpawns) == "table" and next(finalSpawns) == nil,
+    "WotLK hand-authored NPC spawn deletion wins over LoadAutomatics")
 end)
 
 --------------------------------------------------------------------------------------------
@@ -667,9 +930,9 @@ end)
 --------------------------------------------------------------------------------------------
 
 suite("correction-fidelity", function()
-  local questie = "../Questie"
+  local questie = QUESTIE_PATH
   if not lib.fileExists(questie .. "/Database/Corrections/classicQuestFixes.lua") then
-    io.write("  SKIP correction-fidelity: no Questie checkout alongside this repo\n")
+    io.write("  SKIP correction-fidelity: no Questie checkout at ", questie, "\n")
     return
   end
 
@@ -691,13 +954,20 @@ suite("correction-fidelity", function()
     local ours = "src/corrections/" .. spec.file
     local theirs = questie .. "/Database/Corrections/" ..
       (sourceFor[spec.file] or spec.file:match("[^/]+$"))
-    if lib.fileExists(ours) and lib.fileExists(theirs) then
+    local oursExists, theirsExists = lib.fileExists(ours), lib.fileExists(theirs)
+    check(oursExists, "manifest copy exists: " .. spec.file)
+    check(theirsExists, "declared Questie source exists: " .. spec.file)
+    if oursExists and theirsExists then
       compared = compared + 1
       check(lib.readAll(ours) == lib.readAll(theirs),
         "ported copy diverges from Questie's: " .. spec.file)
     end
   end
-  check(compared >= 25, ("compared %d correction files, expected at least 25"):format(compared))
+  equal(compared, #manifest, "every manifest Correction was compared byte-for-byte")
+
+  equal(lib.readAll("src/derived/RamerDouglasPeucker.lua"),
+    lib.readAll(questie .. "/Modules/Libs/RamerDouglasPeucker.lua"),
+    "copied waypoint library remains byte-identical to Questie's")
 end)
 
 --------------------------------------------------------------------------------------------
@@ -1031,7 +1301,8 @@ suite("equivalence-control", function()
 
   local function runEquivalence(content, label)
     lib.writeAll(".out/corrupt/" .. sourceToc, content)
-    local ok = os.execute("lua5.1 equivalence.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1")
+    local ok = os.execute(shellQuote(LUA_BIN) ..
+      " equivalence.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1")
     local failed
     if type(ok) == "number" then failed = ok ~= 0 else failed = not ok end
     check(failed, "equivalence accepted a divergence: " .. label)
@@ -1048,7 +1319,8 @@ suite("equivalence-control", function()
   runEquivalence(emptied, "nil versus empty table")
 
   -- And the healthy case still passes, so the control is not just always-fails.
-  local runEquivalenceOk = os.execute("lua5.1 equivalence.lua Vanilla --sample=200 --quiet >/dev/null 2>&1")
+  local runEquivalenceOk = os.execute(shellQuote(LUA_BIN) ..
+    " equivalence.lua Vanilla --sample=200 --quiet >/dev/null 2>&1")
   local passed
   if type(runEquivalenceOk) == "number" then passed = runEquivalenceOk == 0 else passed = runEquivalenceOk == true end
   check(passed, "equivalence failed on an uncorrupted artifact")
@@ -1915,6 +2187,10 @@ suite("reconstruct-control", function()
     io.write("  SKIP reconstruct-control: ", sourceToc, " not generated\n")
     return
   end
+  if not pcall(lib.assertQuestiePin, QUESTIE_PATH) then
+    io.write("  SKIP reconstruct-control: no pinned Questie checkout at ", QUESTIE_PATH, "\n")
+    return
+  end
 
   lib.mkdirp(".out/corrupt")
   local original = lib.readAll(sourceToc)
@@ -1923,8 +2199,9 @@ suite("reconstruct-control", function()
   lib.writeAll(".out/corrupt/" .. sourceToc, corrupted)
 
   local countFile = ".out/reconstruct-count.txt"
-  local ok = os.execute("lua5.1 reconstruct.lua Vanilla --toc-dir=.out/corrupt --count-only > " ..
-    countFile .. " 2>/dev/null")
+  local ok = os.execute("QUESTIE_PATH=" .. shellQuote(QUESTIE_PATH) .. " " .. shellQuote(LUA_BIN) ..
+    " reconstruct.lua Vanilla --toc-dir=.out/corrupt --count-only > " ..
+    shellQuote(countFile) .. " 2>/dev/null")
   local failed
   if type(ok) == "number" then failed = ok ~= 0 else failed = not ok end
   check(failed, "reconstruct accepted a corrupted artifact")

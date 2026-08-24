@@ -18,6 +18,8 @@ Usage (cwd = the QuestieTDB repo root):
     python3 tools/differential/compiler_diff.py all --update-baseline
     python3 tools/differential/compiler_diff.py Vanilla --self-check
 
+`--questie` overrides `QUESTIE_PATH`, whose fallback is `../Questie`.
+
 Divergence classes:
     ID_ONLY_IN_TDB / ID_ONLY_IN_COMPILER  whole entities present on one side only
     EMPTY_VS_ABSENT                       one side reads a value, the other reads nothing
@@ -80,6 +82,19 @@ def run(cmd, cwd, env, label):
     return result.stdout.decode("utf-8", "replace")
 
 
+def assert_questie_input(questie, lua):
+    """Validate the checkout through the same pin and dirty-input policy as Generation."""
+    questie_root = questie if os.path.isabs(questie) else os.path.join(ROOT, questie)
+    if not os.path.isdir(questie_root):
+        sys.exit("Questie checkout not found: %s (pass --questie=<path>)" % questie_root)
+
+    env = os.environ.copy()
+    env["QUESTIE_PATH"] = questie_root
+    run([lua, "-e", "dofile('generator/lib.lua').assertQuestiePin(os.getenv('QUESTIE_PATH'))"],
+        ROOT, env, "Questie input validation")
+    return questie_root
+
+
 def dump_both(flavor, questie, lua, season):
     os.makedirs(DUMP_DIR, exist_ok=True)
     tdb = os.path.join(DUMP_DIR, "tdb-%s.tsv" % flavor)
@@ -89,8 +104,6 @@ def dump_both(flavor, questie, lua, season):
     run([lua, "tools/differential/dump_a.lua", flavor, tdb], ROOT, env, "QuestieTDB dump")
 
     questie_root = questie if os.path.isabs(questie) else os.path.join(ROOT, questie)
-    if not os.path.isdir(questie_root):
-        sys.exit("Questie checkout not found: %s (pass --questie=<path>)" % questie_root)
     script = os.path.join(ROOT, "tools", "differential", "dump_compiler.lua")
     cmd = [lua, script, flavor, comp]
     if season:
@@ -342,7 +355,10 @@ def main():
     if not args:
         sys.exit(__doc__)
 
-    targets, questie, lua, season = [], "../Questie", "lua5.1", None
+    targets = []
+    questie = os.environ.get("QUESTIE_PATH", "../Questie")
+    lua = os.environ.get("LUA", "lua5.1")
+    season = None
     update = False
     self_check = False
     for value in args:
@@ -367,6 +383,10 @@ def main():
 
     if not targets:
         targets = ["Vanilla"]
+
+    # Validate before either dump starts. Otherwise a direct invocation could compare against
+    # dirty or floating Questie input while reporting the pinned commit as its provenance.
+    questie = assert_questie_input(questie, lua)
 
     status = 0
     for flavor in targets:
