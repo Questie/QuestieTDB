@@ -46,53 +46,49 @@ end
 -- Fields
 --------------------------------------------------------------------------------------------
 
+---Whether a normalized field needs a metadata line.
+---Verification calls this after normalization so it shares Generation's omission rules
+---without serializing every table a second time.
+---@param meta table
+---@param fieldIndex number
+---@param normalized any Value returned by `normalize.field`
+---@return boolean
+local function hasStoredValue(meta, fieldIndex, normalized)
+  if normalized == nil then return false end
+
+  local storage = meta.types[fieldIndex]
+  if storage ~= "number" and storage ~= "string" and storage ~= "table" then
+    error("encode: unknown storage type " .. tostring(storage), 0)
+  end
+  if type(normalized) ~= storage then
+    error(string.format("%s field %d (%s): expected a %s, got %s (%s)",
+      meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), storage, type(normalized),
+      tostring(normalized)), 0)
+  end
+
+  if storage == "number" then return normalized ~= 0 end
+  if storage == "table" then return next(normalized) ~= nil end
+  return true
+end
+
+encode.hasStoredValue = hasStoredValue
+
 --- Encode one field of one entity, or return nil when no line should be written.
 ---
---- Absence is the encoding for nil, and for a numeric zero — a numeric read with no stored
---- metadata returns 0, so writing `0` explicitly would cost bytes and say nothing.
+--- Absence is the encoding for nil, numeric zero, and empty tables whose read-time default is
+--- already in the schema.
 ---@param meta table
 ---@param fieldIndex number
 ---@param value any Raw source value
 ---@return string? encoded
 function encode.field(meta, fieldIndex, value)
   local normalized = normalize.field(meta, fieldIndex, value)
-  if normalized == nil then return nil end
+  if not hasStoredValue(meta, fieldIndex, normalized) then return nil end
 
   local storage = meta.types[fieldIndex]
-
-  if storage == "number" then
-    if type(normalized) ~= "number" then
-      error(string.format("%s field %d (%s): expected a number, got %s (%s)",
-        meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), type(normalized),
-        tostring(normalized)), 0)
-    end
-    if normalized == 0 then return nil end
-    return serialize.number(normalized)
-  end
-
-  if storage == "string" then
-    if type(normalized) ~= "string" then
-      error(string.format("%s field %d (%s): expected a string, got %s (%s)",
-        meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), type(normalized),
-        tostring(normalized)), 0)
-    end
-    return encode.string(normalized)
-  end
-
-  if storage == "table" then
-    if type(normalized) ~= "table" then
-      error(string.format("%s field %d (%s): expected a table, got %s (%s)",
-        meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), type(normalized),
-        tostring(normalized)), 0)
-    end
-    -- A never-nil structure normalizes to `{}` rather than nil, but absence is still the
-    -- cheapest encoding for it: the read path reconstitutes the empty table from the field's
-    -- structure, so storing `{}` would cost bytes to say what the schema already says.
-    if next(normalized) == nil then return nil end
-    return serialize.value(normalized)
-  end
-
-  error("encode: unknown storage type " .. tostring(storage), 0)
+  if storage == "number" then return serialize.number(normalized) end
+  if storage == "string" then return encode.string(normalized) end
+  return serialize.value(normalized)
 end
 
 --------------------------------------------------------------------------------------------

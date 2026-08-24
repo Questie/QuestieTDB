@@ -493,6 +493,15 @@ suite("semantics", function()
   equal(encode.field(meta, 6, {}), nil, "ordinary empty table writes no line")
   equal(encode.field(meta, 4, { 0, 0 }), nil, "zero pair writes no line")
   equal(encode.field(meta, 2, ""), codec.EMPTY_STRING, "empty string writes its marker")
+
+  -- Verification starts from an already-normalized value and uses this cheaper presence test
+  -- instead of serializing the field again. Cover every omission class it depends on.
+  check(not encode.hasStoredValue(meta, 1, 0), "normalized numeric zero needs no stored value")
+  check(encode.hasStoredValue(meta, 1, 7), "normalized non-zero number needs a stored value")
+  check(not encode.hasStoredValue(meta, 2, nil), "normalized nil string needs no stored value")
+  check(encode.hasStoredValue(meta, 2, ""), "normalized empty string needs a stored value")
+  check(not encode.hasStoredValue(meta, 3, {}), "normalized empty table needs no stored value")
+  check(encode.hasStoredValue(meta, 3, { 1 }), "normalized populated table needs a stored value")
 end)
 
 --------------------------------------------------------------------------------------------

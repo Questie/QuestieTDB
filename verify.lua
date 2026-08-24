@@ -113,45 +113,22 @@ local function verifyFlavor(flavor, opts)
     if value:match("^~%d+~$") then report.chunked = report.chunked + 1 end
   end
 
-  -- No line may exceed what the client will actually read. Measured on Classic Era 1.15.9:
-  -- `GetAddOnMetadata` silently truncates beyond lib.TOC_LINE_LIMIT and reports nothing, so
-  -- an over-long line is data corruption with no symptom until a consumer reads a short
-  -- value. This is the check that would have caught it: the emulator reads the file directly
-  -- and never truncates, so nothing else offline can see the problem.
+  -- Scan the raw artifact once for the two client parser constraints the metadata emulator
+  -- cannot reproduce. The client silently truncates over-long lines and trims value edges.
   do
     local overLimit, worst, worstKey = 0, 0, nil
-    local file = assert(io.open(tocPath, "rb"))
-    for line in file:lines() do
-      line = line:gsub("\r$", "")
-      if line:sub(1, 5) == "## X-" and #line > lib.TOC_LINE_LIMIT then
-        overLimit = overLimit + 1
-        if #line > worst then
-          worst = #line
-          worstKey = line:match("^## ([^:]+):")
-        end
-      end
-    end
-    file:close()
-    if overLimit > 0 then
-      io.write(("  LINE LIMIT %s: %d lines exceed %d bytes (worst %d, key %s) — the client " ..
-        "will truncate these silently\n"):format(tocPath, overLimit, lib.TOC_LINE_LIMIT, worst,
-        tostring(worstKey)))
-      report.errors = report.errors + overLimit
-    end
-  end
-
-  -- No stored value — whole or chunk part — may begin or end with a byte the client trims.
-  -- Measured on Classic Era 1.15.9 (docs/client-metadata-probes.md §1): `GetAddOnMetadata`
-  -- strips edge whitespace from every value, so an edge-whitespace part loses a byte during
-  -- reassembly with no symptom offline. The emulator preserves those bytes, which is exactly
-  -- why only this raw-file scan can see the problem.
-  do
     local edgeWhitespace, exampleKey = 0, nil
     local file = assert(io.open(tocPath, "rb"))
     for line in file:lines() do
       line = line:gsub("\r$", "")
       if line:sub(1, 5) == "## X-" then
         local key, value = line:match("^## ([^:]+): (.*)$")
+        if #line > lib.TOC_LINE_LIMIT then
+          overLimit = overLimit + 1
+          if #line > worst then
+            worst, worstKey = #line, key
+          end
+        end
         if value and #value > 0 then
           local first, lastByte = value:byte(1), value:byte(#value)
           if lib.TRIMMABLE[first] or lib.TRIMMABLE[lastByte] then
@@ -162,6 +139,13 @@ local function verifyFlavor(flavor, opts)
       end
     end
     file:close()
+
+    if overLimit > 0 then
+      io.write(("  LINE LIMIT %s: %d lines exceed %d bytes (worst %d, key %s) — the client " ..
+        "will truncate these silently\n"):format(tocPath, overLimit, lib.TOC_LINE_LIMIT, worst,
+        tostring(worstKey)))
+      report.errors = report.errors + overLimit
+    end
     if edgeWhitespace > 0 then
       io.write(("  EDGE WHITESPACE %s: %d stored values begin or end with a byte the client " ..
         "trims (first: %s) — reassembly loses those bytes in-client\n")
@@ -231,7 +215,9 @@ local function verifyFlavor(flavor, opts)
             reportMismatch(report, entityType.name, id, fieldIndex,
               meta.names[fieldIndex] .. " (named vs generic getter)", generic, named)
           end
-          if encode.field(meta, fieldIndex, row[fieldIndex]) ~= nil then
+          -- Orphan detection needs presence, not encoded bytes. Reuse the normalized value
+          -- instead of running table serialization again inside this exhaustive sweep.
+          if encode.hasStoredValue(meta, fieldIndex, expected) then
             seenKeys["X-" .. meta.metaPrefix .. id .. "-" .. fieldIndex] = true
           end
          end

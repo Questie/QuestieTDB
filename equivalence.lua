@@ -27,7 +27,7 @@
 --
 -- The gate then proves it can fail: one stored value is deliberately mutated in the baked
 -- map, the mutated id is re-compared through the same comparison code, and exactly one
--- divergence must be detected. Equivalence that cannot fail is not a gate.
+-- divergence per read form must be detected. Equivalence that cannot fail is not a gate.
 --
 -- Usage:
 --   lua equivalence.lua                     every generated flavor
@@ -140,16 +140,21 @@ local function loadSourceMode(flavor, clientOpts)
   return Lib
 end
 
---- `mutate(map)` may alter the parsed metadata before install — the self-proof's injection
---- point, at the data level rather than a wrapper over the comparison's own calls.
+---Loads Baked mode from a parsed metadata map or parses the artifact when none is supplied.
+---A supplied map may back several read-only passes. `mutate` changes that map in place before
+---the addon loads and is reserved for the self-proof's data-level injection.
 ---
---- `--baked-root=<dir>` resolves the TOC's file list against another root, so the baked side
---- can be an unpacked release package — the runtime a user installs, static-stripped by
---- tools/strip-static.lua — while source mode keeps reading the working tree.
-local function loadBakedMode(tocPath, clientOpts, mutate)
+---`--baked-root=<dir>` resolves the TOC's file list against another root, so the baked side
+---can be an unpacked release package while Source mode keeps reading the working tree.
+---@param tocPath string Generated TOC path.
+---@param clientOpts table? Mocked client persona.
+---@param map table<string, string>? Parsed metadata reused across passes.
+---@param mutate? fun(map: table<string, string>): nil Pre-install data mutation.
+---@return table LibQuestieDB Loaded addon namespace.
+local function loadBakedMode(tocPath, clientOpts, map, mutate)
   client.reset()
   client.install(clientOpts or {})
-  local map = emulator.parse(tocPath)
+  map = map or emulator.parse(tocPath)
   if mutate then mutate(map) end
   emulator.install(config.addonName, map)
   local Lib = emulator.loadAddon(tocPath, config.addonName, opts.bakedRoot)
@@ -373,11 +378,22 @@ local function sampleIds(sourceIds)
   return checkIds
 end
 
---- One full cross-mode comparison. `label` names the pass; `clientOpts` selects the persona.
-local function comparePass(report, flavor, tocPath, label, clientOpts, idStride)
+---Runs one cross-mode pass against a caller-owned parsed metadata map.
+---`label` names the pass, `clientOpts` selects the persona, and `idStride` narrows seasonal
+---coverage after the full base sweep has already checked every value.
+---@param report table Mutable divergence counters.
+---@param flavor table Flavor configuration.
+---@param tocPath string Generated TOC path.
+---@param label string Diagnostic pass name.
+---@param clientOpts table? Mocked client persona.
+---@param idStride integer? Stride for the seasonal follow-up pass.
+---@param bakedMap table<string, string> Parsed metadata shared by this flavor's passes.
+---@return table sourceLib Loaded Source-mode addon namespace.
+---@return table bakedLib Loaded Baked-mode addon namespace.
+local function comparePass(report, flavor, tocPath, label, clientOpts, idStride, bakedMap)
   local sourceLib = loadSourceMode(flavor, clientOpts and { faction = clientOpts.faction,
     season = clientOpts.season } or nil)
-  local bakedLib = loadBakedMode(tocPath, clientOpts)
+  local bakedLib = loadBakedMode(tocPath, clientOpts, bakedMap)
 
   if sourceLib.readMode ~= "source" then
     io.write("  ERROR: base TOC did not select source mode\n")
@@ -447,10 +463,17 @@ local function comparePass(report, flavor, tocPath, label, clientOpts, idStride)
   return sourceLib, bakedLib
 end
 
---- The sensitivity self-proof: mutate one stored value at the data level, re-compare that id
---- through the same comparison code, and require exactly one divergence.
-local function selfProof(flavor, tocPath)
-  local mutatedKey, mutatedId
+---Proves sensitivity by changing one stored value and requiring one divergence per read form.
+---Restores the shared metadata map before returning because the seasonal pass reuses it.
+---@param tocPath string Generated TOC path.
+---@param sourceLib table Source-mode addon namespace from the full pass.
+---@param bakedMap table<string, string> Parsed metadata shared by this flavor's passes.
+---@return integer failures Zero when the injected mutation is detected exactly twice.
+local function selfProof(tocPath, sourceLib, bakedMap)
+  local mutatedKey, mutatedId, originalValue
+
+  ---@param map table<string, string>
+  ---@return nil
   local function mutate(map)
     -- The first quest whose name is stored unchunked: mutate the stored bytes themselves.
     for key, value in pairs(map) do
@@ -462,24 +485,19 @@ local function selfProof(flavor, tocPath)
       end
     end
     assert(mutatedKey, "self-proof found no unchunked quest name to mutate")
-    map[mutatedKey] = map[mutatedKey] .. "X"
+    originalValue = map[mutatedKey]
+    map[mutatedKey] = originalValue .. "X"
   end
 
-  -- Source first, then the mutated baked map — same order as every comparison pass, so no
-  -- installed-metadata accessor is left behind when source mode loads.
-  local sourceLib = loadSourceMode(flavor)
-
-  client.reset()
-  client.install({})
-  local map = emulator.parse(tocPath)
-  mutate(map)
-  emulator.install(config.addonName, map)
-  local bakedLib = emulator.loadAddon(tocPath, config.addonName, opts.bakedRoot)
+  -- The full pass has already loaded both the source data and the artifact map. Reusing them
+  -- keeps the proof at the data level without parsing both databases a second time.
+  local bakedLib = loadBakedMode(tocPath, {}, bakedMap, mutate)
 
   -- The divergences this pass finds are the injected ones — expected, so not reported.
   local report = { errors = 0, fields = 0, entities = 0, byKind = {}, silent = true }
   local meta = bakedLib.Meta.Quest
   compareIdRange(report, "Quest", sourceLib.Quest, bakedLib.Quest, meta, { mutatedId })
+  bakedMap[mutatedKey] = originalValue
 
   -- One mutation, two read forms: the sweep checks every field through Get AND GetRaw, so the
   -- injected divergence must be detected exactly once per form and nowhere else.
@@ -501,7 +519,18 @@ local function compareFlavor(flavor)
   local started = os.clock()
   local report = { errors = 0, fields = 0, entities = 0, byKind = {} }
 
-  comparePass(report, flavor, tocPath, flavor.name, nil, nil)
+  -- Parse once for the base pass, self-proof, and seasonal pass. The self-proof restores its
+  -- one changed value before the map reaches the seasonal pass.
+  local bakedMap = emulator.parse(tocPath)
+
+  local sourceLib = comparePass(report, flavor, tocPath, flavor.name, nil, nil, bakedMap)
+
+  local proofFailures = 0
+  if opts.selfProof then
+    proofFailures = selfProof(tocPath, sourceLib, bakedMap)
+    report.errors = report.errors + proofFailures
+  end
+  sourceLib = nil
 
   -- The season pass: SoD is a Dynamic Correction set over Era, so with the season active the
   -- composed view must still be identical across modes — including the entities the SoD base
@@ -511,8 +540,8 @@ local function compareFlavor(flavor)
   if flavor.expansion == "Classic" then
     local before = report.entities
     local seasonReport = { errors = 0, fields = 0, entities = 0, byKind = {} }
-    local sourceLib = comparePass(seasonReport, flavor, tocPath, flavor.name .. "+SoD",
-      { season = "SoD" }, 7)
+    local seasonSource = comparePass(seasonReport, flavor, tocPath, flavor.name .. "+SoD",
+      { season = "SoD" }, 7, bakedMap)
     report.errors = report.errors + seasonReport.errors
     for kind, count in pairs(seasonReport.byKind) do
       report.byKind[kind] = (report.byKind[kind] or 0) + count
@@ -523,19 +552,13 @@ local function compareFlavor(flavor)
 
     -- The gate must actually have engaged: an active season registers SoD Dynamic sets.
     local sodEntries = 0
-    for _, entry in ipairs(sourceLib.Corrections.Select({ dynamic = true })) do
+    for _, entry in ipairs(seasonSource.Corrections.Select({ dynamic = true })) do
       if entry.name:find("^Sod/") then sodEntries = sodEntries + 1 end
     end
     if sodEntries == 0 then
       io.write("  ERROR: season pass registered no SoD correction sets\n")
       report.errors = report.errors + 1
     end
-  end
-
-  local proofFailures = 0
-  if opts.selfProof then
-    proofFailures = selfProof(flavor, tocPath)
-    report.errors = report.errors + proofFailures
   end
 
   local kinds = {}
