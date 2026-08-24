@@ -268,7 +268,7 @@ function generate.flavor(flavor, opts)
     out:close()
   end
 
-  local size = #lib.readAll(tocPath)
+  local size = lib.fileSize(tocPath)
   say(string.format("Generated %s — %d entities, %d fields, %.1f MB, %.1fs",
     tocPath, totals.entities, totals.fields, size / 1048576, os.clock() - started))
   return totals

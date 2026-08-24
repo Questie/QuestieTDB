@@ -190,6 +190,16 @@ function lib.readAll(path)
   return content
 end
 
+---Returns a file's byte size without materializing its contents.
+---@param path string File to measure.
+---@return integer bytes
+function lib.fileSize(path)
+  local f = assert(io.open(path, "rb"), "Cannot open: " .. tostring(path))
+  local size = assert(f:seek("end"))
+  f:close()
+  return size
+end
+
 function lib.writeAll(path, content)
   local f = assert(io.open(path, "wb"), "Cannot open for writing: " .. tostring(path))
   f:write(content)
