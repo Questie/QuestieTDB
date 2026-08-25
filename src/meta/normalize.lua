@@ -9,6 +9,7 @@
 -- docs/storage-format.md, "Nil and empty semantics".
 --
 --   | Source value      | Read back as                                        |
+--   | constant field    | schema placeholder, regardless of source value      |
 --   | number nil        | 0      — lossy and deliberate; writers emit `value or 0`
 --   | number n          | n
 --   | string nil        | nil
@@ -262,6 +263,15 @@ normalize.byName = {
 ---@param value any Raw source value
 ---@return any
 function normalize.field(meta, fieldIndex, value)
+  -- Deprecated constant fields keep their positional interface while dropping obsolete source
+  -- data from storage. An explicit nil check distinguishes an absent declaration from any
+  -- configured placeholder value.
+  local constantValues = meta.constantValues
+  if constantValues then
+    local constant = constantValues[fieldIndex]
+    if constant ~= nil then return constant end
+  end
+
   local storage = meta.types[fieldIndex]
 
   if storage == "number" then
@@ -314,9 +324,17 @@ function normalize.field(meta, fieldIndex, value)
         " has unknown storage type " .. tostring(storage), 0)
 end
 
---- Default value for a field that has no stored metadata. Numbers default to 0, everything
---- else to nil.
+---Default value for a field that has no stored metadata.
+---@param meta table Entity meta from src/meta/<entity>Meta.lua
+---@param fieldIndex number
+---@return any
 function normalize.default(meta, fieldIndex)
+  local constantValues = meta.constantValues
+  if constantValues then
+    local constant = constantValues[fieldIndex]
+    if constant ~= nil then return constant end
+  end
+
   if meta.types[fieldIndex] == "number" then return 0 end
   local structure = meta.structures and meta.structures[fieldIndex]
   if structure and normalize.neverNilStructures[structure] then return {} end

@@ -373,22 +373,23 @@ local function recompose(flavor)
           if not provByType then provByType = {}; provenance[datatype] = provByType end
 
           for id, fields in pairs(corrections) do
+            -- Rows are created only when a write survives validation. In particular, a
+            -- Correction containing only ignored constant fields must not invent an entity.
             local row = byType[id]
-            if not row then row = {}; byType[id] = row end
             local provRow = provByType[id]
-            if not provRow then provRow = {}; provByType[id] = provRow end
 
             for fieldIndex, value in pairs(fields) do
               if type(fieldIndex) == "number" and meta and fieldIndex <= meta.fieldCount then
-                -- `[key] = {}` is the delete idiom for EVERY field type, exactly as MergeInto
-                -- documents for the static path. Scalar-typed fields need it decided here:
-                -- normalize passes tables through its number/string branches untouched, and a
-                -- stored empty table would reach consumers as a fresh table where they expect
-                -- a number or string.
-                if type(value) == "table" and next(value) == nil then
-                  row[fieldIndex] = registry.NIL
-                  provRow[fieldIndex] = owner
-                elseif type(value) == "table" and meta.types[fieldIndex] ~= "table" then
+                local constantValues = meta.constantValues
+                if constantValues and constantValues[fieldIndex] ~= nil then
+                  -- Constant fields no longer accept runtime ownership. Reads keep the schema
+                  -- placeholder and provenance remains with QuestieTDB.
+                  if registry.debug then
+                    warn(format('owner "%s" wrote deprecated constant %s %s field %s — dropped',
+                      owner, datatype, tostring(id), tostring(meta.names[fieldIndex])))
+                  end
+                elseif type(value) == "table" and next(value) ~= nil and
+                       meta.types[fieldIndex] ~= "table" then
                   -- A non-empty table arriving at a scalar-typed field is a correction-author
                   -- error. Generation fails loudly on the same input; the overlay reports and
                   -- drops the write rather than raising out of recomposition.
@@ -396,21 +397,30 @@ local function recompose(flavor)
                     owner, tostring(meta.types[fieldIndex]), datatype, tostring(id),
                     tostring(meta.names[fieldIndex])))
                 else
-                  if registry.debug and provRow[fieldIndex] and provRow[fieldIndex] ~= owner then
-                    warn(format('owner "%s" overrode "%s" on %s %s field %s',
-                      owner, provRow[fieldIndex], datatype, tostring(id),
-                      tostring(meta.names[fieldIndex])))
-                  end
-                  -- Normalizing here rather than at read time means the overlay stores exactly
-                  -- what a read must return, so `{0,0}` reads nil in the overlay for the same
-                  -- reason it does in base data.
-                  local normalized = normalize.field(meta, fieldIndex, value)
-                  if normalized == nil then
+                  if not row then row = {}; byType[id] = row end
+                  if not provRow then provRow = {}; provByType[id] = provRow end
+
+                  -- `[key] = {}` is the delete idiom for every field type. Scalar deletes are
+                  -- decided here because normalize passes tables through scalar branches.
+                  if type(value) == "table" and next(value) == nil then
                     row[fieldIndex] = registry.NIL
+                    provRow[fieldIndex] = owner
                   else
-                    row[fieldIndex] = normalized
+                    if registry.debug and provRow[fieldIndex] and provRow[fieldIndex] ~= owner then
+                      warn(format('owner "%s" overrode "%s" on %s %s field %s',
+                        owner, provRow[fieldIndex], datatype, tostring(id),
+                        tostring(meta.names[fieldIndex])))
+                    end
+                    -- The overlay stores normalized values so `{0,0}` and other nil semantics
+                    -- match base data without another read-time decision.
+                    local normalized = normalize.field(meta, fieldIndex, value)
+                    if normalized == nil then
+                      row[fieldIndex] = registry.NIL
+                    else
+                      row[fieldIndex] = normalized
+                    end
+                    provRow[fieldIndex] = owner
                   end
-                  provRow[fieldIndex] = owner
                 end
               end
             end

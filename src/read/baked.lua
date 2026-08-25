@@ -49,8 +49,13 @@ baked.getStored = getStored
 function baked.CreateBackend(meta)
   local prefix = "X-" .. meta.metaPrefix
   local decoders = {}
+  local constantValues = meta.constantValues
   for fieldIndex = 1, meta.fieldCount do
-    decoders[fieldIndex] = codec.decoders[meta.types[fieldIndex]]
+    -- Constant fields are not part of the Baked storage contract. Leaving their decoder absent
+    -- makes legacy metadata unreadable, so shared.lua reconstructs the declared placeholder.
+    if not constantValues or constantValues[fieldIndex] == nil then
+      decoders[fieldIndex] = codec.decoders[meta.types[fieldIndex]]
+    end
   end
 
   local idList, idMap
@@ -69,6 +74,9 @@ function baked.CreateBackend(meta)
   --- getter caches this producer and executes it per read (ADR 0003 D10). Baked mode already
   --- holds the serialized text, so no decode-then-reserialize round trip is ever paid.
   function backend.tableChunk(id, fieldIndex)
+    -- Use the same backend-local readability map as readField. This also protects a future
+    -- table-valued constant from bypassing its placeholder through the Baked fast path.
+    if not decoders[fieldIndex] then return nil end
     local stored = getStored(prefix .. id .. "-" .. fieldIndex)
     if stored == nil then return nil end
     return codec.compileTable(stored)

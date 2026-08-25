@@ -102,6 +102,21 @@ schema.l10nFieldNames = {
 }
 
 --------------------------------------------------------------------------------------------
+-- Constant fields
+--------------------------------------------------------------------------------------------
+--
+-- Constant fields remain in the Database Key Enum for positional compatibility, but their
+-- source values are obsolete. Reads return the placeholder declared here and Generation emits
+-- no per-entity metadata for them.
+
+schema.constantFields = {
+  Npc = {
+    minLevelHealth = 0,
+    maxLevelHealth = 1,
+  },
+}
+
+--------------------------------------------------------------------------------------------
 -- Derivation
 --------------------------------------------------------------------------------------------
 
@@ -125,6 +140,7 @@ function schema.derive(entityType, keys, compilerTypes)
     emptyIsNil = {},
     zeroPairIsNil = {},
     normalize = {},
+    constantValues = {},
     fieldCount = 0,
   }
 
@@ -175,6 +191,18 @@ function schema.derive(entityType, keys, compilerTypes)
       error(entityType.name .. ": " .. entityType.typesField .. " has '" .. name ..
             "' which is absent from " .. entityType.keysField, 0)
     end
+  end
+
+  for name, value in pairs(schema.constantFields[entityType.name] or {}) do
+    local index = meta.keys[name]
+    if not index then
+      error(entityType.name .. ": constant field '" .. name .. "' is not in the key enum", 0)
+    end
+    if type(value) ~= meta.types[index] then
+      error(string.format("%s: constant field '%s' expects a %s, got %s",
+        entityType.name, name, tostring(meta.types[index]), type(value)), 0)
+    end
+    meta.constantValues[index] = value
   end
 
   meta.l10nFields = {}
@@ -315,6 +343,11 @@ function schema.render(meta)
   out[#out + 1] = "  --- fieldIndex -> named normalizer"
   emitIndexedTable(out, "normalize", meta.normalize, meta.fieldCount, true)
   out[#out + 1] = ""
+  if next(meta.constantValues) ~= nil then
+    out[#out + 1] = "  --- fieldIndex -> placeholder returned without storing per-entity metadata"
+    emitIndexedTable(out, "constantValues", meta.constantValues, meta.fieldCount, false)
+    out[#out + 1] = ""
+  end
   out[#out + 1] = "  --- field indices carrying translations"
   out[#out + 1] = "  l10nFields = " .. serialize.value(meta.l10nFields) .. ","
   out[#out + 1] = "}"

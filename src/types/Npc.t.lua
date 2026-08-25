@@ -2,8 +2,8 @@
 
 ---@class NpcDB
 ---@field name fun(id: QuestieTDBNpcId): string? NPC name.
----@field minLevelHealth fun(id: QuestieTDBNpcId): number? Health at minimum level.
----@field maxLevelHealth fun(id: QuestieTDBNpcId): number? Health at maximum level.
+---@field minLevelHealth fun(id: QuestieTDBNpcId): number? Deprecated. Returns placeholder `0` for a known NPC; health is no longer stored.
+---@field maxLevelHealth fun(id: QuestieTDBNpcId): number? Deprecated. Returns placeholder `1` for a known NPC; health is no longer stored.
 ---@field minLevel fun(id: QuestieTDBNpcId): number? Minimum NPC level.
 ---@field maxLevel fun(id: QuestieTDBNpcId): number? Maximum NPC level.
 ---@field rank fun(id: QuestieTDBNpcId): number? NPC rank.
@@ -23,6 +23,18 @@
 ---@field Exists fun(id: QuestieTDBNpcId): boolean Test the composed view.
 ---@field InvalidateCache fun(id?: QuestieTDBNpcId) Drop cached fields for one NPC or every NPC.
 NpcDB = {}
+
+---Deprecated compatibility getter. Health is no longer stored.
+---@deprecated
+---@param id QuestieTDBNpcId
+---@return number? health Placeholder `0` for a known NPC; `nil` for an unknown ID.
+function NpcDB.minLevelHealth(id) end
+
+---Deprecated compatibility getter. Health is no longer stored.
+---@deprecated
+---@param id QuestieTDBNpcId
+---@return number? health Placeholder `1` for a known NPC; `nil` for an unknown ID.
+function NpcDB.maxLevelHealth(id) end
 
 ---Returns the composed ID list, or a read-only lookup map when `hashmap` is true.
 ---@param hashmap? false

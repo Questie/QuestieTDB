@@ -54,6 +54,10 @@ end
 ---@param normalized any Value returned by `normalize.field`
 ---@return boolean
 local function hasStoredValue(meta, fieldIndex, normalized)
+  -- A constant field's schema placeholder reconstructs the value in both read modes. Storing
+  -- the same value once per entity would be redundant, including for non-zero placeholders.
+  local constantValues = meta.constantValues
+  if constantValues and constantValues[fieldIndex] ~= nil then return false end
   if normalized == nil then return false end
 
   local storage = meta.types[fieldIndex]
@@ -75,8 +79,8 @@ encode.hasStoredValue = hasStoredValue
 
 --- Encode one field of one entity, or return nil when no line should be written.
 ---
---- Absence is the encoding for nil, numeric zero, and empty tables whose read-time default is
---- already in the schema.
+--- Absence is the encoding for constants, nil, numeric zero, and empty tables whose read-time
+--- default is already in the schema.
 ---@param meta table
 ---@param fieldIndex number
 ---@param value any Raw source value

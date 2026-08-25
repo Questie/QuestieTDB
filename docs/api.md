@@ -75,6 +75,12 @@ QuestDB.requiredLevel(2)         --> 20
 NpcDB.spawns(30)                 --> { [12] = { {36.43, 55.89}, ... } }
 ```
 
+NPC health is no longer stored. The deprecated `NpcDB.minLevelHealth(id)` and
+`NpcDB.maxLevelHealth(id)` getters return placeholder values `0` and `1` for a known NPC.
+The same placeholders apply through `Get`, `GetByIndex`, `GetRaw`, and `GetAll`. Dynamic
+Corrections cannot replace or delete them. Unknown NPC IDs still return `nil`; these values are
+compatibility placeholders, not health estimates.
+
 ### `Entity.GetAll(id, keys) -> values | nil`
 
 Bulk access. Values come back in the order the keys were requested, in a **packed** table

@@ -761,6 +761,162 @@ suite("semantics", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Deprecated constant fields
+--------------------------------------------------------------------------------------------
+
+suite("constant-fields", function()
+  local schema = dofile("generator/schema.lua")
+  local npcMeta = dofile("src/meta/npcMeta.lua")
+  local minHealth = npcMeta.keys.minLevelHealth
+  local maxHealth = npcMeta.keys.maxLevelHealth
+
+  equal(minHealth, 2, "minLevelHealth keeps its positional index")
+  equal(maxHealth, 3, "maxLevelHealth keeps its positional index")
+  equal(npcMeta.constantValues[minHealth], 0, "minLevelHealth materializes placeholder 0")
+  equal(npcMeta.constantValues[maxHealth], 1, "maxLevelHealth materializes placeholder 1")
+
+  local compilerTypes = {}
+  for fieldIndex = 1, npcMeta.fieldCount do
+    compilerTypes[npcMeta.names[fieldIndex]] = npcMeta.compilerTypes[fieldIndex]
+  end
+  local derived = schema.derive({
+    name = "Npc", metaPrefix = "Npc-", keysField = "npcKeys", typesField = "npcCompilerTypes",
+  }, npcMeta.keys, compilerTypes)
+  equal(derived.constantValues, { [2] = 0, [3] = 1 },
+    "schema derivation resolves constant field names to stable indices")
+  check(schema.render(derived):find("[2]=0, [3]=1", 1, true) ~= nil,
+    "materialized schema renders both constant placeholders")
+
+  schema.constantFields.Npc.unknownHealthField = 0
+  local invalidConstant, invalidConstantError = pcall(schema.derive, {
+    name = "Npc", metaPrefix = "Npc-", keysField = "npcKeys", typesField = "npcCompilerTypes",
+  }, npcMeta.keys, compilerTypes)
+  schema.constantFields.Npc.unknownHealthField = nil
+  check(not invalidConstant and tostring(invalidConstantError):find("is not in the key enum", 1, true),
+    "schema derivation rejects a constant whose canonical field name disappeared")
+
+  equal(normalize.field(npcMeta, minHealth, 12345), 0,
+    "minLevelHealth ignores an obsolete source value")
+  equal(normalize.field(npcMeta, maxHealth, 67890), 1,
+    "maxLevelHealth ignores an obsolete source value")
+  equal(normalize.default(npcMeta, minHealth), 0,
+    "minLevelHealth reconstructs from missing storage")
+  equal(normalize.default(npcMeta, maxHealth), 1,
+    "maxLevelHealth reconstructs its non-zero placeholder from missing storage")
+  equal(encode.field(npcMeta, minHealth, 12345), nil,
+    "minLevelHealth emits no metadata for a non-zero source value")
+  equal(encode.field(npcMeta, maxHealth, 67890), nil,
+    "maxLevelHealth emits no metadata for a non-zero source value")
+  check(not encode.hasStoredValue(npcMeta, maxHealth, 1),
+    "Verification shares Generation's constant-field omission rule")
+
+  ---Checks every public read form for the deprecated health placeholders.
+  ---@param Lib table Loaded QuestieTDB namespace.
+  ---@param label string Read mode shown in assertion failures.
+  ---@return nil
+  local function checkHealthPlaceholders(Lib, label)
+    equal(Lib.Npc.minLevelHealth(30), 0, label .. ": named minimum health is the placeholder")
+    equal(Lib.Npc.maxLevelHealth(30), 1, label .. ": named maximum health is the placeholder")
+    equal(Lib.Npc.Get(30, "minLevelHealth"), 0, label .. ": Get returns minimum placeholder")
+    equal(Lib.Npc.Get(30, "maxLevelHealth"), 1, label .. ": Get returns maximum placeholder")
+    equal(Lib.Npc.GetByIndex(30, minHealth), 0,
+      label .. ": GetByIndex returns minimum placeholder")
+    equal(Lib.Npc.GetByIndex(30, maxHealth), 1,
+      label .. ": GetByIndex returns maximum placeholder")
+    equal(Lib.Npc.GetRaw(30, "minLevelHealth"), 0,
+      label .. ": GetRaw returns minimum placeholder")
+    equal(Lib.Npc.GetRaw(30, "maxLevelHealth"), 1,
+      label .. ": GetRaw returns maximum placeholder")
+    equal(Lib.Npc.GetAll(30, { "minLevelHealth", "maxLevelHealth" }), { 0, 1, n = 2 },
+      label .. ": GetAll returns both placeholders")
+    equal(Lib.Npc.minLevelHealth(999999999), nil, label .. ": unknown NPC named getter is nil")
+    equal(Lib.Npc.Get(999999999, "maxLevelHealth"), nil, label .. ": unknown NPC Get is nil")
+    equal(Lib.Npc.GetRaw(999999999, maxHealth), nil, label .. ": unknown NPC GetRaw is nil")
+  end
+
+  client.reset()
+  client.install({ expansion = "Classic" })
+  local source = emulator.loadAddon(config.addonName .. ".toc", config.addonName)
+  checkHealthPlaceholders(source, "source")
+
+  source.Corrections.RegisterRuntimeCorrection("ConstantFieldSourceTest", "Npc", "ignored-health",
+    function()
+      return { [30] = { [minHealth] = 9000, [maxHealth] = {} } }
+    end, 10)
+  source.Corrections.ApplyRegisteredCorrections("ConstantFieldSourceTest")
+  equal(source.Npc.minLevelHealth(30), 0,
+    "source: a Dynamic Correction cannot replace the minimum placeholder")
+  equal(source.Npc.maxLevelHealth(30), 1,
+    "source: a Dynamic Correction cannot delete the maximum placeholder")
+  equal(source.GetProvenance("Npc", 30, "minLevelHealth"), source.Corrections.OWNER,
+    "source: ignored constant writes do not claim provenance")
+
+  -- A tiny Baked artifact proves conflicting legacy metadata is unreadable and the
+  -- constants reconstruct without generating or checking in a flavor-sized TOC.
+  local fixturePath = ".out/test-constant-fields.toc"
+  lib.mkdirp(".out")
+  local previousManifest = config.correctionManifest
+  config.correctionManifest = dofile("src/corrections/manifest.lua")
+  local lines = {
+    "## Interface: 11508",
+    "## X-Flavor: Vanilla",
+    "## X-Contract-Version: " .. tostring(config.contractVersion),
+    "## X-Npc-IDS-LIST: 30",
+    "## X-Npc-30-2: 9000",
+    "## X-Npc-30-3: 9001",
+    "",
+  }
+  for _, file in ipairs(config.bakedFileList(config.flavorByName.Vanilla)) do
+    lines[#lines + 1] = file
+  end
+  lib.writeAll(fixturePath, table.concat(lines, "\n") .. "\n")
+
+  client.reset()
+  client.install({ expansion = "Classic" })
+  emulator.install(config.addonName, emulator.parse(fixturePath))
+  local baked = emulator.loadAddon(fixturePath, config.addonName)
+  checkHealthPlaceholders(baked, "baked")
+
+  local constantOnlyId = 4999998
+  local mixedId = 4999997
+  baked.Corrections.RegisterRuntimeCorrection("ConstantFieldTest", "Npc", "ignored-health",
+    function()
+      return {
+        [30] = { [minHealth] = 9000, [maxHealth] = {} },
+        [constantOnlyId] = { [minHealth] = 9000, [maxHealth] = 9001 },
+        [mixedId] = { [1] = "Synthetic NPC", [minHealth] = 9000, [maxHealth] = 9001 },
+      }
+    end, 10)
+  baked.Corrections.ApplyRegisteredCorrections("ConstantFieldTest")
+  equal(baked.Npc.minLevelHealth(30), 0,
+    "a Dynamic Correction cannot replace the minimum placeholder")
+  equal(baked.Npc.maxLevelHealth(30), 1,
+    "a Dynamic Correction cannot delete the maximum placeholder")
+  equal(baked.GetProvenance("Npc", 30, "minLevelHealth"), baked.Corrections.OWNER,
+    "ignored constant writes do not claim provenance")
+  equal(baked.Npc.Exists(constantOnlyId), false,
+    "a constant-only Dynamic Correction does not invent an NPC")
+  equal(baked.Npc.Get(constantOnlyId, "minLevelHealth"), nil,
+    "the ignored constant-only NPC still reads nil")
+  equal(baked.Npc.Exists(mixedId), true,
+    "a legitimate nonconstant field creates a mixed synthetic NPC")
+  equal(baked.Npc.name(mixedId), "Synthetic NPC",
+    "the mixed synthetic NPC keeps its nonconstant correction")
+  equal(baked.Npc.minLevelHealth(mixedId), 0,
+    "the mixed synthetic NPC ignores corrected minimum health")
+  equal(baked.Npc.maxLevelHealth(mixedId), 1,
+    "the mixed synthetic NPC ignores corrected maximum health")
+  equal(baked.GetProvenance("Npc", mixedId, "name"), "ConstantFieldTest",
+    "only the mixed NPC's legitimate field claims provenance")
+  equal(baked.GetProvenance("Npc", mixedId, "maxLevelHealth"), baked.Corrections.OWNER,
+    "the mixed NPC's ignored health field keeps database provenance")
+
+  os.remove(fixturePath)
+  config.correctionManifest = previousManifest
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
 -- Negative controls
 --------------------------------------------------------------------------------------------
 --

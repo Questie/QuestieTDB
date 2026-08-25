@@ -30,6 +30,12 @@ Every stored value is one TOC metadata directive:
 
 Fields whose value is absent produce **no line at all**. Absence is the encoding for `nil`.
 
+A schema field may instead declare a constant placeholder. It keeps its name and positional
+index for compatibility, but Generation emits no per-entity metadata for it. Source mode
+normalizes the raw value to the placeholder; Baked mode treats even stale metadata as absent
+and reconstructs the same value as the field's missing-storage default. NPC `minLevelHealth`
+and `maxLevelHealth` use this rule and return `0` and `1` for known NPCs.
+
 ### Combined-addon prefix
 
 When several entity databases share one addon, keys carry a per-type prefix:
@@ -230,6 +236,7 @@ sites.
 
 | Source value | Read back as | Note |
 | --- | --- | --- |
+| constant field | schema placeholder | Raw values are obsolete and no metadata line is stored |
 | number `nil` | **`0`** | Lossy, and deliberate — Questie's writers emit `value or 0` |
 | number `n` | `n` | |
 | string `nil` | `nil` | |

@@ -67,6 +67,11 @@ local meta = {
 [13]='faction'
   },
 
+  --- fieldIndex -> placeholder returned without storing per-entity metadata
+  constantValues = {
+[2]=0, [3]=1
+  },
+
   --- field indices carrying translations
   l10nFields = {1,14},
 }
