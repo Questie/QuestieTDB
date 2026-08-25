@@ -156,15 +156,15 @@ schema.fieldDescriptions = {
   },
   Quest = {
     name = "Localized quest name.",
-    startedBy = "Quest starters: {npcIds?, objectIds?, itemIds?}.",
-    finishedBy = "Quest finishers: {npcIds?, objectIds?}.",
+    startedBy = "Quest starters: {npcIds?, objectIds?, itemIds?}; known quests always return a table.",
+    finishedBy = "Quest finishers: {npcIds?, objectIds?}; known quests always return a table.",
     requiredLevel = "Minimum player level.",
     questLevel = "Quest level.",
     requiredRaces = "Allowed-race bitmask.",
     requiredClasses = "Allowed-class bitmask.",
-    objectivesText = "Localized quest description lines; nil marks an auto-complete quest.",
+    objectivesText = "Localized quest objective text lines.",
     triggerEnd = "Completion trigger: {text, spawn coordinates grouped by zone}.",
-    objectives = "Six positional groups: creature, object, item, reputation, kill-credit, and spell objectives.",
+    objectives = "Six positional groups: creature, object, item, reputation, kill-credit, and spell; known quests always return a table.",
     sourceItemId = "ID of the item provided by the quest starter.",
     preQuestGroup = "IDs of grouped prerequisite quests.",
     preQuestSingle = "IDs of alternative single prerequisite quests.",
@@ -183,7 +183,7 @@ schema.fieldDescriptions = {
     reputationReward = "Reputation rewards as {{factionId, value}, ...}.",
     breadcrumbForQuestId = "ID of the quest this optional breadcrumb leads to.",
     breadcrumbs = "IDs of breadcrumb quests that lead to this quest.",
-    extraObjectives = "Hidden objectives: {spawnList?, iconFile, text?, objectiveIndex, references?}.",
+    extraObjectives = "Hidden-objective rows: {{spawnList?, iconType, text?, objectiveIndex, references?}, ...}.",
     requiredSpell = "Spell ID the character must know.",
     requiredSpecialization = "Profession or specialization requirement ID.",
     requiredMaxLevel = "Maximum player level at which this quest is available.",
@@ -259,17 +259,18 @@ function schema.derive(entityType, keys, compilerTypes)
   end
 
   local fieldDescriptions = schema.fieldDescriptions[entityType.name]
-  if fieldDescriptions then
-    for index = 1, meta.fieldCount do
-      local name = meta.names[index]
-      if not fieldDescriptions[name] then
-        error(entityType.name .. ": field '" .. name .. "' has no generated description", 0)
-      end
+  if not fieldDescriptions then
+    error(entityType.name .. ": no generated field descriptions configured", 0)
+  end
+  for index = 1, meta.fieldCount do
+    local name = meta.names[index]
+    if not fieldDescriptions[name] then
+      error(entityType.name .. ": field '" .. name .. "' has no generated description", 0)
     end
-    for name in pairs(fieldDescriptions) do
-      if not meta.keys[name] then
-        error(entityType.name .. ": description for unknown field '" .. name .. "'", 0)
-      end
+  end
+  for name in pairs(fieldDescriptions) do
+    if not meta.keys[name] then
+      error(entityType.name .. ": description for unknown field '" .. name .. "'", 0)
     end
   end
 
@@ -423,7 +424,10 @@ function schema.render(meta)
   local names = {}
   for index = 1, meta.fieldCount do names[index] = meta.names[index] end
   local keyParts = {}
-  local fieldDescriptions = schema.fieldDescriptions[meta.entity] or {}
+  local fieldDescriptions = schema.fieldDescriptions[meta.entity]
+  if not fieldDescriptions then
+    error(meta.entity .. ": no generated field descriptions configured", 0)
+  end
   for index = 1, meta.fieldCount do
     local fieldName = names[index]
     local description = fieldDescriptions[fieldName]

@@ -17,9 +17,9 @@ local meta = {
   keys = {
     -- Localized quest name.
     ['name'] = 1,
-    -- Quest starters: {npcIds?, objectIds?, itemIds?}.
+    -- Quest starters: {npcIds?, objectIds?, itemIds?}; known quests always return a table.
     ['startedBy'] = 2,
-    -- Quest finishers: {npcIds?, objectIds?}.
+    -- Quest finishers: {npcIds?, objectIds?}; known quests always return a table.
     ['finishedBy'] = 3,
     -- Minimum player level.
     ['requiredLevel'] = 4,
@@ -29,11 +29,11 @@ local meta = {
     ['requiredRaces'] = 6,
     -- Allowed-class bitmask.
     ['requiredClasses'] = 7,
-    -- Localized quest description lines; nil marks an auto-complete quest.
+    -- Localized quest objective text lines.
     ['objectivesText'] = 8,
     -- Completion trigger: {text, spawn coordinates grouped by zone}.
     ['triggerEnd'] = 9,
-    -- Six positional groups: creature, object, item, reputation, kill-credit, and spell objectives.
+    -- Six positional groups: creature, object, item, reputation, kill-credit, and spell; known quests always return a table.
     ['objectives'] = 10,
     -- ID of the item provided by the quest starter.
     ['sourceItemId'] = 11,
@@ -71,7 +71,7 @@ local meta = {
     ['breadcrumbForQuestId'] = 27,
     -- IDs of breadcrumb quests that lead to this quest.
     ['breadcrumbs'] = 28,
-    -- Hidden objectives: {spawnList?, iconFile, text?, objectiveIndex, references?}.
+    -- Hidden-objective rows: {{spawnList?, iconType, text?, objectiveIndex, references?}, ...}.
     ['extraObjectives'] = 29,
     -- Spell ID the character must know.
     ['requiredSpell'] = 30,

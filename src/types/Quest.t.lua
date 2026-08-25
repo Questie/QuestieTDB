@@ -11,7 +11,7 @@
 ---@field objectivesText fun(id: QuestieTDBQuestId): string[]? Objective text lines.
 ---@field triggerEnd fun(id: QuestieTDBQuestId): QuestieTDBTrigger? Completion trigger.
 ---@field objectives fun(id: QuestieTDBQuestId): QuestieTDBObjectives? Objective tuples. Existing quests return a table, even when empty.
----@field sourceItemId fun(id: QuestieTDBQuestId): QuestieTDBItemId? Item that starts the quest.
+---@field sourceItemId fun(id: QuestieTDBQuestId): QuestieTDBItemId? Item provided by the quest starter.
 ---@field preQuestGroup fun(id: QuestieTDBQuestId): QuestieTDBQuestId[]? Group prerequisites.
 ---@field preQuestSingle fun(id: QuestieTDBQuestId): QuestieTDBQuestId[]? Alternative single prerequisites.
 ---@field childQuests fun(id: QuestieTDBQuestId): QuestieTDBQuestId[]? Quests unlocked by this quest.

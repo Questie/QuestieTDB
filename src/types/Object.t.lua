@@ -6,7 +6,7 @@
 ---@field questEnds fun(id: QuestieTDBObjectId): QuestieTDBQuestId[]? Quests finished at this object.
 ---@field spawns fun(id: QuestieTDBObjectId): QuestieTDBSpawnList? Spawn coordinates grouped by zone.
 ---@field zoneID fun(id: QuestieTDBObjectId): QuestieTDBZoneId? Most common zone.
----@field factionID fun(id: QuestieTDBObjectId): QuestieTDBFactionId? Faction ID.
+---@field factionID fun(id: QuestieTDBObjectId): number? Faction restriction mask used by spawn data.
 ---@field waypoints fun(id: QuestieTDBObjectId): QuestieTDBWaypointList? Waypoint paths grouped by zone.
 ---@field GetByIndex fun(id: QuestieTDBObjectId, fieldIndex: integer): any Read a field by positional index.
 ---@field Get fun(id: QuestieTDBObjectId, key: QuestieTDBObjectField|integer): any Read a field by canonical name or index.
