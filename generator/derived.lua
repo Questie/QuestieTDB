@@ -21,6 +21,14 @@ local SUPPORT_FILES = {
 
 local supportModules
 
+---Returns the shared Derived Pass registry prepared for one flavor.
+---@param flavor table An entry from config.flavors.
+---@return table? registry
+local function registryFor(flavor)
+  local LibQuestieDB = corrections.prepare(flavor).lib
+  return LibQuestieDB and LibQuestieDB.Derived
+end
+
 --- Load support data under a scoped `QuestieLoader` mock and return a `name -> module`
 --- accessor with the same shape `LibQuestieDB.Support.Get` has at runtime.
 local function supportProvider()
@@ -40,6 +48,16 @@ local function supportProvider()
   return function(name) return supportModules[name] end
 end
 
+---Expands requested output types with the inputs their active Derived Passes need.
+---@param typeFilter table<string, boolean>? Requested output entity types; nil means all types.
+---@param flavor table An entry from config.flavors.
+---@return table<string, boolean>? expanded Independent working-set filter, or nil for all types.
+function derived.expandReadDependencies(typeFilter, flavor)
+  local registry = registryFor(flavor)
+  if not registry then return typeFilter end
+  return registry.ExpandReadDependencies(typeFilter, flavor)
+end
+
 --- Run every Derived Pass over one flavor's loaded tables.
 ---
 --- Called from generator/flavor.lua after Static Corrections, which puts it in the pipeline
@@ -49,8 +67,7 @@ end
 ---@param flavor table An entry from config.flavors
 ---@return number ran How many passes executed
 function derived.run(loaded, flavor)
-  local LibQuestieDB = corrections.prepare(flavor).lib
-  local registry = LibQuestieDB and LibQuestieDB.Derived
+  local registry = registryFor(flavor)
   if not registry then return 0 end
 
   local support = supportProvider()

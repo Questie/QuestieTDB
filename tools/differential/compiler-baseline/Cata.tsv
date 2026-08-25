@@ -9,4 +9,3 @@
 Npc	spawns	VALUE	41	OPEN
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
 Object	spawns	VALUE	18	OPEN
-Quest	requiredRaces	VALUE	693	OPEN

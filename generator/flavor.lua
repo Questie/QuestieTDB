@@ -15,16 +15,23 @@ local derived = dofile("generator/derived.lua")
 
 local flavorLoader = {}
 
---- Load every entity type for one flavor.
+---Loads selected output types and any inputs needed to derive them for one flavor.
 ---@param flavor table An entry from config.flavors
 ---@param typeFilter table? name -> true
 ---@param applyCorrections boolean? false to get raw data untouched
----@return table loaded entityTypeName -> { meta, entities, path }
+---@return table loaded Selected output entityTypeName -> { meta, entities, path }
 ---@return table stats
 function flavorLoader.load(flavor, typeFilter, applyCorrections)
+  -- Derived inputs belong to the working set, not the output selection. Raw callers do not
+  -- run passes, so their filter stays untouched and they pay no dependency-loading cost.
+  local loadFilter = typeFilter
+  if applyCorrections ~= false then
+    loadFilter = derived.expandReadDependencies(typeFilter, flavor)
+  end
+
   local loaded = {}
   for _, entityType in ipairs(config.entityTypes) do
-    if not typeFilter or typeFilter[entityType.name] then
+    if not loadFilter or loadFilter[entityType.name] then
       local path = config.dataPath(flavor, entityType)
       local entities, keys = loader.loadEntityData(path, entityType)
       local meta = schema.loadMaterialized(entityType)
@@ -40,6 +47,14 @@ function flavorLoader.load(flavor, typeFilter, applyCorrections)
     -- Derived Passes run after corrections and before anything encodes or normalizes, which
     -- is the order Questie uses and the only order quantization survives (ADR 0004 D3).
     stats.derived = derived.run(loaded, flavor)
+  end
+
+  -- Dependency-only tables have done their job. Returning them would make generate.lua emit
+  -- entity types the caller did not request, changing the meaning of `--types`.
+  if typeFilter then
+    for typeName in pairs(loaded) do
+      if not typeFilter[typeName] then loaded[typeName] = nil end
+    end
   end
 
   return loaded, stats

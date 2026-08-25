@@ -176,6 +176,7 @@ config.derivedFiles = {
   "src/derived/registry.lua",
   "src/derived/_begin.lua",
   "src/derived/RamerDouglasPeucker.lua",
+  "src/derived/requiredRaces.lua",
   "src/derived/waypoints.lua",
   "src/derived/_end.lua",
 }

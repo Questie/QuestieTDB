@@ -154,6 +154,36 @@ local function applies(pass, flavor)
   return pass.expansions[flavor.expansion] == true
 end
 
+---Expands an output filter to include every input needed by its active Derived Passes.
+---The caller's filter remains the output contract; this copy is only the materialization
+---working set. Repeating to a fixed point also carries dependencies of dependency-only types.
+---@param typeFilter table<string, boolean>? Requested output entity types; nil means all types.
+---@param flavor table? Active flavor used for expansion-gated passes.
+---@return table<string, boolean>? expanded Independent working-set filter, or nil for all types.
+function derived.ExpandReadDependencies(typeFilter, flavor)
+  if not typeFilter then return nil end
+
+  local expanded = {}
+  for typeName, selected in pairs(typeFilter) do expanded[typeName] = selected end
+
+  local changed = true
+  while changed do
+    changed = false
+    for _, pass in ipairs(derived.passes) do
+      if expanded[pass.writes] and applies(pass, flavor) then
+        for _, readType in ipairs(pass.reads) do
+          if not expanded[readType] then
+            expanded[readType] = true
+            changed = true
+          end
+        end
+      end
+    end
+  end
+
+  return expanded
+end
+
 --- Run passes and return how many ran.
 ---
 ---@param typeName string? Restrict to passes writing this type; nil runs every pass

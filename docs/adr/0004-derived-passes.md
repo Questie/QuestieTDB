@@ -83,24 +83,34 @@ resolves to the loaded table offline and to `materialize()` in Source mode. Sour
 existing re-entrancy guard makes that safe, but a genuine cycle would silently read a
 half-built table, so **cycles are rejected at registration**, not discovered at runtime.
 
-### 4. Port a derivation when the derivation is the answer; materialize it when the derivation covers for missing data
+### 4. Separate the final representation from a temporary parity bridge
 
-Waypoint simplification and the `requiredRaces` patch are structurally identical — derived
-static passes over corrected data — and get opposite treatments, so the rule separating them
-is recorded rather than left to taste.
+Waypoint simplification and the `requiredRaces` patch are structurally identical as static
+passes over corrected data, but they still have different final representations.
 
 * **Waypoint simplification is a transform.** There is no authored value it stands in for; it
   is computed from the data by definition, and re-computing it is the correct representation.
   **Port it.**
-* **The `requiredRaces` patch is a guess filling a hole.** The right representation is
-  explicit data. Porting the loop preserves the hole and hides it behind machinery.
-  **Materialize it into corrections instead.**
+* **The `requiredRaces` patch is a guess filling a hole.** Explicit correction data remains
+  the right final representation. Until those corrections exist, `src/derived/requiredRaces.lua`
+  runs an exact compatibility transcription so Source and Baked mode match Questie's shipped
+  database. This is a temporary parity bridge, not approval of the inference policy. The proper
+  fix remains tracked in [#1](https://github.com/Questie/QuestieTDB/issues/1).
+
+The module keeps a corrected conservative variant beside the active transcription, unused. It
+preserves explicit zeroes and requires complete, unanimous faction evidence. Keeping both loops
+explicit makes their policy differences reviewable; only the Questie-compatible function is
+registered while parity is the contract.
+
+The static pass does not see Season of Discovery's runtime Dynamic Corrections. SoD parity is a
+separate post-composition problem tracked in
+[#13](https://github.com/Questie/QuestieTDB/issues/13).
 
 ### 5. Disposition of each pass
 
 | Pass | Disposition | Rationale |
 | --- | --- | --- |
-| Derived `requiredRaces` | **Open.** Materialize into explicit corrections, preferably upstream. Not ported. | Decision 4. Tracked in `TASK-derived-requiredRaces.md`; the pass slot is deliberately left empty. |
+| Derived `requiredRaces` | **Temporary compatibility pass.** Exact Questie behavior is ported; explicit corrections remain the final fix. | Closes the base-flavor parity gap without pretending the guess is authored data. Tracked by [#1](https://github.com/Questie/QuestieTDB/issues/1); SoD is separate in [#13](https://github.com/Questie/QuestieTDB/issues/13). |
 | `l10n:Initialize` data writes | **Deleted.** The l10n overlay replaces it. | Writing translations into entity tables is what made the compiled database locale-specific and forced `dbCompiledLang`. Verified inert at enUS, so the differential is unaffected. |
 | `DeleteGatheringNodes` | **Reassigned to the consumer** as a Questie-owned Dynamic Correction. Not a pass, and QuestieTDB keeps the data. | Object 1617 genuinely has spawns; declining to render 17,191 gathering-node spawn points is policy. The boundary rule and the `hiddenQuests` precedent both put it in Questie. |
 | `PreCompile` waypoint simplification | **Ported** as a Derived Pass. | Decision 4. |
@@ -118,7 +128,7 @@ local registrar = LibQuestieDB.GetRegistrar("Questie")
 registrar.RegisterRuntimeCorrection("Object", "gathering-nodes", function()
     local objectKeys = LibQuestieDB.Meta.ObjectMeta.objectKeys
     return {
-        [1617] = { [objectKeys.spawns] = {} },   -- Peacebloom
+        [1617] = { [objectKeys.spawns] = {} },   -- Silverleaf
         ...                                       -- 24 ids total
     }
 end, <loadOrder>)
@@ -143,7 +153,8 @@ it is justified in a comment at the call site rather than by silence.
 
 ## Consequences
 
-- All five artifacts regenerate. Waypoint subdivision *adds* points, so they grow slightly;
+- All five artifacts regenerate. The temporary pass materializes inferred race masks, and
+  waypoint subdivision *adds* points, so the artifacts change for both reasons;
   `tools/differential/golden/` needs refreshing and the diff reviewing.
 - `RamerDouglasPeucker.lua` joins the byte-identical port set, so `port-corrections.lua`
   carries it and CI fails on drift — the same treatment the correction files get.

@@ -1021,6 +1021,235 @@ suite("corrections", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Derived requiredRaces compatibility
+--------------------------------------------------------------------------------------------
+
+suite("derived-required-races", function()
+  local runtime = dofile("generator/runtime.lua")
+  local Lib = runtime.build()
+  local inference = Lib.DerivedRequiredRaces
+  local questKeys = Lib.Meta.Quest.keys
+  local npcKeys = Lib.Meta.Npc.keys
+
+  ---Builds the ordinary Derived Pass context around literal synthetic rows.
+  ---@param quests table<integer, table>
+  ---@param npcs table<integer, table>
+  ---@param flavor table
+  ---@return RequiredRacesDerivedContext context
+  local function inferenceContext(quests, npcs, flavor)
+    ---@param entityType string
+    ---@return table? entities
+    local function entities(entityType)
+      if entityType == "Quest" then return quests end
+      if entityType == "Npc" then return npcs end
+      return nil
+    end
+
+    ---@param entityType string
+    ---@return table? meta
+    local function meta(entityType)
+      return Lib.Meta[entityType]
+    end
+
+    return { flavor = flavor, entities = entities, meta = meta }
+  end
+
+  check(type(inference.ApplyQuestieCompatibility) == "function",
+    "the Questie compatibility function is published")
+  check(type(inference.ApplyCorrectedInference) == "function",
+    "the corrected conservative function is published")
+
+  local registered
+  local correctedRegistered = false
+  for _, pass in ipairs(Lib.Derived.Select("Quest")) do
+    if pass.name == "requiredRaces:questieCompatibility" then registered = pass end
+    if pass.run == inference.ApplyCorrectedInference then correctedRegistered = true end
+  end
+  check(registered ~= nil, "the requiredRaces compatibility pass is registered")
+  if registered then
+    equal(registered.reads, { "Quest", "Npc" },
+      "the compatibility pass declares its cross-entity inputs")
+    equal(registered.order, 50, "requiredRaces has the declared order before waypoint passes")
+    check(registered.run == inference.ApplyQuestieCompatibility,
+      "registration uses the exact Questie transcription")
+  end
+  equal(correctedRegistered, false, "the corrected policy remains deliberately unregistered")
+
+  -- These rows make Questie's permissive guesses visible. The opposite-faction object and
+  -- item starters prove the loop reads startedBy[1], while sparse creature evidence proves it
+  -- retains upstream's `pairs` iteration rather than silently becoming `ipairs`.
+  local questieQuests = {
+    [1001] = { [questKeys.startedBy] = { { 1 } } },
+    [1002] = { [questKeys.startedBy] = { { 1 } }, [questKeys.requiredRaces] = 0 },
+    [1003] = { [questKeys.startedBy] = { { 1, 999 } } },
+    [1004] = { [questKeys.startedBy] = { { 1 }, { 2 } } },
+    [1005] = { [questKeys.startedBy] = { { 1 }, nil, { 2 } } },
+    [1006] = { [questKeys.startedBy] = { { 1, 3 } } },
+    [1007] = { [questKeys.startedBy] = { { 1, 2 } } },
+    [1008] = { [questKeys.startedBy] = { { 1 } }, [questKeys.requiredRaces] = 77 },
+    [1009] = { [questKeys.startedBy] = { { 2, 4 } } },
+    [1010] = { [questKeys.startedBy] = { { 1, 5 } } },
+    [1011] = { [questKeys.startedBy] = { { [2] = 1 } } },
+  }
+  local npcs = {
+    [1] = { [npcKeys.friendlyToFaction] = "H" },
+    [2] = { [npcKeys.friendlyToFaction] = "A" },
+    [3] = { [npcKeys.friendlyToFaction] = "AH" },
+    [4] = { [npcKeys.friendlyToFaction] = "A" },
+    [5] = { [npcKeys.friendlyToFaction] = "unknown" },
+  }
+  inference.ApplyQuestieCompatibility(
+    inferenceContext(questieQuests, npcs, config.flavorByName.Vanilla))
+
+  equal(questieQuests[1001][questKeys.requiredRaces], 178,
+    "Questie infers Horde from one Horde creature starter")
+  equal(questieQuests[1002][questKeys.requiredRaces], 178,
+    "Questie overwrites an explicit zero")
+  equal(questieQuests[1003][questKeys.requiredRaces], 178,
+    "Questie ignores a missing NPC beside Horde evidence")
+  equal(questieQuests[1004][questKeys.requiredRaces], 178,
+    "Questie ignores an Alliance object starter beside Horde creature evidence")
+  equal(questieQuests[1005][questKeys.requiredRaces], 178,
+    "Questie ignores an Alliance item starter beside Horde creature evidence")
+  equal(questieQuests[1006][questKeys.requiredRaces], nil,
+    "an AH starter adds both flags and cancels Horde-only inference")
+  equal(questieQuests[1007][questKeys.requiredRaces], nil,
+    "mixed Alliance and Horde starters prevent Questie inference")
+  equal(questieQuests[1008][questKeys.requiredRaces], 77,
+    "Questie preserves every nonzero authored mask")
+  equal(questieQuests[1009][questKeys.requiredRaces], 77,
+    "unanimous Alliance creature starters infer Alliance")
+  equal(questieQuests[1010][questKeys.requiredRaces], 178,
+    "Questie ignores an unknown faction value beside Horde evidence")
+  equal(questieQuests[1011][questKeys.requiredRaces], 178,
+    "Questie reads a sparse creature starter list with pairs")
+
+  local maskCases = {
+    { flavor = config.flavorByName.Vanilla, alliance = 77, horde = 178 },
+    { flavor = config.flavorByName.TBC, alliance = 1101, horde = 690 },
+    { flavor = config.flavorByName.Wrath, alliance = 1101, horde = 690 },
+    { flavor = config.flavorByName.Cata, alliance = 2098253, horde = 946 },
+    { flavor = config.flavorByName.Mists, alliance = 18875469, horde = 33555378 },
+  }
+  for _, case in ipairs(maskCases) do
+    local quests = {
+      [2001] = { [questKeys.startedBy] = { { 1 } } },
+      [2002] = { [questKeys.startedBy] = { { 2 } } },
+    }
+    inference.ApplyQuestieCompatibility(inferenceContext(quests, npcs, case.flavor))
+    equal(quests[2001][questKeys.requiredRaces], case.horde,
+      case.flavor.name .. " uses its literal ALL_HORDE mask")
+    equal(quests[2002][questKeys.requiredRaces], case.alliance,
+      case.flavor.name .. " uses its literal ALL_ALLIANCE mask")
+  end
+
+  -- The parked policy requires complete, faction-exclusive evidence and preserves explicit
+  -- author intent. Side-by-side fixtures make every deliberate divergence reviewable.
+  local correctedQuests = {
+    [3001] = { [questKeys.startedBy] = { { 1 } } },
+    [3002] = { [questKeys.startedBy] = { { 1 } }, [questKeys.requiredRaces] = 0 },
+    [3003] = { [questKeys.startedBy] = { { 1, 999 } } },
+    [3004] = { [questKeys.startedBy] = { { 1 }, { 2 } } },
+    [3005] = { [questKeys.startedBy] = { { 1 }, nil, { 2 } } },
+    [3006] = { [questKeys.startedBy] = { { 1, 3 } } },
+    [3007] = { [questKeys.startedBy] = { { 1, 2 } } },
+    [3008] = { [questKeys.startedBy] = { { 1 } }, [questKeys.requiredRaces] = 77 },
+    [3009] = { [questKeys.startedBy] = { { 2, 4 } } },
+    [3010] = { [questKeys.startedBy] = { { 1, 5 } } },
+  }
+  inference.ApplyCorrectedInference(
+    inferenceContext(correctedQuests, npcs, config.flavorByName.Vanilla))
+
+  equal(correctedQuests[3001][questKeys.requiredRaces], 178,
+    "corrected policy infers from complete Horde evidence")
+  equal(correctedQuests[3002][questKeys.requiredRaces], 0,
+    "corrected policy preserves an explicit zero")
+  equal(correctedQuests[3003][questKeys.requiredRaces], nil,
+    "corrected policy refuses unresolved creature starters")
+  equal(correctedQuests[3004][questKeys.requiredRaces], nil,
+    "corrected policy refuses an object access path")
+  equal(correctedQuests[3005][questKeys.requiredRaces], nil,
+    "corrected policy refuses an item access path")
+  equal(correctedQuests[3006][questKeys.requiredRaces], nil,
+    "corrected policy refuses an AH starter")
+  equal(correctedQuests[3007][questKeys.requiredRaces], nil,
+    "corrected policy refuses mixed factions")
+  equal(correctedQuests[3008][questKeys.requiredRaces], 77,
+    "corrected policy preserves a nonzero mask")
+  equal(correctedQuests[3009][questKeys.requiredRaces], 77,
+    "corrected policy accepts unanimous resolved Alliance starters")
+  equal(correctedQuests[3010][questKeys.requiredRaces], nil,
+    "corrected policy refuses an unknown faction value")
+
+  -- Dependency expansion is generic rather than coupled to requiredRaces. The synthetic chain
+  -- proves transitive closure and flavor gating without modifying the runtime registry above.
+  local dependencyRegistry = dofile("src/derived/registry.lua")
+  ---@return nil
+  local function noOpPass() end
+  -- Reverse dependency order forces expansion to revisit earlier passes. A single scan can
+  -- discover Npc from Quest, but cannot reach Item or Object.
+  dependencyRegistry.Register({
+    name = "test:item-needs-object-in-mop", writes = "Item", reads = { "Item", "Object" },
+    expansions = { MoP = true }, run = noOpPass,
+  })
+  dependencyRegistry.Register({
+    name = "test:npc-needs-item", writes = "Npc", reads = { "Npc", "Item" },
+    run = noOpPass,
+  })
+  dependencyRegistry.Register({
+    name = "test:quest-needs-npc", writes = "Quest", reads = { "Quest", "Npc" },
+    run = noOpPass,
+  })
+
+  local requested = { Quest = true }
+  equal(dependencyRegistry.ExpandReadDependencies(requested, config.flavorByName.Vanilla),
+    { Quest = true, Npc = true, Item = true },
+    "dependency expansion reaches a fixed point and honors a closed flavor gate")
+  equal(dependencyRegistry.ExpandReadDependencies(requested, config.flavorByName.Mists),
+    { Quest = true, Npc = true, Item = true, Object = true },
+    "dependency expansion includes a transitive pass active for the flavor")
+  equal(requested, { Quest = true }, "dependency expansion does not mutate the output filter")
+
+  local flavorLoader = dofile("generator/flavor.lua")
+  local loaded = flavorLoader.load(config.flavorByName.Vanilla, { Quest = true })
+  check(loaded.Quest ~= nil, "Quest-only Generation returns the requested Quest output")
+  equal(loaded.Npc, nil, "Quest-only Generation does not return its Npc input")
+  equal(loaded.Item, nil, "Quest-only Generation does not return unrelated Item data")
+  equal(loaded.Object, nil, "Quest-only Generation does not return unrelated Object data")
+  equal(loaded.Quest.entities[7162][questKeys.requiredRaces], 77,
+    "Quest-only Generation infers quest 7162 from its corrected Npc input")
+
+  -- Raw loading does not run Corrections or Derived Passes, so it needs no dependency inputs.
+  local rawRequested = { Quest = true }
+  local rawLoaded, rawStats = flavorLoader.load(
+    config.flavorByName.Vanilla, rawRequested, false)
+  check(rawLoaded.Quest ~= nil, "raw Quest-only loading returns the requested Quest output")
+  equal(rawLoaded.Npc, nil, "raw Quest-only loading does not load or return Npc data")
+  equal(rawLoaded.Item, nil, "raw Quest-only loading does not return Item data")
+  equal(rawLoaded.Object, nil, "raw Quest-only loading does not return Object data")
+  equal(rawStats.applied, 0, "raw Quest-only loading applies no Static Corrections")
+  equal(rawStats.derived, nil, "raw Quest-only loading runs no Derived Passes")
+  equal(rawLoaded.Quest.entities[7162][questKeys.requiredRaces], 0,
+    "raw Quest-only loading preserves quest 7162's zero requiredRaces value")
+  equal(rawRequested, { Quest = true }, "raw loading does not mutate the output filter")
+
+  client.reset()
+  client.install({ expansion = "Classic" })
+  local sourceLib = emulator.loadAddon(config.addonName .. ".toc", config.addonName)
+  equal(sourceLib.Quest.Get(7162, "requiredRaces"), 77,
+    "Source mode infers quest 7162 through the registered pass")
+  check(sourceLib.read.source.entities.Npc ~= nil,
+    "Source mode materializes the declared Npc dependency before inference")
+  client.reset()
+
+  local shipsRequiredRaces = false
+  for _, path in ipairs(config.bakedFileList(config.flavorByName.Vanilla)) do
+    if path == "src/derived/requiredRaces.lua" then shipsRequiredRaces = true end
+  end
+  equal(shipsRequiredRaces, false, "baked clients do not rerun the materialized pass")
+end)
+
+--------------------------------------------------------------------------------------------
 -- Correction Overlay
 --------------------------------------------------------------------------------------------
 

@@ -16,7 +16,19 @@ LibQuestieDB.__derivedPreviousLoader = nil
 LibQuestieDB.__derivedModules = nil
 
 local derived = LibQuestieDB.Derived
+local requiredRaces = LibQuestieDB.DerivedRequiredRaces
 local waypoints = LibQuestieDB.DerivedWaypoints
+
+-- Questie's Initialize infers requiredRaces before MinimalInit and PreCompile. Register only
+-- the exact compatibility transcription; ApplyCorrectedInference documents a safer policy but
+-- remains unused while matching Questie's shipped database is the contract.
+derived.Register({
+  name = "requiredRaces:questieCompatibility",
+  writes = "Quest",
+  reads = { "Quest", "Npc" },
+  order = 50,
+  run = requiredRaces.ApplyQuestieCompatibility,
+})
 
 -- Upstream's PreCompile walks npcData then objectData. Objects only carry waypoints from Cata
 -- onward, so the second pass is a no-op on earlier flavors rather than conditional.
