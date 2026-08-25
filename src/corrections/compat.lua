@@ -8,9 +8,10 @@
 -- permanent merge conflict with upstream. Re-syncing is a file copy, run by
 -- `tools/port-corrections.lua`.
 --
--- The price is this file: a scoped stand-in for `QuestieLoader` and the handful of Questie
--- modules those files import. It is installed only while correction files are being loaded and
--- removed immediately afterwards, so nothing here leaks into the consumer's environment.
+-- The price is this file: scoped stand-ins for `QuestieLoader`, the handful of Questie
+-- modules those files import, and the icon constants their providers read later. The loader is
+-- installed only while correction files load. The `Questie` stand-in exists in the global
+-- namespace only while a registered provider runs, and both globals are restored afterwards.
 
 local _, LibQuestieDB = ...
 
@@ -121,11 +122,15 @@ end
 
 local saved
 
---- Install the shim. Returns a function that removes it again.
----
---- Scoped rather than permanent because `QuestieLoader` and `Questie` belong to the consumer;
---- QuestieTDB borrows them for the duration of loading its own correction files and gives them
---- straight back.
+-- Copied providers resolve these constants through the global at invocation time. Keep the
+-- stand-in private between calls so Questie's duplicate-installation check sees an unclaimed
+-- global when it loads after QuestieTDB.
+local correctionQuestie = {}
+for name, value in pairs(constants.iconTypes) do correctionQuestie[name] = value end
+
+--- Installs the loader shim while the copied correction files define their modules.
+---@param flavor table? Active database flavor.
+---@return fun(): nil remove Restores the previous `QuestieLoader`.
 function compat.Install(flavor)
   local expansionOrder = LibQuestieDB.Corrections.expansionOrder
   local order = (flavor and expansionOrder[flavor.expansion]) or 1
@@ -147,42 +152,31 @@ function compat.Install(flavor)
     end,
   }
 
-  -- `Questie.ICON_TYPE_*` is referenced directly by correction files, alongside `Questie.Is*`
-  -- flags — and unlike the module imports, those are read from the **global at apply time**,
-  -- not captured at load time. So this one is *augmented in place and left installed* rather
-  -- than removed with the rest of the shim: tearing it down would leave every Dynamic
-  -- Correction reading a nil global the moment it ran.
-  --
-  -- In a client the consumer owns this table. QuestieTDB loads first, so it may not exist yet;
-  -- the fields written here are only ever the ones that are missing, and the consumer's own
-  -- definitions win as soon as it loads. Its `ApplyRegisteredCorrections` call then recomposes
-  -- against the real values.
-  local questie = rawget(_G, "Questie")
-  if type(questie) ~= "table" then questie = {} end
-  for name, value in pairs(constants.iconTypes) do
-    if questie[name] == nil then questie[name] = value end
-  end
-  if questie.IsClassic == nil then questie.IsClassic = (order == 1) end
-  if questie.IsTBC == nil then questie.IsTBC = (order == 2) end
-  if questie.IsWotlk == nil then questie.IsWotlk = (order == 3) end
-  if questie.IsCata == nil then questie.IsCata = (order == 4) end
-  if questie.IsMoP == nil then questie.IsMoP = (order == 5) end
-  if questie.IsSoD == nil then questie.IsSoD = false end
-  if questie.IsSoM == nil then questie.IsSoM = false end
-  if questie.IsHardcore == nil then questie.IsHardcore = false end
-  if questie.IsAnniversary == nil then questie.IsAnniversary = false end
-  if questie.IsTitanRuneReforged == nil then questie.IsTitanRuneReforged = false end
-  if questie.IsChinaRegion == nil then questie.IsChinaRegion = false end
-  questie.db = questie.db or { profile = {}, global = {}, char = {} }
-  _G.Questie = questie
-
   return compat.Remove
 end
 
+--- Restores the loader global saved by `Install`.
+---@return nil
 function compat.Remove()
   if not saved then return end
   _G.QuestieLoader = saved.QuestieLoader
   saved = nil
+end
+
+--- Invokes a copied correction provider with its private `Questie` constants available.
+--- Restoration happens before an error is rethrown, so a bad provider cannot block Questie.
+---@param func fun(...): table? Copied correction provider.
+---@param ... any Provider receiver and arguments.
+---@return table? corrections Provider result.
+function compat.Invoke(func, ...)
+  local previousQuestie = rawget(_G, "Questie")
+  rawset(_G, "Questie", correctionQuestie)
+
+  local ok, returned = pcall(func, ...)
+  rawset(_G, "Questie", previousQuestie)
+
+  if not ok then error(returned, 0) end
+  return returned
 end
 
 --------------------------------------------------------------------------------------------

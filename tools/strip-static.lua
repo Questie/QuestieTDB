@@ -220,7 +220,7 @@ local function observe(spec, content, label)
       fail("%s (%s): %s is not a function after load", spec.file, label, name)
     end
     compat.BeginCapture()
-    local callOk, returned = pcall(fn, module)
+    local callOk, returned = pcall(compat.Invoke, fn, module)
     if not callOk then
       remove()
       fail("%s (%s): %s raised: %s", spec.file, label, name, tostring(returned))

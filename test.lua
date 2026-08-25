@@ -868,7 +868,47 @@ suite("corrections", function()
   end
 
   local registry = Lib.Corrections
+  local previousQuestie = rawget(_G, "Questie")
+  rawset(_G, "Questie", nil)
   runtime.loadCorrections(Lib, flavor)
+  equal(rawget(_G, "Questie"), nil,
+    "loading correction files leaves Questie's global unclaimed")
+
+  -- Copied providers borrow a private Questie table and restore the consumer's exact value.
+  local consumerQuestie = { marker = "consumer-owned" }
+  rawset(_G, "Questie", consumerQuestie)
+  local invokedQuestie
+  local returned = Lib.CorrectionCompat.Invoke(function()
+    invokedQuestie = rawget(_G, "Questie")
+    return { icon = Questie.ICON_TYPE_EVENT }
+  end)
+  equal(returned.icon, 3, "the invocation-scoped shim supplies Questie's icon constants")
+  check(invokedQuestie ~= consumerQuestie,
+    "a provider sees the private stand-in rather than the consumer's table")
+  check(rawget(_G, "Questie") == consumerQuestie,
+    "successful invocation restores a pre-existing Questie table by identity")
+  equal(consumerQuestie, { marker = "consumer-owned" },
+    "the invocation shim does not augment the consumer's Questie table")
+
+  local invokeOk, invokeErr = pcall(Lib.CorrectionCompat.Invoke, function()
+    error("correction provider failed", 0)
+  end)
+  check(not invokeOk and tostring(invokeErr):find("correction provider failed", 1, true) ~= nil,
+    "provider errors are rethrown after cleanup")
+  check(rawget(_G, "Questie") == consumerQuestie,
+    "failed invocation restores a pre-existing Questie table by identity")
+  rawset(_G, "Questie", previousQuestie)
+
+  local questieFields = {}
+  for _, spec in ipairs(Lib.CorrectionManifest) do
+    local content = lib.readAll("src/corrections/" .. spec.file)
+    for field in content:gmatch("Questie%.([%a_][%w_]*)") do questieFields[field] = true end
+  end
+  check(next(questieFields) ~= nil, "copied correction files contain direct Questie references")
+  for field in pairs(questieFields) do
+    check(Lib.Enum.iconTypes[field] ~= nil,
+      "the invocation shim declares directly referenced Questie field " .. field)
+  end
 
   local entries = registry.Select({})
   check(#entries > 0, "corrections registered")
@@ -1018,6 +1058,32 @@ suite("corrections", function()
   local finalSpawns = wrathNpcs[30208][7]
   check(type(finalSpawns) == "table" and next(finalSpawns) == nil,
     "WotLK hand-authored NPC spawn deletion wins over LoadAutomatics")
+
+  -- Exercise the shipped source-mode load order, including _begin.lua, _end.lua, and the
+  -- initial correction application in api.lua. Questie must be free to claim its own global
+  -- immediately afterwards, while deferred providers must still resolve their icon constants.
+  client.reset()
+  client.install({ expansion = "Classic" })
+  local sourceLib = emulator.loadAddon(config.addonName .. ".toc", config.addonName)
+  local objectives = sourceLib.Quest.Get(28, "objectives")
+  equal(objectives and objectives[2] and objectives[2][1] and objectives[2][1][3], 3,
+    "source-mode corrections still resolve Questie's event icon")
+  equal(rawget(_G, "Questie"), nil,
+    "loading the QuestieTDB addon leaves no Questie compatibility global")
+  client.reset()
+
+  -- Packaging invokes surviving Dynamic providers to compare staged and original behavior.
+  -- Cata's faction provider reads an icon constant, so this catches any packaging path that
+  -- bypasses the same invocation scope used by the runtime registry.
+  local stripStage = ".out/test-strip-static/QuestieTDB"
+  commandSucceeded("rm -rf " .. shellQuote(stripStage))
+  lib.mkdirp(stripStage .. "/src/corrections/Cata")
+  lib.copyFile("src/corrections/Cata/cataQuestFixes.lua",
+    stripStage .. "/src/corrections/Cata/cataQuestFixes.lua")
+  check(commandSucceeded(shellQuote(LUA_BIN) .. " tools/strip-static.lua " ..
+    shellQuote(stripStage) .. " --quiet"),
+    "package stripping invokes copied providers through the scoped Questie shim")
+  commandSucceeded("rm -rf " .. shellQuote(stripStage))
 end)
 
 --------------------------------------------------------------------------------------------

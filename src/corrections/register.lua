@@ -22,10 +22,14 @@ local compat = LibQuestieDB.CorrectionCompat
 --- write straight into `QuestieDB.questData[id]` to make the database emit a row at all. The
 --- compat shim captures those writes, and both contributions are merged here, direct writes
 --- first so a returned value wins.
+---@param module table
+---@param functionName string
+---@param datatype string
+---@return fun(): table
 local function wrap(module, functionName, datatype)
   return function()
     compat.BeginCapture()
-    local returned = module[functionName](module)
+    local returned = compat.Invoke(module[functionName], module)
     local captured = compat.EndCapture(datatype)
 
     local merged = {}
@@ -218,7 +222,8 @@ function register.ApplyParameterized(functionName, ...)
       function()
         -- Re-invoke through the same capture path, with the consumer's arguments.
         compat.BeginCapture()
-        local returned = module[recorded.functionName](module, unpack(args, 1, argCount))
+        local returned = compat.Invoke(
+          module[recorded.functionName], module, unpack(args, 1, argCount))
         local captured = compat.EndCapture(spec.datatype)
         local merged = {}
         for id, fields in pairs(captured) do

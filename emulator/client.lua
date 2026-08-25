@@ -105,9 +105,6 @@ function client.reset()
   _G.QuestDB, _G.NpcDB, _G.ItemDB, _G.ObjectDB = nil, nil, nil, nil
   _G.LibQuestieDB = nil
   _G.QuestieLoader = nil
-  -- The correction compat shim leaves a `Questie` stub installed on purpose, so Dynamic
-  -- Corrections can read `Questie.IsSoD` at apply time. Clear it between loads or a stub built
-  -- for one expansion would answer questions asked by the next.
   _G.Questie = nil
   _G.QuestieTDBSourceModeIndicator = nil
 end
