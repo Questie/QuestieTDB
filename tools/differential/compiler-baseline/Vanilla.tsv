@@ -6,6 +6,6 @@
 #
 # Refresh with: compiler_diff.py Vanilla --update-baseline
 # entityType	field	class	count	reason
-Npc	spawns	VALUE	9	OPEN
+Npc	maxLevelHealth	VALUE	10106	POLICY
+Npc	minLevelHealth	VALUE	10090	POLICY
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
-Object	spawns	VALUE	9	OPEN

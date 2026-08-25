@@ -6,6 +6,6 @@
 #
 # Refresh with: compiler_diff.py Mists --update-baseline
 # entityType	field	class	count	reason
-Npc	spawns	VALUE	59	OPEN
+Npc	maxLevelHealth	VALUE	53539	POLICY
+Npc	minLevelHealth	VALUE	45875	POLICY
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
-Object	spawns	VALUE	19	OPEN
