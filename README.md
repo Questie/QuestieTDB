@@ -57,34 +57,49 @@ Two behaviours to internalise before writing anything:
 
 ## For contributors
 
-```sh
-lua5.1 generate.lua all           # every flavor            ~50s
-lua5.1 verify.lua                 # round-trip verification ~96s
-lua5.1 equivalence.lua            # source == baked, all read forms + self-proof
-lua5.1 reconstruct.lua Vanilla    # artifact == byte-exact re-derivation ~8s
-lua5.1 validators/run.lua         # cross-entity invariants  ~4s
-lua5.1 test.lua                   # unit tests and negative controls
+Use the root command for generation and validation workflows:
 
-python3 tools/differential/golden.py check Vanilla    # composed reads == committed snapshot ~5s
-python3 tools/differential/compiler_diff.py Vanilla  # composed reads == Questie's compiler ~10s
+```sh
+./questietdb generate                    # generate every flavor
+./questietdb generate Vanilla            # generate one flavor
+./questietdb check Vanilla               # standard validation bundle for one flavor
+./questietdb verify equivalence Vanilla Mists
+./questietdb all                         # Generation, standard gates, Golden, and unit tests
 ```
 
-Or run the whole sweep at once:
+Run `./questietdb --help` for every gate and option. It requires Bash 5.1 or newer and selects
+`lua5.1`, or a `lua` command that reports Lua 5.1. `LUA` and `--lua=` can select another Lua
+5.1-compatible executable explicitly. The `freeze` gate supports Vanilla and Mists.
+
+The individual entry points remain useful while developing a gate:
 
 ```sh
+lua5.1 generate.lua all
+lua5.1 verify.lua
+lua5.1 equivalence.lua
+lua5.1 reconstruct.lua Vanilla
+lua5.1 validators/run.lua
+lua5.1 test.lua
+
+python3 tools/differential/golden.py check Vanilla
+python3 tools/differential/compiler_diff.py Vanilla
+
 tools/check.sh                    # verify, equivalence, reconstruct, validators, differential
-tools/check.sh all                # Generation, every gate, and the unit tests
+tools/check.sh all                # Generation, standard gates, Golden, and unit tests
 tools/check.sh verify --flavors=Vanilla,Mists
 tools/check.sh determinism freeze --flavors=Vanilla
 ```
+
+`tools/check.sh` remains the direct orchestration engine for automation and existing scripts.
+It accepts the previous gate syntax and `--flavors=Vanilla,Mists`.
 
 The sweep parallelises by memory budget rather than core count, because the jobs are wildly
 uneven — equivalence on Mists peaks at 1.66 GB and 57 s, on Vanilla at 0.42 GB and 19 s — so a
 flat `-j N` either thrashes a laptop or leaves a workstation idle. `all` finishes Generation
 for every selected flavor before any artifact reader or unit test starts. Determinism and
 freeze checks remain available as explicit gates. The budget comes from `MemAvailable` at
-startup; `--budget-mb=N` overrides it and `--sequential` turns fan-out off. Per-job logs land
-in `.out/checks/`.
+startup; `--budget-mb=N` overrides it with a value from 1 to 2147483647 MB, and `--sequential`
+turns fan-out off. Per-job logs land in `.out/checks/`.
 
 The golden gate is the successor to the cross-implementation differential (built to
 compare this tree against the independent `-pi` sibling, where it caught the Era-gating,
@@ -152,6 +167,7 @@ src/
 data/                     raw entity data
 support/                  zones, quest XP, drop tables, faction templates
 
+questietdb                contributor command for generation and validation
 generate.lua              data + Static Corrections -> TOC
 verify.lua                round-trip verification
 equivalence.lua           source/baked equivalence, every read form, self-proving

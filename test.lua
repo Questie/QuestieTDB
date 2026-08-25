@@ -259,12 +259,20 @@ suite("check-flow", function()
   commandSucceeded("rm -rf " .. shellQuote(root))
   lib.mkdirp(root .. "/tools")
   lib.mkdirp(root .. "/fake-bin")
+  lib.copyFile("questietdb", root .. "/questietdb")
   lib.copyFile("tools/check.sh", root .. "/tools/check.sh")
 
   local fakeLua = root .. "/fake-lua"
   lib.writeAll(fakeLua, [[#!/usr/bin/env bash
 set -eu
+if [ "${1:-}" = "-e" ] && [ "${2:-}" = "io.write(_VERSION)" ]; then
+  printf 'Lua 5.1'
+  exit 0
+fi
 printf 'lua\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
+if [ "${CHECK_FLOW_FAIL_VERIFY:-0}" = "1" ] && [ "${1:-}" = "verify.lua" ]; then
+  exit 7
+fi
 if [ "${1:-}" = "generate.lua" ]; then
   case "${2:-}" in
     Vanilla|Mists) printf 'artifact\n' > "QuestieTDB_${2}.toc" ;;
@@ -273,12 +281,24 @@ elif [ "${1:-}" = "verify.lua" ]; then
   printf '[PASS] fixture summary %0100d summary-tail\n' 0
 fi
 ]])
+  local wrongLua = root .. "/wrong-lua"
+  lib.writeAll(wrongLua, [[#!/usr/bin/env bash
+if [ "${1:-}" = "-e" ] && [ "${2:-}" = "io.write(_VERSION)" ]; then
+  printf 'Lua 5.4'
+  exit 0
+fi
+printf 'wrong-lua-job\t%s\n' "$*" >> "$CHECK_FLOW_LOG"
+exit 99
+]])
+  lib.copyFile(fakeLua, root .. "/fake-bin/lua5.1")
   lib.writeAll(root .. "/fake-bin/python3", [[#!/usr/bin/env bash
 set -eu
 printf 'python\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
 ]])
-  check(commandSucceeded("chmod +x " .. shellQuote(root .. "/tools/check.sh") .. " " ..
-    shellQuote(fakeLua) .. " " .. shellQuote(root .. "/fake-bin/python3")),
+  check(commandSucceeded("chmod +x " .. shellQuote(root .. "/questietdb") .. " " ..
+    shellQuote(root .. "/tools/check.sh") .. " " .. shellQuote(fakeLua) .. " " ..
+    shellQuote(wrongLua) .. " " .. shellQuote(root .. "/fake-bin/lua5.1") .. " " ..
+    shellQuote(root .. "/fake-bin/python3")),
     "full-flow fixture executables prepared")
 
   local pwdPipe = assert(io.popen("pwd", "r"))
@@ -288,16 +308,51 @@ printf 'python\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
   local logPath = rootAbs .. "/commands.log"
   local outputPath = rootAbs .. "/output.log"
 
-  ---@param arguments string
-  ---@return boolean succeeded
-  local function runFlow(arguments)
+  ---Removes outputs that would let one CLI fixture affect the next.
+  ---@return nil
+  local function resetFlowFiles()
     commandSucceeded("rm -f " .. shellQuote(logPath) .. " " ..
       shellQuote(rootAbs .. "/QuestieTDB_Vanilla.toc") .. " " ..
       shellQuote(rootAbs .. "/QuestieTDB_Mists.toc"))
+  end
+
+  ---@param arguments string
+  ---@param runInParallel boolean? Omit to preserve the fixture's sequential default.
+  ---@param failVerify boolean? Make the fake Verification command fail after logging.
+  ---@param discoverLua boolean? Clear inherited LUA and exercise automatic discovery.
+  ---@param luaPath string? Explicit interpreter override for prerequisite-order tests.
+  ---@return boolean succeeded
+  local function runFlow(arguments, runInParallel, failVerify, discoverLua, luaPath)
+    resetFlowFiles()
+    local schedulingOption = runInParallel and "" or " --sequential"
+    local failureEnvironment = failVerify and " CHECK_FLOW_FAIL_VERIFY=1" or ""
+    local luaEnvironment = discoverLua and " LUA=" or ""
+    local luaOption = discoverLua and "" or
+      " --lua=" .. shellQuote(luaPath or rootAbs .. "/fake-lua")
     local command = "cd " .. shellQuote(rootAbs) .. " && PATH=" ..
       shellQuote(rootAbs .. "/fake-bin") .. ":\"$PATH\" CHECK_FLOW_LOG=" ..
-      shellQuote(logPath) .. " bash tools/check.sh " .. arguments ..
-      " --sequential --questie=/tmp/fake-questie --lua=" .. shellQuote(rootAbs .. "/fake-lua") ..
+      shellQuote(logPath) .. failureEnvironment .. luaEnvironment ..
+      " bash tools/check.sh " .. arguments .. schedulingOption ..
+      " --questie=/tmp/fake-questie" .. luaOption ..
+      " > " .. shellQuote(outputPath) .. " 2>&1"
+    return commandSucceeded(command)
+  end
+
+  ---Runs the public CLI against fake tools, without touching real artifacts or Questie.
+  ---@param arguments string
+  ---@param luaPath string? Interpreter override for prerequisite failure cases.
+  ---@param includeFixtureOptions boolean? Pass false to test a truly argument-free invocation.
+  ---@return boolean succeeded
+  local function runPublicFlow(arguments, luaPath, includeFixtureOptions)
+    resetFlowFiles()
+    local fixtureOptions = ""
+    if includeFixtureOptions ~= false then
+      fixtureOptions = " --sequential --questie=/tmp/fake-questie --lua=" ..
+        shellQuote(luaPath or rootAbs .. "/fake-lua")
+    end
+    local command = "cd " .. shellQuote(rootAbs) .. " && PATH=" ..
+      shellQuote(rootAbs .. "/fake-bin") .. ":\"$PATH\" CHECK_FLOW_LOG=" ..
+      shellQuote(logPath) .. " ./questietdb " .. arguments .. fixtureOptions ..
       " > " .. shellQuote(outputPath) .. " 2>&1"
     return commandSucceeded(command)
   end
@@ -361,6 +416,188 @@ printf 'python\tquestie=%s\t%s\n' "${QUESTIE_PATH:-}" "$*" >> "$CHECK_FLOW_LOG"
   check(testLog:find("\ttest.lua", 1, true) ~= nil and
         testLog:find("assertQuestiePin", 1, true) == nil,
     "standalone unit tests run without the Questie pin preflight")
+
+  check(runFlow("test verify validators --flavors=Vanilla,Mists --budget-mb=2000", true),
+    "parallel scheduler fixture passes")
+  local schedulerOutput = lib.readAll(outputPath)
+  local testStarted = schedulerOutput:find("  start test", 1, true)
+  local vanillaStarted = schedulerOutput:find("  start verify:Vanilla", 1, true)
+  local mistsStarted = schedulerOutput:find("  start verify:Mists", 1, true)
+  check(testStarted ~= nil and vanillaStarted ~= nil and testStarted < vanillaStarted,
+    "the long-running unit tests are dispatched first")
+  check(vanillaStarted ~= nil and mistsStarted ~= nil and vanillaStarted < mistsStarted,
+    "a smaller fitting job bypasses a blocked heavier job")
+  check(schedulerOutput:find("all 5 checks jobs passed", 1, true) ~= nil,
+    "every parallel scheduler fixture job completes")
+
+  -- Public CLI parsing stays separate from the scheduler fixture so selection errors prove
+  -- they fail before the engine starts any work.
+  check(runPublicFlow("", nil, false), "the argument-free public CLI prints help")
+  local publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("Usage: ./questietdb", 1, true) ~= nil and
+        not lib.fileExists(logPath),
+    "public CLI help runs no tools")
+  check(runPublicFlow("--help"), "the explicit public CLI help passes")
+
+  check(runPublicFlow("generate"), "a task-only Generation selects every flavor")
+  local publicLog = lib.readAll(logPath)
+  for _, flavor in ipairs({ "Vanilla", "TBC", "Wrath", "Cata", "Mists" }) do
+    equal(#positionsOf(publicLog, "generate.lua " .. flavor), 1,
+      "task-only Generation includes " .. flavor)
+  end
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("unbound variable", 1, true) == nil,
+    "task-only commands do not trip set -u")
+
+  check(runPublicFlow("generate Vanilla"), "a positional Vanilla Generation passes")
+  publicLog = lib.readAll(logPath)
+  equal(#positionsOf(publicLog, "generate.lua Vanilla"), 1,
+    "a positional flavor selects Vanilla once")
+  equal(#positionsOf(publicLog, "generate.lua Mists"), 0,
+    "a positional flavor excludes unselected flavors")
+
+  check(runPublicFlow("generate Vanilla Mists"), "multiple positional flavors pass")
+  publicLog = lib.readAll(logPath)
+  equal(#positionsOf(publicLog, "generate.lua Vanilla"), 1,
+    "multiple positional flavors include Vanilla")
+  equal(#positionsOf(publicLog, "generate.lua Mists"), 1,
+    "multiple positional flavors include Mists")
+
+  check(runPublicFlow("check Vanilla"), "the public check bundle passes")
+  publicLog = lib.readAll(logPath)
+  for _, needle in ipairs({
+    "verify.lua Vanilla", "equivalence.lua Vanilla", "reconstruct.lua Vanilla",
+    "validators/run.lua Vanilla", "compiler_diff.py Vanilla",
+  }) do
+    check(publicLog:find(needle, 1, true) ~= nil,
+      "the public check bundle includes " .. needle)
+  end
+  check(publicLog:find("generate.lua Vanilla", 1, true) == nil and
+        publicLog:find("golden.py", 1, true) == nil and
+        publicLog:find("\ttest.lua", 1, true) == nil,
+    "the public check bundle includes only the standard gates")
+
+  check(not runPublicFlow("Vanilla"), "a flavor without a task fails")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("no task selected", 1, true) ~= nil and
+        publicOutput:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+    "a flavor-only command cannot launch the engine's default checks")
+
+  check(not runPublicFlow("--sequential", nil, false), "an option without a task fails")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("no task selected", 1, true) ~= nil and
+        publicOutput:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+    "an option-only command cannot launch the engine's default checks")
+
+  check(not runPublicFlow("generate Unknown"), "an unknown public CLI token fails")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("unknown task or flavor: Unknown", 1, true) ~= nil,
+    "an unknown token reports the bad value")
+
+  check(not runPublicFlow("generate Vanilla --flavors=Mists"),
+    "positional and option flavor selection conflict")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("positional flavors cannot be combined", 1, true) ~= nil,
+    "the conflicting flavor selectors explain the correction")
+
+  for _, badBudget in ipairs({ "", "0", "abc" }) do
+    check(not runPublicFlow("generate --budget-mb=" .. badBudget, nil, false),
+      "the public CLI rejects invalid budget " .. lib.show(badBudget))
+    publicOutput = lib.readAll(outputPath)
+    check(publicOutput:find("positive decimal integer", 1, true) ~= nil and
+          publicOutput:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+      "an invalid public budget fails before tools run: " .. lib.show(badBudget))
+  end
+  local oversizedBudget = "18446744073709551617"
+  check(not runPublicFlow("generate --budget-mb=" .. oversizedBudget, nil, false),
+    "the public CLI rejects a budget larger than Bash arithmetic can represent")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("must not exceed 2147483647 MB", 1, true) ~= nil and
+        publicOutput:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+    "an oversized public budget fails without wrapping or starting tools")
+
+  check(runPublicFlow("validators Vanilla --budget-mb=02000"),
+    "a leading-zero budget is normalized safely")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("budget 2000 MB", 1, true) ~= nil,
+    "the normalized budget reaches the scheduler as decimal")
+
+  local missingLua = rootAbs .. "/missing-lua"
+  check(not runFlow("test --budget-mb=nope", nil, nil, nil, missingLua),
+    "the direct engine rejects an invalid budget")
+  output = lib.readAll(outputPath)
+  check(output:find("positive decimal integer", 1, true) ~= nil and
+        output:find("Lua interpreter not found", 1, true) == nil and
+        output:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+    "direct budget validation runs before interpreter probes and jobs")
+
+  check(not runFlow("test --budget-mb=" .. oversizedBudget, nil, nil, nil, missingLua),
+    "the direct engine rejects an oversized budget")
+  output = lib.readAll(outputPath)
+  check(output:find("must not exceed 2147483647 MB", 1, true) ~= nil and
+        output:find("Lua interpreter not found", 1, true) == nil and
+        output:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+    "direct oversized-budget validation runs before interpreter probes and jobs")
+
+  for _, mixedAll in ipairs({ "all verify", "verify all" }) do
+    check(not runFlow(mixedAll .. " --flavors=Vanilla"),
+      "the direct engine rejects mixed all ordering: " .. mixedAll)
+    output = lib.readAll(outputPath)
+    check(output:find("all cannot be combined", 1, true) ~= nil and
+          not lib.fileExists(logPath),
+      "mixed all fails before jobs regardless of order: " .. mixedAll)
+  end
+  check(not runPublicFlow("all verify Vanilla"), "the public CLI rejects all mixed with a task")
+
+  check(runFlow("freeze"), "default freeze selects its supported flavors")
+  log = lib.readAll(logPath)
+  equal(#positionsOf(log, "verify.lua Vanilla --freeze"), 1,
+    "default freeze includes Vanilla")
+  equal(#positionsOf(log, "verify.lua Mists --freeze"), 1,
+    "default freeze includes Mists")
+  check(not runFlow("freeze --flavors=TBC"), "direct freeze rejects an unsupported flavor")
+  output = lib.readAll(outputPath)
+  check(output:find("freeze supports only Vanilla and Mists", 1, true) ~= nil and
+        not lib.fileExists(logPath),
+    "direct unsupported freeze fails before jobs")
+  check(not runPublicFlow("freeze TBC"), "public freeze rejects an unsupported flavor")
+
+  check(not runFlow("verify verify --flavors=Vanilla,Vanilla", false, true),
+    "a duplicated failing direct job propagates failure")
+  log = lib.readAll(logPath)
+  output = lib.readAll(outputPath)
+  equal(#positionsOf(log, "verify.lua Vanilla"), 1,
+    "duplicate direct gates and flavors schedule one job")
+  check(output:find("1 of 1 failed", 1, true) ~= nil,
+    "the unique failing job cannot be overwritten by a duplicate success")
+
+  check(runFlow("test", false, false, true),
+    "an empty inherited LUA falls back to automatic discovery")
+  log = lib.readAll(logPath)
+  check(log:find("\ttest.lua", 1, true) ~= nil,
+    "automatic discovery runs the selected gate")
+
+  check(not runPublicFlow("test --lua=", nil, false),
+    "an explicitly empty --lua fails")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("Lua interpreter not found: <empty>", 1, true) ~= nil and
+        publicOutput:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+    "explicit empty Lua fails before jobs")
+
+  check(not runPublicFlow("test", rootAbs .. "/missing-lua"),
+    "a missing explicit Lua interpreter fails")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("Lua interpreter not found", 1, true) ~= nil and
+        publicOutput:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+    "missing Lua fails before a job starts")
+
+  check(not runPublicFlow("test", rootAbs .. "/wrong-lua"),
+    "a wrong explicit Lua version fails")
+  publicOutput = lib.readAll(outputPath)
+  check(publicOutput:find("requires Lua 5.1", 1, true) ~= nil and
+        publicOutput:find("Lua 5.4", 1, true) ~= nil and
+        publicOutput:find("  start ", 1, true) == nil and not lib.fileExists(logPath),
+    "wrong-version Lua fails before a job starts")
 
   commandSucceeded("rm -rf " .. shellQuote(root))
 end)
