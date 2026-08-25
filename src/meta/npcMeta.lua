@@ -15,20 +15,35 @@ local meta = {
 
   --- fieldName -> fieldIndex. The Database Key Enum.
   keys = {
+    -- Localized NPC name.
     ['name'] = 1,
+    -- Deprecated health field; known NPCs return the compatibility placeholder 0.
     ['minLevelHealth'] = 2,
+    -- Deprecated health field; known NPCs return the compatibility placeholder 1.
     ['maxLevelHealth'] = 3,
+    -- Minimum NPC level.
     ['minLevel'] = 4,
+    -- Maximum NPC level.
     ['maxLevel'] = 5,
+    -- NPC rank; see https://github.com/cmangos/issues/wiki/creature_template#rank
     ['rank'] = 6,
+    -- Spawn coordinates grouped by zone: {[zoneId] = {{x, y, phase?}, ...}}.
     ['spawns'] = 7,
+    -- Movement paths grouped by zone: {[zoneId] = {{{x, y}, ...}, ...}}.
     ['waypoints'] = 8,
+    -- Best estimate of the zone where this NPC is most common.
     ['zoneID'] = 9,
+    -- IDs of quests started by this NPC.
     ['questStarts'] = 10,
+    -- IDs of quests finished at this NPC.
     ['questEnds'] = 11,
+    -- FactionTemplate ID; see https://github.com/cmangos/issues/wiki/FactionTemplate.dbc
     ['factionID'] = 12,
+    -- Player factions this NPC is friendly to: A, H, AH, or nil when hostile to both.
     ['friendlyToFaction'] = 13,
+    -- Localized NPC title or function, such as Weapon Vendor.
     ['subName'] = 14,
+    -- Bitmask describing NPC functions such as vendor, trainer, or flight master.
     ['npcFlags'] = 15,
   },
 

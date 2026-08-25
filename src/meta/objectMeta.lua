@@ -15,12 +15,19 @@ local meta = {
 
   --- fieldName -> fieldIndex. The Database Key Enum.
   keys = {
+    -- Localized object name.
     ['name'] = 1,
+    -- IDs of quests started by this object.
     ['questStarts'] = 2,
+    -- IDs of quests finished at this object.
     ['questEnds'] = 3,
+    -- Spawn coordinates grouped by zone: {[zoneId] = {{x, y, phase?}, ...}}.
     ['spawns'] = 4,
+    -- Best estimate of the zone where this object is most common.
     ['zoneID'] = 5,
+    -- Faction restriction mask used by spawn data.
     ['factionID'] = 6,
+    -- Movement paths for objects attached to transports such as ships or zeppelins.
     ['waypoints'] = 7,
   },
 

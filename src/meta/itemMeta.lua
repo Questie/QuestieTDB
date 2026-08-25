@@ -15,21 +15,37 @@ local meta = {
 
   --- fieldName -> fieldIndex. The Database Key Enum.
   keys = {
+    -- Localized item name.
     ['name'] = 1,
+    -- NPC IDs that can drop this item.
     ['npcDrops'] = 2,
+    -- Object IDs that can drop this item.
     ['objectDrops'] = 3,
+    -- Item IDs for containers that can contain this item.
     ['itemDrops'] = 4,
+    -- ID of the quest started by this item.
     ['startQuest'] = 5,
+    -- Quest IDs that reward this item.
     ['questRewards'] = 6,
+    -- Item flag bitmask; see https://github.com/cmangos/issues/wiki/Item_template#flags
     ['flags'] = 7,
+    -- Food category; see https://github.com/cmangos/issues/wiki/Item_template#foodtype
     ['foodType'] = 8,
+    -- Item level.
     ['itemLevel'] = 9,
+    -- Player level required to equip or use this item.
     ['requiredLevel'] = 10,
+    -- Ammo category used by projectile items.
     ['ammoType'] = 11,
+    -- Item class ID.
     ['class'] = 12,
+    -- Item subclass ID within the item class.
     ['subClass'] = 13,
+    -- NPC IDs for vendors that sell this item.
     ['vendors'] = 14,
+    -- IDs of quests related to this item.
     ['relatedQuests'] = 15,
+    -- Spell ID taught when this item is used.
     ['teachesSpell'] = 16,
   },
 

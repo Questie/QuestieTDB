@@ -102,6 +102,99 @@ schema.l10nFieldNames = {
 }
 
 --------------------------------------------------------------------------------------------
+-- Field documentation
+--------------------------------------------------------------------------------------------
+--
+-- These descriptions are emitted beside the generated Database Key Enums. Keep shape details
+-- here so schema regeneration preserves the domain contract instead of leaving only storage
+-- types and positional indices.
+
+schema.fieldDescriptions = {
+  Item = {
+    name = "Localized item name.",
+    npcDrops = "NPC IDs that can drop this item.",
+    objectDrops = "Object IDs that can drop this item.",
+    itemDrops = "Item IDs for containers that can contain this item.",
+    startQuest = "ID of the quest started by this item.",
+    questRewards = "Quest IDs that reward this item.",
+    flags = "Item flag bitmask; see https://github.com/cmangos/issues/wiki/Item_template#flags",
+    foodType = "Food category; see https://github.com/cmangos/issues/wiki/Item_template#foodtype",
+    itemLevel = "Item level.",
+    requiredLevel = "Player level required to equip or use this item.",
+    ammoType = "Ammo category used by projectile items.",
+    class = "Item class ID.",
+    subClass = "Item subclass ID within the item class.",
+    vendors = "NPC IDs for vendors that sell this item.",
+    relatedQuests = "IDs of quests related to this item.",
+    teachesSpell = "Spell ID taught when this item is used.",
+  },
+  Npc = {
+    name = "Localized NPC name.",
+    minLevelHealth = "Deprecated health field; known NPCs return the compatibility placeholder 0.",
+    maxLevelHealth = "Deprecated health field; known NPCs return the compatibility placeholder 1.",
+    minLevel = "Minimum NPC level.",
+    maxLevel = "Maximum NPC level.",
+    rank = "NPC rank; see https://github.com/cmangos/issues/wiki/creature_template#rank",
+    spawns = "Spawn coordinates grouped by zone: {[zoneId] = {{x, y, phase?}, ...}}.",
+    waypoints = "Movement paths grouped by zone: {[zoneId] = {{{x, y}, ...}, ...}}.",
+    zoneID = "Best estimate of the zone where this NPC is most common.",
+    questStarts = "IDs of quests started by this NPC.",
+    questEnds = "IDs of quests finished at this NPC.",
+    factionID = "FactionTemplate ID; see https://github.com/cmangos/issues/wiki/FactionTemplate.dbc",
+    friendlyToFaction = "Player factions this NPC is friendly to: A, H, AH, or nil when hostile to both.",
+    subName = "Localized NPC title or function, such as Weapon Vendor.",
+    npcFlags = "Bitmask describing NPC functions such as vendor, trainer, or flight master.",
+  },
+  Object = {
+    name = "Localized object name.",
+    questStarts = "IDs of quests started by this object.",
+    questEnds = "IDs of quests finished at this object.",
+    spawns = "Spawn coordinates grouped by zone: {[zoneId] = {{x, y, phase?}, ...}}.",
+    zoneID = "Best estimate of the zone where this object is most common.",
+    factionID = "Faction restriction mask used by spawn data.",
+    waypoints = "Movement paths for objects attached to transports such as ships or zeppelins.",
+  },
+  Quest = {
+    name = "Localized quest name.",
+    startedBy = "Quest starters: {npcIds?, objectIds?, itemIds?}.",
+    finishedBy = "Quest finishers: {npcIds?, objectIds?}.",
+    requiredLevel = "Minimum player level.",
+    questLevel = "Quest level.",
+    requiredRaces = "Allowed-race bitmask.",
+    requiredClasses = "Allowed-class bitmask.",
+    objectivesText = "Localized quest description lines; nil marks an auto-complete quest.",
+    triggerEnd = "Completion trigger: {text, spawn coordinates grouped by zone}.",
+    objectives = "Six positional groups: creature, object, item, reputation, kill-credit, and spell objectives.",
+    sourceItemId = "ID of the item provided by the quest starter.",
+    preQuestGroup = "IDs of grouped prerequisite quests.",
+    preQuestSingle = "IDs of alternative single prerequisite quests.",
+    childQuests = "IDs of quests unlocked by this quest.",
+    inGroupWith = "IDs of quests in the same quest group.",
+    exclusiveTo = "IDs of mutually exclusive quests.",
+    zoneOrSort = "Positive AreaTable ID or negative QuestSort ID.",
+    requiredSkill = "Required profession pair: {skillId, value}.",
+    requiredMinRep = "Minimum reputation pair: {factionId, value}.",
+    requiredMaxRep = "Maximum reputation pair: {factionId, value}.",
+    requiredSourceItems = "Item IDs that are not objectives but are still needed for the quest.",
+    nextQuestInChain = "Quest that makes this quest unavailable once active or completed.",
+    questFlags = "Quest flag bitmask; see https://github.com/cmangos/issues/wiki/Quest_template#questflags",
+    specialFlags = "Special flag bitmask: repeatable, event-gated, and monthly-reset flags.",
+    parentQuest = "Quest that must be active for this quest to be available.",
+    reputationReward = "Reputation rewards as {{factionId, value}, ...}.",
+    breadcrumbForQuestId = "ID of the quest this optional breadcrumb leads to.",
+    breadcrumbs = "IDs of breadcrumb quests that lead to this quest.",
+    extraObjectives = "Hidden objectives: {spawnList?, iconFile, text?, objectiveIndex, references?}.",
+    requiredSpell = "Spell ID the character must know.",
+    requiredSpecialization = "Profession or specialization requirement ID.",
+    requiredMaxLevel = "Maximum player level at which this quest is available.",
+    availableUntilCompleted = "Quest that must remain uncompleted for this quest to stay available.",
+    availableStartingWith = "Quest that must be active or completed for this quest to become available.",
+    requiredRanks = "Alternative profession rank requirements as {{skillId, value}, ...}.",
+    disabledByQuest = "Quest that temporarily disables this quest while active.",
+  },
+}
+
+--------------------------------------------------------------------------------------------
 -- Constant fields
 --------------------------------------------------------------------------------------------
 --
@@ -162,6 +255,21 @@ function schema.derive(entityType, keys, compilerTypes)
   for index = 1, meta.fieldCount do
     if not meta.names[index] then
       error(entityType.name .. ": field index " .. index .. " has no name — the key enum has a hole", 0)
+    end
+  end
+
+  local fieldDescriptions = schema.fieldDescriptions[entityType.name]
+  if fieldDescriptions then
+    for index = 1, meta.fieldCount do
+      local name = meta.names[index]
+      if not fieldDescriptions[name] then
+        error(entityType.name .. ": field '" .. name .. "' has no generated description", 0)
+      end
+    end
+    for name in pairs(fieldDescriptions) do
+      if not meta.keys[name] then
+        error(entityType.name .. ": description for unknown field '" .. name .. "'", 0)
+      end
     end
   end
 
@@ -315,8 +423,14 @@ function schema.render(meta)
   local names = {}
   for index = 1, meta.fieldCount do names[index] = meta.names[index] end
   local keyParts = {}
+  local fieldDescriptions = schema.fieldDescriptions[meta.entity] or {}
   for index = 1, meta.fieldCount do
-    keyParts[#keyParts + 1] = string.format("    [%s] = %d,", serialize.quote(names[index]), index)
+    local fieldName = names[index]
+    local description = fieldDescriptions[fieldName]
+    if description then
+      keyParts[#keyParts + 1] = "    -- " .. description
+    end
+    keyParts[#keyParts + 1] = string.format("    [%s] = %d,", serialize.quote(fieldName), index)
   end
   out[#out + 1] = table.concat(keyParts, "\n")
   out[#out + 1] = "  },"

@@ -15,41 +15,77 @@ local meta = {
 
   --- fieldName -> fieldIndex. The Database Key Enum.
   keys = {
+    -- Localized quest name.
     ['name'] = 1,
+    -- Quest starters: {npcIds?, objectIds?, itemIds?}.
     ['startedBy'] = 2,
+    -- Quest finishers: {npcIds?, objectIds?}.
     ['finishedBy'] = 3,
+    -- Minimum player level.
     ['requiredLevel'] = 4,
+    -- Quest level.
     ['questLevel'] = 5,
+    -- Allowed-race bitmask.
     ['requiredRaces'] = 6,
+    -- Allowed-class bitmask.
     ['requiredClasses'] = 7,
+    -- Localized quest description lines; nil marks an auto-complete quest.
     ['objectivesText'] = 8,
+    -- Completion trigger: {text, spawn coordinates grouped by zone}.
     ['triggerEnd'] = 9,
+    -- Six positional groups: creature, object, item, reputation, kill-credit, and spell objectives.
     ['objectives'] = 10,
+    -- ID of the item provided by the quest starter.
     ['sourceItemId'] = 11,
+    -- IDs of grouped prerequisite quests.
     ['preQuestGroup'] = 12,
+    -- IDs of alternative single prerequisite quests.
     ['preQuestSingle'] = 13,
+    -- IDs of quests unlocked by this quest.
     ['childQuests'] = 14,
+    -- IDs of quests in the same quest group.
     ['inGroupWith'] = 15,
+    -- IDs of mutually exclusive quests.
     ['exclusiveTo'] = 16,
+    -- Positive AreaTable ID or negative QuestSort ID.
     ['zoneOrSort'] = 17,
+    -- Required profession pair: {skillId, value}.
     ['requiredSkill'] = 18,
+    -- Minimum reputation pair: {factionId, value}.
     ['requiredMinRep'] = 19,
+    -- Maximum reputation pair: {factionId, value}.
     ['requiredMaxRep'] = 20,
+    -- Item IDs that are not objectives but are still needed for the quest.
     ['requiredSourceItems'] = 21,
+    -- Quest that makes this quest unavailable once active or completed.
     ['nextQuestInChain'] = 22,
+    -- Quest flag bitmask; see https://github.com/cmangos/issues/wiki/Quest_template#questflags
     ['questFlags'] = 23,
+    -- Special flag bitmask: repeatable, event-gated, and monthly-reset flags.
     ['specialFlags'] = 24,
+    -- Quest that must be active for this quest to be available.
     ['parentQuest'] = 25,
+    -- Reputation rewards as {{factionId, value}, ...}.
     ['reputationReward'] = 26,
+    -- ID of the quest this optional breadcrumb leads to.
     ['breadcrumbForQuestId'] = 27,
+    -- IDs of breadcrumb quests that lead to this quest.
     ['breadcrumbs'] = 28,
+    -- Hidden objectives: {spawnList?, iconFile, text?, objectiveIndex, references?}.
     ['extraObjectives'] = 29,
+    -- Spell ID the character must know.
     ['requiredSpell'] = 30,
+    -- Profession or specialization requirement ID.
     ['requiredSpecialization'] = 31,
+    -- Maximum player level at which this quest is available.
     ['requiredMaxLevel'] = 32,
+    -- Quest that must remain uncompleted for this quest to stay available.
     ['availableUntilCompleted'] = 33,
+    -- Quest that must be active or completed for this quest to become available.
     ['availableStartingWith'] = 34,
+    -- Alternative profession rank requirements as {{skillId, value}, ...}.
     ['requiredRanks'] = 35,
+    -- Quest that temporarily disables this quest while active.
     ['disabledByQuest'] = 36,
   },
 
