@@ -146,14 +146,14 @@ lost by deleting the compiler and its neighbours.
 - [ ] **Translate `extraObjectives` descriptions while building Questie's runtime objectives.**
       QuestieTDB stores row slot `[3]` as the enUS localization key and does not translate
       structured correction rows.
-- [ ] **Apply the parameterized Darkmoon Correction from Questie's calendar state.** Era passes
-      `isInMulgore`; TBC passes `isInMulgore, isInTerokkar`. The provider never applies these
-      sets automatically. See [#18](https://github.com/Questie/QuestieTDB/issues/18).
+- [ ] **Retain Questie's Darkmoon correction tables.** Questie selects and applies them through
+      `LibQuestieDB.GetRegistrar("Questie")` as a generic owner-scoped Dynamic Correction;
+      QuestieTDB owns no Darkmoon-specific runtime API or state.
 - [ ] **Preserve the TBC content-phase prerequisite Correction** for quests 10944 and 11007 as
       Questie-owned policy. It intentionally does not belong to QuestieTDB's automatic layer.
-- [ ] **Decide whether to retain asynchronous missing-Item repair.** The current callback writes
-      a newly discovered Item into `itemDataOverrides`, including a suspicious `questId` value in
-      the `npcDrops` slot. Verify the intended model before replacing it with a Dynamic Correction.
+- [ ] **Decide whether to retain asynchronous missing-Item repair.** Its runtime state and
+      lifecycle are Questie-owned; if retained, expose the result through owner `Questie` rather
+      than adding repair scheduling or cache knowledge to QuestieTDB.
 - [x] **QuestieTDB's waypoint pass is verified at zero divergences** on all five flavours, so
       `QuestieCorrections:PreCompile()` and `OptimizeWaypoints` can be deleted from Questie at
       switch-over. `Modules/Libs/RamerDouglasPeucker.lua` is byte-copied into QuestieTDB
@@ -185,8 +185,6 @@ cutover audit found provider work outside ordinary entity-field parity:
   ([#16](https://github.com/Questie/QuestieTDB/issues/16)).
 - `ObjectiveFirst` needs Source/Baked flavor parity and a documented public contract
   ([#17](https://github.com/Questie/QuestieTDB/issues/17)).
-- Darkmoon parameterized arguments need exact documentation and coverage
-  ([#18](https://github.com/Questie/QuestieTDB/issues/18)).
 - Differential coverage needs to include side channels and a working SoD oracle
   ([#19](https://github.com/Questie/QuestieTDB/issues/19)).
 
@@ -215,5 +213,5 @@ yet been closed.
 | [#15](https://github.com/Questie/QuestieTDB/issues/15) | Synchronize support data and add drift validation | Open |
 | [#16](https://github.com/Questie/QuestieTDB/issues/16) | Restrict Titan corrections to Wrath | Open |
 | [#17](https://github.com/Questie/QuestieTDB/issues/17) | Keep `ObjectiveFirst` flavor-scoped in Source mode | Open |
-| [#18](https://github.com/Questie/QuestieTDB/issues/18) | Document and test Darkmoon parameterized arguments | Open |
+| [#18](https://github.com/Questie/QuestieTDB/issues/18) | Former parameterized-correction follow-up | Closed — superseded by ADR 0007 |
 | [#19](https://github.com/Questie/QuestieTDB/issues/19) | Cover correction side channels and SoD in differential tests | Open |

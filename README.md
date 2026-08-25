@@ -155,11 +155,13 @@ lua5.1 generate.lua meta --questie=../Questie # schema -> src/meta/*Meta.lua
 lua5.1 tools/port-corrections.lua ../Questie  # corrections + constants
 ```
 
-The ported correction files are **byte-identical copies** of Questie's; a compat shim supplies
-the module surface they import. Re-syncing is a file copy, not a rewrite. To advance Questie,
-change `QUESTIE_COMMIT` first, check out that commit, then review schema drift, the Correction
-re-port, validators, compiler differential, and Golden snapshots in the same working tree.
-Automation reads the same pin through `.github/actions/checkout-questie`.
+The ported correction files preserve Questie's bytes except for explicit whole-function
+ownership exclusions in `tools/port-corrections.lua`; a compat shim supplies the module surface
+they import. The fidelity test compares every non-excluded byte and the port fails if an
+excluded block is absent or duplicated. To advance Questie, change `QUESTIE_COMMIT` first,
+check out that commit, then review schema drift, the Correction re-port, validators, compiler
+differential, and Golden snapshots in the same working tree. Automation reads the same pin
+through `.github/actions/checkout-questie`.
 
 ---
 

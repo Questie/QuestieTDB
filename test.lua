@@ -1536,8 +1536,8 @@ suite("overlay", function()
   equal(registry.GetProvenance("Quest", id, "name"), "AddonB", "provenance names the winning owner")
 
   -- Applying one owner does not disturb another, and re-applying never changes rank: owner
-  -- precedence is fixed at first apply, so a refresh (this is ApplyParameterized's shape)
-  -- cannot hoist an early layer above corrections registered later.
+  -- precedence is fixed at first apply, so a state refresh cannot hoist an early layer above
+  -- corrections registered later.
   registry.RegisterRuntimeCorrection("AddonA", "Quest", "level",
     function() return { [id] = { [4] = 42 } } end, 12)
   registry.ApplyRegisteredCorrections("AddonA")
@@ -1550,8 +1550,7 @@ suite("overlay", function()
   equal(Quest.Get(id, "name"), "Renamed by B", "B re-applying changes nothing")
   equal(Quest.Get(id, "requiredLevel"), 42, "B's apply did not disturb A's uncontested field")
 
-  -- The blast path the adversarial review confirmed: a QuestieTDB-side refresh (what
-  -- ApplyParameterized runs) must leave every consumer layer's precedence intact.
+  -- A QuestieTDB-side refresh must leave every consumer layer's precedence intact.
   local ownersBefore = table.concat(registry.GetOwners(), "<")
   registry.ApplyRegisteredCorrections(registry.OWNER)
   equal(table.concat(registry.GetOwners(), "<"), ownersBefore,
@@ -1665,10 +1664,57 @@ suite("correction-fidelity", function()
     return
   end
 
-  -- The correction files here are byte-identical copies of Questie's. That is the whole
-  -- argument for the compat shim: no transcription step means no transcription error, and
-  -- re-syncing is a file copy. Asserting it mechanically is what keeps that true.
+  -- Every non-excluded byte must match Questie. The two ownership exclusions remove one
+  -- complete, documented top-level function while keeping drift detection exact everywhere
+  -- else in those files.
   local manifest = dofile("src/corrections/manifest.lua")
+  local ownershipExclusions = {
+    ["Era/classicNPCFixes.lua"] = {
+      module = "QuestieNPCFixes", functionName = "LoadDarkmoonFixes",
+    },
+    ["Tbc/tbcNPCFixes.lua"] = {
+      module = "QuestieTBCNpcFixes", functionName = "LoadDarkmoonFixes",
+    },
+  }
+
+  ---Reproduce the port's strict whole-function ownership exclusion for fidelity comparison.
+  ---@param source string
+  ---@param exclusion table { module: string, functionName: string }
+  ---@param label string
+  ---@return string
+  local function withoutOwnershipExclusion(source, exclusion, label)
+    local lines = {}
+    for line in (source .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+    if lines[#lines] == "" and source:sub(-1) == "\n" then lines[#lines] = nil end
+
+    local pattern = "^function%s+" .. exclusion.module .. "%s*:%s*" ..
+      exclusion.functionName .. "%s*%("
+    local headerIndex
+    for index, line in ipairs(lines) do
+      if line:find(pattern) then
+        check(headerIndex == nil, label .. " has only one excluded function definition")
+        headerIndex = index
+      end
+    end
+    check(headerIndex ~= nil, label .. " still provides the declared ownership exclusion")
+    if not headerIndex then return source end
+
+    local docStart = headerIndex
+    while docStart > 1 and lines[docStart - 1]:find("^%-%-%-") do docStart = docStart - 1 end
+    check(docStart < headerIndex, label .. " excluded function retains attached LuaDoc upstream")
+
+    local endIndex
+    for index = headerIndex + 1, #lines do
+      if lines[index]:find("^end%s*$") then endIndex = index; break end
+      check(not lines[index]:find("^function%s"),
+        label .. " excluded function closes before another top-level function")
+    end
+    check(endIndex ~= nil, label .. " excluded function has a column-0 closing end")
+    if not endIndex then return source end
+
+    for index = endIndex, docStart, -1 do table.remove(lines, index) end
+    return table.concat(lines, "\n") .. (source:sub(-1) == "\n" and "\n" or "")
+  end
   local sourceFor = {
     ["Era/classicQuestReputationFixes.lua"] = "Automatic/classicQuestReputationFixes.lua",
     ["Shared/itemStartFixes.lua"] = "Automatic/itemStartFixes.lua",
@@ -1688,8 +1734,12 @@ suite("correction-fidelity", function()
     check(theirsExists, "declared Questie source exists: " .. spec.file)
     if oursExists and theirsExists then
       compared = compared + 1
-      check(lib.readAll(ours) == lib.readAll(theirs),
-        "ported copy diverges from Questie's: " .. spec.file)
+      local expected = lib.readAll(theirs)
+      if ownershipExclusions[spec.file] then
+        expected = withoutOwnershipExclusion(expected, ownershipExclusions[spec.file], spec.file)
+      end
+      check(lib.readAll(ours) == expected,
+        "ported copy diverges from Questie's ownership-filtered source: " .. spec.file)
     end
   end
   equal(compared, #manifest, "every manifest Correction was compared byte-for-byte")
@@ -1926,25 +1976,18 @@ suite("read-contract", function()
 
   client.reset()
 
-  --- ADR D9: SoD manifest entries register only when the season is actually active, and
-  --- parameterized sets are recorded for explicit application, never applied automatically.
+  --- ADR D9: SoD manifest entries register only when the season is actually active.
   local runtime = dofile("generator/runtime.lua")
   local savedSeasons, savedEnum = rawget(_G, "C_Seasons"), rawget(_G, "Enum")
 
   local syntheticManifest = {
     { file = "Era/fake.lua", module = "FakeEra", datatype = "Quest",
-      dynamic = { "LoadDynamic" }, expansions = { Classic = true },
-      parameterized = { "LoadParameterized" } },
+      dynamic = { "LoadDynamic" }, expansions = { Classic = true } },
     { file = "Sod/fake.lua", module = "FakeSod", datatype = "Quest",
       dynamic = { "LoadSod" }, expansions = { Classic = true } },
   }
   local fakeModules = {
-    FakeEra = {
-      LoadDynamic = function() return { [2] = { [4] = 42 } } end,
-      LoadParameterized = function(_, location)
-        return { [2] = { [1] = "Faire at " .. tostring(location) } }
-      end,
-    },
+    FakeEra = { LoadDynamic = function() return { [2] = { [4] = 42 } } end },
     FakeSod = { LoadSod = function() return { [2] = { [4] = 60 } } end },
   }
   local function registerSynthetic()
@@ -1967,47 +2010,12 @@ suite("read-contract", function()
   equal(eraInactive, 1, "no season active: Era sets register normally")
 
   _G.C_Seasons = { GetActiveSeason = function() return 2 end }
-  local activeLib, _, sodActive = registerSynthetic()
+  local _, _, sodActive = registerSynthetic()
   equal(sodActive, 1, "SoD active: SoD sets register")
 
   _G.C_Seasons = nil
   local _, _, sodAbsent = registerSynthetic()
   equal(sodAbsent, 0, "no C_Seasons API at all: SoD sets do not register")
-
-  -- Parameterized sets: recorded but never auto-registered; explicit application carries the
-  -- consumer's argument; re-application with a new argument replaces, never accumulates.
-  local function countByName(Lib, pattern)
-    local n = 0
-    for _, entry in ipairs(Lib.Corrections.Select({ dynamic = true })) do
-      if entry.name:find(pattern, 1, true) then n = n + 1 end
-    end
-    return n
-  end
-  equal(countByName(activeLib, "LoadParameterized"), 0,
-    "a parameterized set is never registered automatically")
-  check(activeLib.CorrectionRegister.parameterized.LoadParameterized ~= nil,
-    "the parameterized set is recorded for explicit application")
-
-  local applied = activeLib.Corrections.ApplyParameterized("LoadParameterized", "Elwynn")
-  equal(applied, 1, "ApplyParameterized registers the recorded set")
-  equal(countByName(activeLib, "LoadParameterized"), 1, "exactly one entry after application")
-  local entries = activeLib.Corrections.Select({ dynamic = true })
-  local materialized
-  for _, entry in ipairs(entries) do
-    if entry.name:find("LoadParameterized", 1, true) then materialized = entry.func() end
-  end
-  equal(materialized[2][1], "Faire at Elwynn", "the consumer's argument reaches the correction")
-
-  activeLib.Corrections.ApplyParameterized("LoadParameterized", "Mulgore")
-  equal(countByName(activeLib, "LoadParameterized"), 1,
-    "re-application with a new argument replaces rather than accumulates")
-  for _, entry in ipairs(activeLib.Corrections.Select({ dynamic = true })) do
-    if entry.name:find("LoadParameterized", 1, true) then materialized = entry.func() end
-  end
-  equal(materialized[2][1], "Faire at Mulgore", "the new argument wins")
-
-  equal(activeLib.Corrections.ApplyParameterized("NoSuchFunction", 1), 0,
-    "an unknown parameterized name applies nothing")
 
   _G.C_Seasons = savedSeasons
   _G.Enum = savedEnum
@@ -2414,6 +2422,42 @@ suite("api", function()
   local owners = Lib.GetOwners()
   check(#owners >= 2, "GetOwners exposes applied order")
   equal(owners[#owners], "ThirdPartyAddon", "the last applied owner is last")
+
+  -- A consumer-owned correction can reuse one mutable table as its runtime policy changes.
+  local npcKeys = Lib.Meta.NpcMeta.npcKeys
+  local baseNpcName = Lib.Npc.GetRaw(123, "name")
+  local activeNpcCorrections = {
+    [123] = { [npcKeys.name] = "Runtime policy: first state" },
+  }
+  local questieRegistrar = Lib.GetRegistrar("Questie")
+  questieRegistrar.RegisterRuntimeCorrection("Npc", "RuntimeDisplayPolicy",
+    ---@return table
+    function()
+      return activeNpcCorrections
+    end, 10)
+  questieRegistrar.Apply()
+  equal(Lib.Npc.Get(123, "name"), "Runtime policy: first state",
+    "a Questie-owned runtime policy composes through the public registrar")
+  equal(Lib.GetProvenance("Npc", 123, "name"), "Questie",
+    "the consumer-owned value records Questie provenance")
+  equal(Lib.Npc.GetRaw(123, "name"), baseNpcName,
+    "the consumer-owned policy leaves the raw NPC unchanged")
+
+  activeNpcCorrections[123] = { [npcKeys.name] = "Runtime policy: changed state" }
+  questieRegistrar.Apply()
+  equal(Lib.Npc.Get(123, "name"), "Runtime policy: changed state",
+    "re-applying reads the changed consumer-owned table")
+  equal(Lib.Npc.GetRaw(123, "name"), baseNpcName,
+    "changed policy state still leaves the raw NPC unchanged")
+
+  activeNpcCorrections[123] = nil
+  questieRegistrar.Apply()
+  equal(Lib.Npc.Get(123, "name"), baseNpcName,
+    "clearing the mutable policy table removes its old overlay value")
+  equal(Lib.GetProvenance("Npc", 123, "name"), Lib.Corrections.OWNER,
+    "clearing the policy restores database provenance")
+  equal(Lib.Npc.GetRaw(123, "name"), baseNpcName,
+    "clearing the policy does not alter the raw NPC")
 
   -- Cache lifecycle is public, and the datatype argument is case-insensitive like the
   -- corrections API — `InvalidateCache("quest", 2)` silently no-oping was a live-probed bug.

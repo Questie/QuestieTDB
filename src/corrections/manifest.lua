@@ -12,12 +12,12 @@ local _, LibQuestieDB = ...
 
 local manifest = {
   { file = 'Era/classicQuestFixes.lua', module = 'QuestieQuestFixes', datatype = 'Quest', static = {'Load'}, dynamic = {'LoadFactionFixes'}, sourceExpansionOrder = 1 },
-  { file = 'Era/classicNPCFixes.lua', module = 'QuestieNPCFixes', datatype = 'Npc', static = {'Load'}, dynamic = {'LoadFactionFixes'}, sourceExpansionOrder = 1, parameterized = {'LoadDarkmoonFixes'} },
+  { file = 'Era/classicNPCFixes.lua', module = 'QuestieNPCFixes', datatype = 'Npc', static = {'Load'}, dynamic = {'LoadFactionFixes'}, sourceExpansionOrder = 1 },
   { file = 'Era/classicItemFixes.lua', module = 'QuestieItemFixes', datatype = 'Item', static = {'Load'}, dynamic = {'LoadFactionFixes'}, sourceExpansionOrder = 1 },
   { file = 'Era/classicObjectFixes.lua', module = 'QuestieObjectFixes', datatype = 'Object', static = {'Load'}, dynamic = {'LoadFactionFixes'}, sourceExpansionOrder = 1 },
   { file = 'Era/classicQuestReputationFixes.lua', module = 'QuestieClassicQuestReputationFixes', datatype = 'Quest', static = {'Load'}, expansions = {['Classic']=true}, generated = true },
   { file = 'Tbc/tbcQuestFixes.lua', module = 'QuestieTBCQuestFixes', datatype = 'Quest', static = {'Load'}, dynamic = {'LoadFactionFixes'}, minExpansionOrder = 2 },
-  { file = 'Tbc/tbcNPCFixes.lua', module = 'QuestieTBCNpcFixes', datatype = 'Npc', static = {'Load'}, dynamic = {'LoadFactionFixes'}, minExpansionOrder = 2, parameterized = {'LoadDarkmoonFixes'} },
+  { file = 'Tbc/tbcNPCFixes.lua', module = 'QuestieTBCNpcFixes', datatype = 'Npc', static = {'Load'}, dynamic = {'LoadFactionFixes'}, minExpansionOrder = 2 },
   { file = 'Tbc/tbcItemFixes.lua', module = 'QuestieTBCItemFixes', datatype = 'Item', static = {'Load'}, dynamic = {'LoadFactionFixes'}, minExpansionOrder = 2 },
   { file = 'Tbc/tbcObjectFixes.lua', module = 'QuestieTBCObjectFixes', datatype = 'Object', static = {'Load'}, dynamic = {'LoadFactionFixes'}, minExpansionOrder = 2 },
   { file = 'Wotlk/wotlkQuestFixes.lua', module = 'QuestieWotlkQuestFixes', datatype = 'Quest', static = {'Load'}, dynamic = {'LoadFactionFixes','LoadTitanReforgedFixes'}, gatedDynamic = {['LoadTitanReforgedFixes']='TitanReforged'}, minExpansionOrder = 3 },

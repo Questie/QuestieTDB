@@ -5,23 +5,23 @@
 --
 -- Baked artifacts ship whole correction files because the shipping unit is the file and
 -- upstream keeps a small Dynamic function beside a large Static one in the same file —
--- splitting the file would fork it and kill the byte-identical re-sync. But the static
+-- splitting the file would fork it and weaken the ownership-filtered re-sync. But the static
 -- halves are already folded into the TOC metadata store, so 94-96% of every shipped
 -- correction file is data the client parses at login and can never use.
 --
--- This tool rewrites the STAGED COPIES only. `src/corrections/` in the repository stays
--- byte-identical to upstream, so `tools/port-corrections.lua` and the CI drift gate keep
--- working — they compare the source tree, never the artifact.
+-- This tool rewrites the STAGED COPIES only. `src/corrections/` in the repository preserves
+-- every upstream byte outside declared ownership exclusions, so `tools/port-corrections.lua`
+-- and the CI drift gate keep working — they compare the source tree, never the artifact.
 --
 -- Safety is layered, and every failure aborts packaging:
 --   * a static function must be found exactly once, as a column-0 `function Module:Name(`
 --     with a column-0 closing `end` — the upstream style every ported file follows;
 --   * the stripped file must still compile (`loadstring`);
---   * every Dynamic and Parameterized function must still be defined after the strip;
+--   * every Dynamic function must still be defined after the strip;
 --   * the stripped file must behave identically to the original for everything Baked mode
 --     uses: the module-level objectiveFirst hints, the set of functions on the module, and
---     the full output (returned table + captured direct writes) of every Dynamic and
---     Parameterized function, executed under the same compat shim and client persona.
+--     the full output (returned table + captured direct writes) of every Dynamic function,
+--     executed under the same compat shim and client persona.
 --
 -- That last check is the mechanical form of issue #5's verification item 1: if a needed
 -- module-level side effect ever moves inside a static body, the parity check fails loudly
@@ -210,10 +210,7 @@ local function observe(spec, content, label)
     if type(value) == "function" then observed.functionNames[name] = true end
   end
 
-  local callable = {}
-  for _, name in ipairs(spec.dynamic or {}) do callable[#callable + 1] = name end
-  for _, name in ipairs(spec.parameterized or {}) do callable[#callable + 1] = name end
-  for _, name in ipairs(callable) do
+  for _, name in ipairs(spec.dynamic or {}) do
     local fn = module[name]
     if type(fn) ~= "function" then
       remove()
@@ -244,7 +241,7 @@ local function assertParity(spec, original, stripped)
     fail("%s: the module's function set changed after strip", spec.file)
   end
   if not lib.deepEqual(original.outputs, stripped.outputs) then
-    fail("%s: a Dynamic or Parameterized function's output changed after strip", spec.file)
+    fail("%s: a Dynamic function's output changed after strip", spec.file)
   end
 end
 
@@ -287,12 +284,6 @@ for _, spec in ipairs(manifest) do
           fail("%s: dynamic function %s lost by the strip", spec.file, name)
         end
       end
-      for _, name in ipairs(spec.parameterized or {}) do
-        if not stillDefined(name) then
-          fail("%s: parameterized function %s lost by the strip", spec.file, name)
-        end
-      end
-
       assertParity(spec, observe(spec, original, spec.file .. " original"),
         observe(spec, stripped, spec.file .. " stripped"))
 

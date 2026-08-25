@@ -469,9 +469,9 @@ function registry.ApplyRegisteredCorrections(owner)
 
   for _, name in ipairs(owners) do
     -- Owner rank is fixed at first apply; a re-apply refreshes the owner's layer in place.
-    -- Moving a re-applying owner to the end would let any refresh — ApplyParameterized, a
-    -- settings change — hoist QuestieTDB's whole layer above corrections consumers registered
-    -- later, inverting the documented QuestieTDB < Questie < third-party order.
+    -- Moving a re-applying owner to the end would let a consumer state refresh hoist one
+    -- owner's whole layer above corrections registered later, inverting the documented
+    -- QuestieTDB < Questie < third-party order.
     local ranked = false
     for _, applied in ipairs(registry.appliedOrder) do
       if applied == name then ranked = true; break end

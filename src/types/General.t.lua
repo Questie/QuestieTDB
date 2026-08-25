@@ -91,6 +91,5 @@
 ---@field UnregisterCorrection fun(owner: string, datatype: QuestieTDBDatatype, name: string): boolean
 ---@field GetRegistrar fun(owner: string): QuestieTDBRegistrar
 ---@field ApplyRegisteredCorrections fun(owner?: string): integer
----@field ApplyParameterized fun(functionName: string, ...: any): integer
 ---@field GetProvenance fun(datatype: QuestieTDBDatatype, id: number, key: string|integer): string?
 ---@field GetOwners fun(): string[]

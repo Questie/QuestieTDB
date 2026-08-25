@@ -35,7 +35,7 @@ verified and committed:
 | --- | --- |
 | Probes | Client behavior measured: trimming, key case-folding, truncation boundary, `table.freeze` taint ownership, read-path costs |
 | Wire | Trim-safe chunking, case-folded key uniqueness, 40.90 coordinate quantization, shortest round-trip spelling, table-valued l10n segments |
-| Runtime | Fresh-per-read producers, corrections-over-l10n, existence gating, composed enumeration, season gating, `ApplyParameterized`, packed `GetAll`, ranged contract |
+| Runtime | Fresh-per-read producers, corrections-over-l10n, existence gating, composed enumeration, season gating, the parameterized API later retired by ADR 0007, packed `GetAll`, ranged contract |
 | CI | Publication gated on the full quality bar; terminal gates job |
 | Harness | B's verification methodology rebuilt: widened self-proving equivalence, byte-exact reconstruction gate, persona emulator, allocation guards |
 | Differential | Cross-implementation read-value comparison vs B — the acceptance instrument |
@@ -106,7 +106,7 @@ File with `gh issue create` per `agents/issue-tracker.md`; drafts here so nothin
    (path, bytes, SHA-256, upstream commit) emitted by `tools/port-corrections.lua`, CI
    byte-verify. The adopt-soonest item in `pi/release-and-provenance.md`.
 2. **Fresh LuaLS consumer type stub** for the *current* API (packed `GetAll`,
-   `ApplyParameterized`, ranged `RequireContract`). Written new — never ported from B
+   owner-scoped Corrections, ranged `RequireContract`). Written new — never ported from B
    (`pi/consumer-tooling.md`).
 3. **Mists-scale in-client acceptance.** Raw-coordinate storage reduced the Mists artifact
    from 117,410,435 to 102,430,533 bytes (97.7 MiB), still above the 85 MB live-tested range.

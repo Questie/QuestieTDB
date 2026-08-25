@@ -33,8 +33,8 @@ Of the 78 new fingerprints:
   - NPC 7944 is missing quest 29477 from `questEnds`.
 
 Those three defects also exist in the pinned Questie Correction sources. They remain in the
-baseline so QuestieTDB can keep its copied Correction files byte-identical. They should be
-fixed upstream and then removed here by re-porting.
+baseline to preserve exact upstream fidelity outside explicitly declared provider/consumer
+ownership exclusions. They should be fixed upstream and then removed here by re-porting.
 
 The inherited-Correction application bug was fixed after this first classification. Older
 expansion Corrections may now update a surviving entity but cannot create an absent one unless

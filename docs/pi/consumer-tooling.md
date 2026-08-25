@@ -10,8 +10,8 @@ compile-check consumer exercising it (`test/luals-consumer/consumer.lua`). This 
 LuaLS annotations internally but no consumer-facing stub.
 
 Write it **fresh against this repo's current API** — packed `GetAll` (`values.n`),
-`Corrections.ApplyParameterized`, ranged `RequireContract`, fresh-per-read ownership
-notes in the doc comments. Do not port `-pi`'s stub: it types the retired API (frozen
+owner-scoped Corrections, ranged `RequireContract`, and fresh-per-read ownership notes in the
+doc comments. Do not port `-pi`'s stub: it types the retired API (frozen
 returns, its `GetAll` shape) and one field wrongly (`friendlyToFaction` as
 `number|nil` where the normalized contract is string-valued). A stale stub misleads
 worse than none; pair it with a CI check that the stub's function list matches

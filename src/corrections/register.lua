@@ -2,9 +2,10 @@
 --
 -- Turns loaded correction files into registry entries.
 --
--- The correction files themselves are verbatim copies of Questie's and know nothing about
--- QuestieTDB; `src/corrections/manifest.lua` says which functions each one provides and
--- whether each is Static or Dynamic. That classification is **declared, never inferred** —
+-- The correction files preserve Questie's source exactly outside the provider/consumer
+-- ownership exclusions explicitly declared by `tools/port-corrections.lua`;
+-- `src/corrections/manifest.lua` says which functions each one provides and whether each is
+-- Static or Dynamic. That classification is **declared, never inferred** —
 -- folder names are not a reliable signal, as the prototype's `Sod/static/…` file registering
 -- dynamic demonstrates.
 
@@ -88,11 +89,6 @@ register.variantActive = {
   TitanReforged = register.IsTitanReforgedActive,
 }
 
---- Parameterized correction functions recorded by `FromManifest`, keyed by function name.
---- Each needs a runtime fact QuestieTDB does not own (the Darkmoon Faire's location), so
---- they are never applied automatically — see `ApplyParameterized`.
-register.parameterized = {}
-
 --- Register everything the manifest describes, for one flavor.
 ---
 --- The generator runs offline with only QuestieTDB present, so it can only ever bake
@@ -173,87 +169,12 @@ function register.FromManifest(flavor, moduleFor)
           registered = registered + 1
         end
       end
-
-      -- Parameterized functions are recorded, never registered: each needs an argument only
-      -- the consumer knows. Previously these were silently dropped — the baked artifact kept
-      -- both Darkmoon Faire locations and could expose the wrong one.
-      for offset, functionName in ipairs(spec.parameterized or {}) do
-        if type(module[functionName]) == "function" then
-          local entries = register.parameterized[functionName]
-          if not entries then entries = {}; register.parameterized[functionName] = entries end
-          entries[#entries + 1] = {
-            spec = spec,
-            module = module,
-            functionName = functionName,
-            loadOrder = order[window .. "Dynamic"] + 50 + offset,
-          }
-        end
-      end
     end
     manifest[index].loaded = module ~= nil
   end
 
   return registered, skipped
 end
-
---- Apply a parameterized correction set with the consumer-supplied runtime fact — e.g.
---- `ApplyParameterized("LoadDarkmoonFixes", "Elwynn")`. Registers (replacing any previous
---- application of the same set, so a changed argument recomposes rather than accumulates)
---- and applies as an ordinary QuestieTDB Dynamic layer.
----
---- Correction coordinates retain their supplied x/y values, so database coordinates may be
---- reused without a lossy compiler-grid round trip (ADR 0006).
----@return number applied How many recorded sets matched and were registered
-function register.ApplyParameterized(functionName, ...)
-  local entries = register.parameterized[functionName]
-  if not entries or #entries == 0 then return 0 end
-
-  local argCount = select("#", ...)
-  local args = { ... }
-  local applied = 0
-
-  for _, recorded in ipairs(entries) do
-    local spec = recorded.spec
-    local name = spec.file .. ":" .. recorded.functionName
-    registry.UnregisterCorrection(registry.OWNER, spec.datatype, name)
-
-    local module = recorded.module
-    local entry = registry.RegisterRuntimeCorrection(registry.OWNER, spec.datatype, name,
-      function()
-        -- Re-invoke through the same capture path, with the consumer's arguments.
-        compat.BeginCapture()
-        local returned = compat.Invoke(
-          module[recorded.functionName], module, unpack(args, 1, argCount))
-        local captured = compat.EndCapture(spec.datatype)
-        local merged = {}
-        for id, fields in pairs(captured) do
-          local row = {}
-          for key, value in pairs(fields) do row[key] = value end
-          merged[id] = row
-        end
-        if type(returned) == "table" then
-          for id, fields in pairs(returned) do
-            local row = merged[id]
-            if not row then row = {}; merged[id] = row end
-            for key, value in pairs(fields) do row[key] = value end
-          end
-        end
-        return merged
-      end,
-      recorded.loadOrder)
-    entry.expansions = spec.expansions
-    entry.minExpansionOrder = spec.minExpansionOrder
-    entry.options = spec.options
-    applied = applied + 1
-  end
-
-  if applied > 0 then
-    registry.ApplyRegisteredCorrections(registry.OWNER)
-  end
-  return applied
-end
-
-registry.ApplyParameterized = register.ApplyParameterized
 
 --- Which load-order window a manifest entry belongs to.
 ---

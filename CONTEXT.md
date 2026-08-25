@@ -68,20 +68,16 @@ A Correction folded into the TOC metadata store during Generation. Never shipped
 _Avoid_: Compile-time correction, baked correction
 
 **Dynamic Correction**:
-A Correction whose applicability cannot be known before Generation — because it depends on
-runtime state such as faction, season, expansion, or user settings. Always applied at query time.
+A Correction applied at query time. QuestieTDB-owned Dynamic Corrections may depend only on
+provider-owned data or generic character/game facts QuestieTDB determines itself: class, race,
+faction, expansion, and season. A consumer registers its own Dynamic Corrections for
+consumer-owned runtime state or policy.
 _Avoid_: Runtime correction, conditional fix
 
 **Gated Dynamic function**:
 A correction function that registers only while its named runtime condition holds — the
 SoD and Titan Reforged season gates. An unrecognized gate name stays closed.
 _Avoid_: Conditional registration, feature flag
-
-**Parameterized Correction**:
-A correction function never applied automatically because it needs a runtime fact the
-database does not own (the Darkmoon Faire location). Applied only through
-`Corrections.ApplyParameterized` with the consumer-supplied argument.
-_Avoid_: Manual correction, callback fix
 
 **Correction Overlay**:
 The composed query-time layer of Dynamic Corrections that entity reads resolve through.
@@ -167,10 +163,14 @@ _Avoid_: Test profile, mock player
 
 **QuestieTDB owns what is true about game entities. Questie owns what to do with that truth.**
 
-A Correction fixes what is true — a wrong coordinate, a missing prerequisite. Deciding that
-an entity should not be shown is a consumer policy, not a database fact, and belongs to the
-consumer. A quest that is a duplicate or unobtainable still exists, and another consumer may
-legitimately want it.
+A Correction fixes what is true — a wrong coordinate, a missing prerequisite. QuestieTDB may
+select a Dynamic Correction only from provider-owned data or generic character/game facts it
+determines itself: class, race, faction, expansion, and season. A Correction selected or
+constructed from consumer-owned runtime state or policy belongs to that consumer.
+
+Display suppression, consumer phase/settings state, projections and caches, and asynchronous
+repair of consumer data therefore remain consumer-owned. A quest that is duplicate or
+unobtainable still exists, and another consumer may legitimately want it.
 
 Questie is a consumer. Storage vocabulary stops here — Questie has no terms for Metadata
 fields, Chunked metadata values, or Generation.

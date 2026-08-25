@@ -67,9 +67,6 @@ local applied = registrar.Apply()
 ---@type boolean
 local removed = LibQuestieDB.Corrections.UnregisterCorrection(
   "ConsumerAddon", "Quest", "rename-quest")
----@type integer
-local parameterized = LibQuestieDB.Corrections.ApplyParameterized(
-  "LoadDarkmoonFixes", "Elwynn")
 ---@type QuestieTDBCanonicalDatatype?
 local canonical = LibQuestieDB.Corrections.CanonicalDatatype("quest")
 LibQuestieDB.Corrections.debug = true
