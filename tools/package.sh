@@ -3,7 +3,7 @@
 #
 # Packages generated artifacts and writes the release manifest.
 #
-# Bash rather than Lua on purpose: this needs zip and sha256sum, and the generator's
+# Bash rather than Lua on purpose: this needs zip, unzip and sha256sum, and the generator's
 # no-C-dependency rule exists so contributors can regenerate with a bare interpreter — it does
 # not extend to packaging, which only ever runs in CI or on a maintainer's machine.
 #
@@ -30,10 +30,11 @@ LUA="${LUA:-lua5.1}"
 # `## Dependencies: QuestieTDB` resolves against.
 mkdir -p "$STAGE/QuestieTDB"
 
-# Ship exactly the files a TOC lists, plus the TOC itself. Static-only correction files are
-# build-time input and are already absent from that list. Staging into an existing folder is
-# safe because every copy comes from the same working tree: a path two flavors share is the
-# same file, which is what lets the combined artifact union five TOCs below.
+# Stage exactly the runtime files a TOC lists, plus the TOC itself. Static-only correction files
+# are build-time input and are already absent from that list. Analysis-only files are staged
+# separately below. Staging into an existing folder is safe because every copy comes from the
+# same working tree: a path two flavors share is the same file, which is what lets the combined
+# artifact union five TOCs below.
 stage_toc() {
     local toc="$1" dest="$2" line rel
     cp "$toc" "$dest/"
@@ -49,6 +50,25 @@ stage_toc() {
     done < "$toc"
 }
 
+# LuaLS declarations ship beside the addon, but the client must never load them through a TOC.
+stage_types() {
+    local dest="$1"
+    mkdir -p "$dest/Types"
+    cp src/types/*.t.lua "$dest/Types/"
+}
+
+assert_type_artifacts() {
+    local zip="$1" type_file basename listing
+    listing="$(unzip -Z1 "$zip")"
+    for type_file in src/types/*.t.lua; do
+        basename="${type_file##*/}"
+        if ! grep -Fxq "QuestieTDB/Types/$basename" <<< "$listing"; then
+            echo "package: $zip is missing QuestieTDB/Types/$basename" >&2
+            exit 1
+        fi
+    done
+}
+
 entries=()
 
 for FLAVOR in "${FLAVORS[@]}"; do
@@ -62,6 +82,7 @@ for FLAVOR in "${FLAVORS[@]}"; do
     mkdir -p "$STAGE/QuestieTDB"
 
     stage_toc "$TOC" "$STAGE/QuestieTDB"
+    stage_types "$STAGE/QuestieTDB"
 
     # Mixed correction files ship for their Dynamic functions, but their Static bodies are
     # already folded into the metadata store — 94-96% of the bytes (issue #5). Strip the
@@ -71,6 +92,7 @@ for FLAVOR in "${FLAVORS[@]}"; do
 
     ZIP="$DIST/QuestieTDB-${FLAVOR}.zip"
     (cd "$STAGE" && zip -qr9X "../../$ZIP" QuestieTDB)
+    assert_type_artifacts "$ZIP"
 
     SIZE=$(stat -c %s "$ZIP")
     SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
@@ -109,11 +131,13 @@ if [ ${#entries[@]} -eq 5 ]; then
         stage_toc "$TOC" "$STAGE/QuestieTDB"
         RAW_ALL=$(( RAW_ALL + $(stat -c %s "$TOC") ))
     done
+    stage_types "$STAGE/QuestieTDB"
 
     "$LUA" tools/strip-static.lua "$STAGE/QuestieTDB"
 
     ZIP="$DIST/QuestieTDB-all.zip"
     (cd "$STAGE" && zip -qr9X "../../$ZIP" QuestieTDB)
+    assert_type_artifacts "$ZIP"
 
     SIZE=$(stat -c %s "$ZIP")
     SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)

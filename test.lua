@@ -1594,6 +1594,107 @@ suite("equivalence-control", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Distributable LuaLS declarations
+--------------------------------------------------------------------------------------------
+
+suite("lua-types", function()
+  local commonMethods = {
+    GetByIndex = true,
+    Get = true,
+    GetAll = true,
+    GetRaw = true,
+    GetAllIds = true,
+    Exists = true,
+    InvalidateCache = true,
+  }
+  local typeFiles = {}
+  local typeFilePipe = assert(io.popen(
+    "find src/types -maxdepth 1 -type f -name '*.t.lua' -print | sort", "r"))
+  for path in typeFilePipe:lines() do typeFiles[#typeFiles + 1] = path end
+  typeFilePipe:close()
+
+  check(#typeFiles > 0, "packaging has at least one LuaLS declaration to ship")
+  for _, path in ipairs(typeFiles) do
+    local content = lib.readAll(path)
+    check(content:find("---@meta _", 1, true) ~= nil,
+      path .. " is marked as analysis-only LuaLS metadata")
+  end
+
+  local generalTypes = lib.readAll("src/types/General.t.lua")
+  for alias in generalTypes:gmatch("%-%-%-@alias%s+([%a_][%w_]*)") do
+    check(alias:find("^QuestieTDB") ~= nil,
+      "analysis-only helper alias is namespaced for consumer compatibility: " .. alias)
+  end
+
+  local entities = {
+    { name = "Quest", meta = dofile("src/meta/questMeta.lua") },
+    { name = "Npc", meta = dofile("src/meta/npcMeta.lua") },
+    { name = "Item", meta = dofile("src/meta/itemMeta.lua") },
+    { name = "Object", meta = dofile("src/meta/objectMeta.lua") },
+  }
+
+  for _, entity in ipairs(entities) do
+    local path = "src/types/" .. entity.name .. ".t.lua"
+    local content = lib.readAll(path)
+    local declared, duplicateFields = {}, {}
+    for field in content:gmatch("%-%-%-@field%s+([%a_][%w_]*)%s+fun") do
+      if declared[field] then duplicateFields[#duplicateFields + 1] = field end
+      declared[field] = true
+    end
+    if content:find("function " .. entity.name .. "DB.GetAllIds", 1, true) then
+      declared.GetAllIds = true
+    end
+
+    equal(#duplicateFields, 0, entity.name .. " type has no duplicate getter declarations")
+    for _, method in ipairs({
+      "GetByIndex", "Get", "GetAll", "GetRaw", "GetAllIds", "Exists", "InvalidateCache",
+    }) do
+      check(declared[method] == true,
+        entity.name .. " type declares the common method " .. method)
+    end
+
+    local schemaFields = {}
+    for fieldIndex = 1, entity.meta.fieldCount do
+      local field = entity.meta.names[fieldIndex]
+      schemaFields[field] = true
+      check(declared[field] == true,
+        entity.name .. " type declares schema getter " .. field)
+    end
+    for field in pairs(declared) do
+      if not commonMethods[field] then
+        check(schemaFields[field] == true,
+          entity.name .. " type has no getter outside the schema: " .. field)
+      end
+    end
+
+    local aliasBody = generalTypes:match(
+      "%-%-%-@alias%s+QuestieTDB" .. entity.name .. "Field%s+([^\r\n]+)")
+    check(aliasBody ~= nil, entity.name .. " field-name alias exists")
+    local aliasedFields = {}
+    for field in (aliasBody or ""):gmatch('"([^"]+)"') do aliasedFields[field] = true end
+    equal(aliasedFields, schemaFields, entity.name .. " field-name alias matches the schema")
+  end
+
+  local tocPaths = { "QuestieTDB.toc" }
+  for _, flavor in ipairs(config.flavors) do
+    local path = config.tocPath(flavor)
+    if lib.fileExists(path) then tocPaths[#tocPaths + 1] = path end
+  end
+  for _, path in ipairs(tocPaths) do
+    local typeEntries = {}
+    for line in lib.readAll(path):gmatch("[^\r\n]+") do
+      if line:sub(1, 1) ~= "#" then
+        local lower = line:lower()
+        if lower:find("types/", 1, true) or lower:find("types\\", 1, true) then
+          typeEntries[#typeEntries + 1] = line
+        end
+      end
+    end
+    equal(typeEntries, {}, path .. " does not runtime-load LuaLS declarations")
+  end
+end)
+
+--------------------------------------------------------------------------------------------
 -- TOC file lists
 --------------------------------------------------------------------------------------------
 

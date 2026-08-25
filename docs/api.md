@@ -14,6 +14,32 @@ the wrong version* — see [Contract version](#contract-version).
 
 ---
 
+## LuaLS declarations
+
+Release zips include analysis-only declarations in `QuestieTDB/Types`. They cover the root
+`LibQuestieDB` global, all entity methods, and every schema-backed named getter. WoW does not
+load these files because no TOC lists them.
+
+Add the packaged folder to the consuming addon's `.luarc.json`. For sibling addon folders under
+`Interface/AddOns`, use:
+
+```json
+{
+  "workspace.library": [
+    "../QuestieTDB/Types"
+  ]
+}
+```
+
+Adjust the relative path if your editor workspace uses another layout.
+
+The declarations are a shipped API contract. Contributors must update `src/types/` when entity
+schemas or getters change, or when a public signature, overload, return nilability, structured
+value, or Corrections interface changes. Internal refactors that preserve those contracts do
+not require a type edit; `AGENTS.md` contains the file-by-file maintenance checklist.
+
+---
+
 ## Reading entity fields
 
 Four Entity globals, one per entity type, with an identical surface:

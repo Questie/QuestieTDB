@@ -23,6 +23,31 @@ architecture as designed; where it and the code disagree, read the ADRs in `docs
 - `docs/table.freeze.md` — live-client research on `table.freeze` / `table.isfrozen`
 - `docs/pi/` — the retired `-pi` sibling: unadopted design ideas and its defect ledger
 
+## LuaLS declaration maintenance
+
+Treat `src/types/*.t.lua` as part of the public API. Update the declarations in the same
+change when any of these contracts change:
+
+- an entity field is added, removed, or renamed, or its value shape or nilability changes —
+  update `General.t.lua` and the affected entity declaration;
+- a public global, property, function signature, return type, overload, or dot-call/method-call
+  convention changes — update the affected entity declaration or `LibQuestieDB.t.lua`;
+- a public structured value changes, including IDs, coordinates, spawn maps, objectives, or
+  Correction entries and callbacks — update its shared alias in `General.t.lua`;
+- the exported Correction API changes — update both `General.t.lua` and
+  `LibQuestieDB.t.lua`;
+- type packaging paths or the shipped declaration set changes — update `tools/package.sh`,
+  the LuaLS tests, and the consumer documentation together.
+
+Internal refactors that preserve these contracts do not require a type change. Keep declarations
+out of TOCs; WoW must never load them. Add or strengthen `src/types/consumer.test.lua` when a
+signature, overload, or structured type needs semantic coverage, then run:
+
+```sh
+lua5.1 test.lua lua-types
+lua-language-server --check=src/types --checklevel=Warning --check_format=pretty
+```
+
 ## Agent skills
 
 ### Issue tracker

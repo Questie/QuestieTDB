@@ -32,7 +32,8 @@ fails before writing output if the checkout or required lookup files do not matc
 ## For consumers
 
 Start at **[`docs/api.md`](docs/api.md)**. It is written so a third-party addon author needs no
-source reading.
+source reading. Release zips also include LuaLS declarations under `QuestieTDB/Types`; point the
+consumer's `workspace.library` at that folder for completion and diagnostics.
 
 ```lua
 QuestDB.name(2)                                  --> "Sharptalon's Claw"
@@ -80,6 +81,7 @@ lua5.1 equivalence.lua
 lua5.1 reconstruct.lua Vanilla
 lua5.1 validators/run.lua
 lua5.1 test.lua
+lua-language-server --check=src/types --checklevel=Warning --check_format=pretty
 
 python3 tools/differential/golden.py check Vanilla
 python3 tools/differential/compiler_diff.py Vanilla
@@ -89,6 +91,18 @@ tools/check.sh all                # Generation, standard gates, Golden, and unit
 tools/check.sh verify --flavors=Vanilla,Mists
 tools/check.sh determinism freeze --flavors=Vanilla
 ```
+
+### Keeping LuaLS declarations in sync
+
+The files in `src/types/` are shipped to consumers and are part of the public API. Update them
+when a change affects an entity schema or getter, a public function signature or overload,
+return nilability, a structured value such as objectives or Correction entries, or the
+`LibQuestieDB` and Corrections interfaces. Pure implementation changes that preserve those
+contracts do not need a type edit.
+
+Update `src/types/consumer.test.lua` when the changed contract needs a semantic LuaLS check.
+Run the `lua-types` suite and LuaLS command above before packaging. `AGENTS.md` maps each kind
+of public change to the declaration files that own it.
 
 `tools/check.sh` remains the direct orchestration engine for automation and existing scripts.
 It accepts the previous gate syntax and `--flavors=Vanilla,Mists`.
@@ -158,6 +172,7 @@ QuestieTDB_<Flavor>.toc   generated, baked mode (gitignored)
 src/
   config.lua              flavors, entity types, file lists, l10n contract
   meta/                   schema, nil/empty semantics, the on-disk codec
+  types/                  distributable LuaLS declarations, never loaded by a TOC
   read/                   shared getters + the two backends that differ
   corrections/            registry, compat shim, ported correction sets
   l10n/                   the locale overlay
