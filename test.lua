@@ -16,6 +16,8 @@ local serialize = dofile("generator/serialize.lua")
 local codec = dofile("src/meta/codec.lua")
 local encode = dofile("generator/encode.lua")
 local normalize = dofile("src/meta/normalize.lua")
+local compilerCoordinates = dofile("tools/differential/compiler_coordinates.lua")
+local dumpValue = dofile("tools/differential/dump_value.lua")
 local emulator = dofile("emulator/metadata.lua")
 local client = dofile("emulator/client.lua")
 local config = dofile("src/config.lua")
@@ -2749,13 +2751,10 @@ suite("wire-safety", function()
 end)
 
 --------------------------------------------------------------------------------------------
--- Coordinate quantization (ADR 0003 D1)
+-- Raw production coordinates (ADR 0006)
 --------------------------------------------------------------------------------------------
 
-suite("quantization", function()
-  local floor = math.floor
-  local function grid(c) return floor(c * 40.90) / 40.90 end
-
+suite("raw-coordinates", function()
   local meta = {
     entity = "Test",
     fieldCount = 4,
@@ -2768,65 +2767,155 @@ suite("quantization", function()
     keys = { spawns = 1, waypoints = 2, triggerEnd = 3, extraObjectives = 4 },
   }
 
-  -- Spawnlist: the compiler grid, the {-1,-1} sentinel, and phase survival rules — all from
-  -- Database/compiler.lua's readers/writers verbatim.
   equal(normalize.field(meta, 1, { [1440] = { { 36.43, 55.89 } } }),
-    { [1440] = { { grid(36.43), grid(55.89) } } }, "spawn coordinates land on the 40.90 grid")
+    { [1440] = { { 36.43, 55.89 } } }, "spawn coordinates retain authored precision")
   equal(normalize.field(meta, 1, { [1440] = { { -1, -1 } } }),
-    { [1440] = { { -1, -1 } } }, "instance sentinel survives")
+    { [1440] = { { -1, -1 } } }, "explicit instance sentinel survives")
+  equal(normalize.field(meta, 1, { [1440] = { { 0, 0 } } }),
+    { [1440] = { { 0, 0 } } }, "zero coordinates remain real coordinates")
   equal(normalize.field(meta, 1, { [1440] = { { 0.001, 0.002 } } }),
-    { [1440] = { { -1, -1 } } }, "sub-quantum coordinates collapse to the sentinel")
+    { [1440] = { { 0.001, 0.002 } } }, "sub-grid coordinates retain their precision")
   equal(normalize.field(meta, 1, { [1440] = { { 10, 20, 3 } } }),
-    { [1440] = { { grid(10), grid(20), 3 } } }, "non-zero phase survives beside a non-zero pair")
+    { [1440] = { { 10, 20, 3 } } }, "nonzero spawn phase survives")
   equal(normalize.field(meta, 1, { [1440] = { { 10, 20, 0 } } }),
-    { [1440] = { { grid(10), grid(20) } } }, "phase 0 is dropped — the compiler's reader emits 2 elements")
-  equal(normalize.field(meta, 1, { [1440] = { { 0.001, 0.002, 7 } } }),
-    { [1440] = { { -1, -1 } } }, "a sentinel-collapsed spawn loses its phase")
+    { [1440] = { { 10, 20 } } }, "spawn phase zero remains omitted")
 
-  -- Waypointlist nests one level deeper and never carries a third element.
   equal(normalize.field(meta, 2, { [85] = { { { 52.5, 47.25 }, { -1, -1 } } } }),
-    { [85] = { { { grid(52.5), grid(47.25) }, { -1, -1 } } } },
-    "waypoints quantize through the extra nesting level")
+    { [85] = { { { 52.5, 47.25 }, { -1, -1 } } } },
+    "waypoints retain raw coordinates through their extra nesting level")
   equal(normalize.field(meta, 2, { [85] = { { { 52.5, 47.25, 9 } } } }),
-    { [85] = { { { grid(52.5), grid(47.25) } } } },
-    "waypoint third element is dropped — the compiler's reader never returns one")
+    { [85] = { { { 52.5, 47.25 } } } },
+    "waypoint third element remains omitted")
 
-  -- Trigger: only the nested spawnlist quantizes; the text is untouched.
   equal(normalize.field(meta, 3, { "Scout the tower", { [85] = { { 52.5, 47.25 } } } }),
-    { "Scout the tower", { [85] = { { grid(52.5), grid(47.25) } } } },
-    "trigger text is verbatim, trigger coordinates quantize")
+    { "Scout the tower", { [85] = { { 52.5, 47.25 } } } },
+    "trigger text and nested raw coordinates survive")
+  equal(normalize.field(meta, 4, {
+    { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } },
+  }), {
+    { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } },
+  }, "extraObjectives preserves its nested raw coordinates and other slots")
 
-  -- extraObjectives: row[1] is a spawnlist; the rest of the row is verbatim.
-  equal(normalize.field(meta, 4, { { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } } }),
-    { { { [85] = { { grid(52.5), grid(47.25) } } }, 42, "Use the thing", 1, { { "monster", 5 } } } },
-    "extraObjectives quantizes only the nested spawnlist")
+  local input = { [1440] = { { 36.43, 55.89, 2 } } }
+  normalize.field(meta, 1, input)
+  equal(input, { [1440] = { { 36.43, 55.89, 2 } } },
+    "coordinate normalization does not mutate source data")
 
-  -- Quantized values must round-trip the wire exactly: shortest-round-trip spelling is
-  -- spelling, never precision loss.
-  for _, c in ipairs({ 36.43, 55.89, 52.5, 0.03, 99.97, 47.25, 63.7 }) do
-    local q = grid(c)
-    local spelled = serialize.number(q)
-    equal(tonumber(spelled), q, "spelling round-trips " .. tostring(c))
-    check(#spelled <= #string.format("%.17g", q),
-      "spelling of " .. tostring(c) .. " is never longer than %.17g")
+  local encoded = encode.field(meta, 1, { [1440] = { { 36.43, 55.89 } } })
+  equal(encoded, "{[1440]={{36.43,55.89}}}", "Generation stores short authored coordinates")
+  equal(codec.decodeTable(encoded), { [1440] = { { 36.43, 55.89 } } },
+    "Baked decoding returns the same raw coordinates")
+
+  local computed = 1 / 3
+  local computedEncoded = encode.field(meta, 1, { [1440] = { { computed, computed * 2 } } })
+  equal(codec.decodeTable(computedEncoded), { [1440] = { { computed, computed * 2 } } },
+    "computed coordinates retain every significant digit needed to round-trip")
+end)
+
+--------------------------------------------------------------------------------------------
+-- Legacy compiler coordinate adapter
+--------------------------------------------------------------------------------------------
+
+suite("compiler-coordinates", function()
+  local floor = math.floor
+
+  ---Legacy compiler read value for one raw coordinate.
+  ---@param coordinate number
+  ---@return number quantized
+  local function grid(coordinate)
+    return floor(coordinate * 40.90) / 40.90
   end
 
-  -- Quantization is deliberately NOT idempotent — `floor(q * 40.90)` on a grid value can
-  -- land one step lower through double rounding (measured: 738 of 10,000 2dp coordinates),
-  -- exactly as Questie's own compiler behaves. Every pipeline path quantizes raw source
-  -- values exactly once: generation before serializing, source mode before caching, the
-  -- overlay on authored correction values. What must never happen is re-normalizing a value
-  -- that was read back from the store; this check documents that both consumers agree when
-  -- each applies the grid once to the same raw input.
-  local viaGeneration = codec.decodeTable(encode.field(meta, 1, { [1440] = { { 8.2, 8.4 } } }))
-  local viaSourceRead = normalize.field(meta, 1, { [1440] = { { 8.2, 8.4 } } })
-  equal(viaGeneration, viaSourceRead,
-    "generation and a source-mode read quantize the same raw value identically")
+  local meta = {
+    entity = "Test",
+    fieldCount = 5,
+    names = { "spawns", "waypoints", "triggerEnd", "extraObjectives", "related" },
+    types = { "table", "table", "table", "table", "table" },
+    structures = { "spawnlist", "waypointlist", "trigger", "extraobjectives", "idarray" },
+    emptyIsNil = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true },
+    zeroPairIsNil = {},
+    normalize = {},
+    keys = { spawns = 1, waypoints = 2, triggerEnd = 3, extraObjectives = 4, related = 5 },
+  }
 
-  -- And the encoder stores exactly the normalized form.
-  local encoded = encode.field(meta, 1, { [1440] = { { 36.43, 55.89 } } })
-  equal(codec.decodeTable(encoded), { [1440] = { { grid(36.43), grid(55.89) } } },
-    "encoded spawnlist decodes to the quantized value")
+  equal(compilerCoordinates.adaptField(meta, 1,
+      { [1440] = { { 36.43, 55.89 } } }, false),
+    { [1440] = { { grid(36.43), grid(55.89) } } },
+    "base spawn coordinates project onto the legacy grid")
+  equal(compilerCoordinates.adaptField(meta, 1,
+      { [1440] = { { -1, -1 } } }, false),
+    { [1440] = { { -1, -1 } } }, "legacy explicit sentinel survives")
+  equal(compilerCoordinates.adaptField(meta, 1,
+      { [1440] = { { 0, 0 }, { 0.001, 0.002, 7 } } }, false),
+    { [1440] = { { -1, -1 }, { -1, -1 } } },
+    "legacy zero and sub-grid pairs collapse to sentinels and lose phase")
+  equal(compilerCoordinates.adaptField(meta, 1,
+      { [1440] = { { 10, 20, 3 }, { 10, 20, 0 } } }, false),
+    { [1440] = { { grid(10), grid(20), 3 }, { grid(10), grid(20) } } },
+    "legacy spawn phase shape is reproduced")
+
+  equal(compilerCoordinates.adaptField(meta, 2,
+      { [85] = { { { 52.5, 47.25, 9 }, { -1, -1 } } } }, false),
+    { [85] = { { { grid(52.5), grid(47.25) }, { -1, -1 } } } },
+    "legacy waypoints quantize and omit their third element")
+  equal(compilerCoordinates.adaptField(meta, 3,
+      { "Scout the tower", { [85] = { { 52.5, 47.25 } } } }, false),
+    { "Scout the tower", { [85] = { { grid(52.5), grid(47.25) } } } },
+    "legacy trigger adapts only its nested spawnlist")
+  equal(compilerCoordinates.adaptField(meta, 4, {
+      { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } },
+    }, false), {
+      { { [85] = { { grid(52.5), grid(47.25) } } }, 42, "Use the thing", 1, { { "monster", 5 } } },
+    }, "legacy extraObjectives adapts only nested spawnlists")
+
+  local overlayValue = { [1440] = { { 36.43, 55.89, 2 } } }
+  equal(compilerCoordinates.adaptField(meta, 1, overlayValue, true), overlayValue,
+    "Dynamic Correction coordinates bypass legacy compilation")
+  equal(compilerCoordinates.adaptField(meta, 5, { 2, 5, 7 }, false), { 2, 5, 7 },
+    "non-coordinate structures pass through unchanged")
+
+  local input = { [1440] = { { 8.2, 8.4 } } }
+  local once = compilerCoordinates.adaptField(meta, 1, input, false)
+  equal(input, { [1440] = { { 8.2, 8.4 } } }, "legacy adaptation does not mutate raw input")
+  equal(once, { [1440] = { { grid(8.2), grid(8.4) } } },
+    "the differential applies one legacy quantization")
+  check(not lib.deepEqual(compilerCoordinates.adaptField(meta, 1, once, false), once),
+    "the non-idempotent adapter exposes accidental double quantization")
+end)
+
+--------------------------------------------------------------------------------------------
+-- Differential coordinate-mode wiring
+--------------------------------------------------------------------------------------------
+
+suite("differential-coordinate-mode", function()
+  local meta = {
+    structures = { "spawnlist", "idarray" },
+  }
+  local baseCoordinates = { [1440] = { { 8.2, 8.4 } } }
+  local expectedCompilerCoordinates = {
+    [1440] = { { math.floor(8.2 * 40.90) / 40.90, math.floor(8.4 * 40.90) / 40.90 } },
+  }
+
+  local rawDumpValue = dumpValue.forMode(nil)
+  equal(rawDumpValue(meta, 1, baseCoordinates, nil), baseCoordinates,
+    "default and Golden dumps preserve raw base coordinates")
+
+  local compilerDumpValue = dumpValue.forMode("--compiler-coordinates")
+  local adapted = compilerDumpValue(meta, 1, baseCoordinates, nil)
+  equal(adapted, expectedCompilerCoordinates,
+    "compiler comparison applies one legacy adaptation to base coordinates")
+  check(not lib.deepEqual(
+      compilerCoordinates.adaptField(meta, 1, adapted, false), adapted),
+    "compiler comparison does not accidentally apply the non-idempotent adapter twice")
+
+  local overlayRow = { [1] = baseCoordinates }
+  equal(compilerDumpValue(meta, 1, baseCoordinates, overlayRow), baseCoordinates,
+    "Dynamic Correction coordinates remain raw in compiler comparison")
+  equal(compilerDumpValue(meta, 2, { 2, 5, 7 }, nil), { 2, 5, 7 },
+    "compiler comparison leaves non-coordinate fields unchanged")
+
+  local ok = pcall(dumpValue.forMode, "--unknown-mode")
+  check(not ok, "unknown dump comparison modes fail before reading entities")
 end)
 
 --------------------------------------------------------------------------------------------

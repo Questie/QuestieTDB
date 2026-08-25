@@ -1,7 +1,8 @@
 -- tools/differential/dump_compiler.lua
 --
 -- Dump **Questie's compiler** reads for one flavor as canonical TSV — the reference
--- implementation this database replaces.
+-- implementation this database replaces. These values are already compiler reads: never pass
+-- them through QuestieTDB's legacy-coordinate adapter a second time.
 --
 -- DESIGN.md phase 6 called for a compiled/TOC differential and gave it a deadline: the
 -- compiler is the reference implementation, so its output must be captured before it is

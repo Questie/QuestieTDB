@@ -201,8 +201,8 @@ end
 --- application of the same set, so a changed argument recomposes rather than accumulates)
 --- and applies as an ordinary QuestieTDB Dynamic layer.
 ---
---- Correction coordinates must be authored values: quantization is deliberately
---- non-idempotent, so never feed back a coordinate read out of the database.
+--- Correction coordinates retain their supplied x/y values, so database coordinates may be
+--- reused without a lossy compiler-grid round trip (ADR 0006).
 ---@return number applied How many recorded sets matched and were registered
 function register.ApplyParameterized(functionName, ...)
   local entries = register.parameterized[functionName]

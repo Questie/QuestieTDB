@@ -29,9 +29,9 @@
 --
 -- ## Ordering
 --
--- Runs on corrected RAW coordinates, before normalize quantizes to the 40.90 grid. Upstream
--- simplifies raw floats and its compiler quantizes afterwards, and quantization is
--- deliberately non-idempotent, so this order is not interchangeable.
+-- Runs on corrected raw coordinates, which production preserves through storage and reads.
+-- Upstream simplified before compilation; the migration-only compiler adapter applies its
+-- legacy grid after this pass as well, so the differential compares the same ordering.
 
 local _, LibQuestieDB = ...
 

@@ -36,12 +36,10 @@ local floor = math.floor
 
 --- Shortest decimal literal that reads back as exactly this number.
 ---
---- Lua 5.1 renders numbers with `%.14g`, which is exact for IDs and the source data's short
---- coordinates but not for every double — in particular not for the 40.90-grid quantized
---- coordinates ADR 0003 stores (`floor(c * 40.90) / 40.90` rarely has a short decimal form).
---- Widening one significant digit at a time and taking the first spelling that round-trips
---- keeps output as compact as exactness allows and is never lossy (`%.17g` always round-trips
---- a double).
+--- Lua 5.1 renders numbers with `%.14g`, which is exact for IDs and most authored coordinates
+--- but not for every double, including coordinates calculated by Derived Passes. Widening one
+--- significant digit at a time and taking the first spelling that round-trips keeps output as
+--- compact as exactness allows and is never lossy (`%.17g` always round-trips a double).
 function serialize.number(value)
   local short = tostring(value)
   if tonumber(short) == value then return short end

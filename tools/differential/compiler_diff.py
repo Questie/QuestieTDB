@@ -101,7 +101,8 @@ def dump_both(flavor, questie, lua, season):
     comp = os.path.join(DUMP_DIR, "compiler-%s.tsv" % flavor)
     env = lua_env(lua)
 
-    run([lua, "tools/differential/dump_a.lua", flavor, tdb], ROOT, env, "QuestieTDB dump")
+    run([lua, "tools/differential/dump_a.lua", flavor, tdb, "--compiler-coordinates"],
+        ROOT, env, "QuestieTDB dump")
 
     questie_root = questie if os.path.isabs(questie) else os.path.join(ROOT, questie)
     script = os.path.join(ROOT, "tools", "differential", "dump_compiler.lua")
