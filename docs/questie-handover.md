@@ -16,20 +16,22 @@ Decisions live in [`adr/0004-derived-passes.md`](./adr/0004-derived-passes.md) (
 
 ```sh
 cd QuestieTDB
-python3 tools/differential/compiler_diff.py all --questie=../Questie   # ~2 min, all five flavours
-python3 tools/differential/compiler_diff.py Vanilla --self-check       # prove the gate is live
+uv run python tools/differential/compiler_diff.py all --questie=../Questie   # ~2 min, all five flavours
+uv run python tools/differential/compiler_diff.py Vanilla --self-check       # prove the gate is live
 ```
 
 Current counts use the full `QuestieInit` pre-compile sequence from the Questie commit in
 `QUESTIE_COMMIT`. Totals compared: 397,395 / 659,210 / 980,653 / 1,588,480 / 1,982,795
 fields.
 
-Remaining divergences: **42 / 49 / 62 / 83 / 102**. Re-porting the pinned Corrections
-resolved the stale `questFlags` and `reputationReward` classes. The temporary compatibility
-pass then removed every base-flavor `requiredRaces` divergence. Matching Questie's
-inherited-Correction creation rule removed every phantom entity. Preserving Questie's WotLK
-`LoadAutomatics`-then-`Load` order removed another 20 NPC-spawn divergences from each later
-flavor. Entity-id sets now agree exactly across all five flavors.
+Remaining divergences: **20,220 / 35,929 / 55,042 / 86,058 / 99,438**. Almost all are
+the approved `minLevelHealth` and `maxLevelHealth` policy: QuestieTDB omits obsolete health
+data and returns constant placeholders, while the migration oracle still reads compiler
+values. Raw coordinate storage removed the former NPC/Object spawn-value classes through the
+tool-only Compiler comparison adapter. Re-porting the pinned Corrections resolved the stale
+`questFlags` and `reputationReward` classes, the temporary compatibility pass removed every
+base-flavor `requiredRaces` divergence, and matching Questie's inherited-Correction creation
+rule removed every phantom entity. Entity-id sets agree exactly across all five flavors.
 
 The same counts, with a reason per row, are committed under
 `tools/differential/compiler-baseline/`. The gate fails on anything new or grown and prints
@@ -93,9 +95,9 @@ Read cost and memory from the same session are in
 
 | Class | Vanilla | TBC | Wrath | Cata | Mists | Status | Disposition |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| `Npc.minLevelHealth` value | 10,090 | 18,499 | 29,606 | 46,316 | 45,875 | **POLICY** | Deprecated health data is not stored. QuestieTDB returns the documented `0` placeholder for known NPCs; compiler parity is intentionally not required. |
+| `Npc.maxLevelHealth` value | 10,106 | 17,403 | 25,412 | 39,718 | 53,539 | **POLICY** | Same policy, with the documented `1` placeholder. |
 | `Object.spawns` absent-vs-value | 24 | 24 | 24 | 24 | 24 | **POLICY** | Gathering nodes. QuestieTDB keeps all 17,191 spawn points; Questie suppresses them with a registered Dynamic Correction. Permanent and correct. |
-| `Npc.spawns` value | 9 | 11 | 25 | 41 | 59 | **OPEN** ([#3](https://github.com/Questie/QuestieTDB/issues/3)) | Correction Overlay coordinates. `QuerySingle` returns override values verbatim, bypassing the 40.90 grid; QuestieTDB normalizes them. Matching means reproducing an inconsistency. Undecided. |
-| `Object.spawns` value | 9 | 11 | 13 | 18 | 19 | **OPEN** ([#3](https://github.com/Questie/QuestieTDB/issues/3)) | Same cause. |
 | TBC prerequisite fields absent-vs-value | – | 3 | – | – | – | **POLICY** | `LoadContentPhaseFixes` supplies `preQuestGroup` for quest 10944 and `preQuestSingle` for quests 10944/11007 inside Questie. Content phases remain consumer policy in QuestieTDB. |
 
 Entity **id sets match exactly** on all five flavours and all four types — zero
@@ -112,6 +114,8 @@ Entity **id sets match exactly** on all five flavours and all four types — zer
 | `Quest.extraObjectives` value | 7 / 25 / 54 / 99 / 116 | Same rule, row slot `[4]` (objectiveIndex). |
 | `Npc.waypoints` value | 454 / 808 / 1,095 / 1,153 / 1,158 | `src/derived/waypoints.lua`, the first Derived Pass. Verified at **zero** on all five flavours, with `verify`, `equivalence`, `reconstruct` and determinism all green. |
 | `Object.waypoints` value | – / – / – / 3 / 3 | Same pass. |
+| `Npc.spawns` Correction Overlay coordinates | 9 / 11 / 25 / 41 / 59 | ADR 0006 makes raw coordinates the production contract. The migration-only Compiler comparison adapter quantizes base data but leaves Dynamic Corrections raw, matching Questie's `QuerySingle` behavior without carrying compiler loss into storage. |
+| `Object.spawns` Correction Overlay coordinates | 9 / 11 / 13 / 18 / 19 | Same adapter policy. |
 | Phantom entities from inherited Corrections | 0 / 0 / 1 / 4 / 99 ids, plus inherited fields | The Correction registry derives each file's source expansion and applies Questie's `noNewEntries` rule when a later flavor inherits it. Older Corrections can update surviving rows, but only a field-1/name Correction may create a missing entity. |
 | `Quest.questFlags` value | – / – / 2 / 72 / 72 | Resolved by the pinned Correction re-port. |
 | `Quest.reputationReward` absent-vs-value | – / – / 1 / 1 / 1 | Resolved by the pinned Correction re-port. |
@@ -196,10 +200,10 @@ yet been closed.
 | --- | --- | --- |
 | [#1](https://github.com/Questie/QuestieTDB/issues/1) | Materialize the derived `requiredRaces` patch | Open |
 | [#2](https://github.com/Questie/QuestieTDB/issues/2) | Triage the three unexplained divergence classes | Resolved by the pinned re-port and WotLK order fix |
-| [#3](https://github.com/Questie/QuestieTDB/issues/3) | Decide whether the overlay quantizes coordinates | Open |
+| [#3](https://github.com/Questie/QuestieTDB/issues/3) | Decide whether the overlay quantizes coordinates | Resolved by ADR 0006: production stays raw; only base values adapt for the compiler differential |
 | [#4](https://github.com/Questie/QuestieTDB/issues/4) | Validator baseline is stale, 78 new findings | Reviewed and refreshed in `validator-baseline-review.md` |
 | [#5](https://github.com/Questie/QuestieTDB/issues/5) | Baked artifacts ship static correction bodies | Implemented by package-time stripping; live-client acceptance remains with #6 |
-| [#6](https://github.com/Questie/QuestieTDB/issues/6) | Mists in-client acceptance at 112 MiB | Open |
+| [#6](https://github.com/Questie/QuestieTDB/issues/6) | Mists in-client acceptance at 97.7 MiB | Open |
 | [#7](https://github.com/Questie/QuestieTDB/issues/7) | Differential missing from `release.yml` | Resolved; release publication depends on the matrix |
 | [#8](https://github.com/Questie/QuestieTDB/issues/8) | Pin the Questie input checkout | Resolved by `QUESTIE_COMMIT` and shared workflow checkout |
 | [#9](https://github.com/Questie/QuestieTDB/issues/9) | Decide where corrections are authored after phase 13 | Open |
@@ -213,10 +217,3 @@ yet been closed.
 | [#17](https://github.com/Questie/QuestieTDB/issues/17) | Keep `ObjectiveFirst` flavor-scoped in Source mode | Open |
 | [#18](https://github.com/Questie/QuestieTDB/issues/18) | Document and test Darkmoon parameterized arguments | Open |
 | [#19](https://github.com/Questie/QuestieTDB/issues/19) | Cover correction side channels and SoD in differential tests | Open |
-
-## Open questions
-
-1. **Overlay coordinate quantization** — now the largest remaining class after
-   `requiredRaces`. Match Questie (return correction coordinates
-   verbatim, accepting that the same field is quantized from base data and unquantized from
-   the overlay), or keep QuestieTDB's uniform treatment and baseline the difference?

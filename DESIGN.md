@@ -535,18 +535,21 @@ downloaded** so switching test clients needs no re-bootstrap.
 
 ### Measured sizes
 
-Current artifacts, post-ADR-0003 wire changes (quantized-decimal spelling accounts for the
-growth over the pre-ADR build; every flavor remains 4–6% under the sibling `-pi`
-implementation's equivalents):
+Deterministic post-ADR-0006 artifacts, measured after all-flavor regeneration. Byte counts are
+decimal bytes; each flavor ZIP is its standalone package.
 
-| Flavor | Raw bytes |
-| --- | ---: |
-| Vanilla | 25,430,676 |
-| TBC | 42,444,718 |
-| Wrath | 60,482,670 |
-| Cata | 96,049,939 |
-| Mists | 117,410,435 |
-| **All five** | **341,818,438** |
+| Flavor | Raw TOC bytes | Standalone ZIP bytes |
+| --- | ---: | ---: |
+| Vanilla | 21,860,697 | 6,516,908 |
+| TBC | 36,472,056 | 10,358,374 |
+| Wrath | 52,455,587 | 14,418,554 |
+| Cata | 84,071,181 | 22,290,243 |
+| Mists | 102,430,533 | 27,059,866 |
+| **All five** | **297,290,054** | **80,643,945** |
+
+Raw coordinate storage reduced the five TOCs by **44,528,384 bytes (13.03%)** from the
+341,818,438-byte post-ADR-0003 baseline. The combined all-flavor package is **79,909,948
+bytes**; it is a separate ZIP, not the 80,643,945-byte sum of the five standalone packages.
 
 Historical prototype measurements, retained for comparison rather than overwritten:
 
@@ -624,7 +627,9 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
    with two permanent backends it never retires.
 5. **Compiled/TOC differential.** Migration-only, and it has a **deadline**: the compiler is
    the reference implementation, so before removing it, freeze its output as a committable
-   golden snapshot (per-id hashes, not full values).
+   golden snapshot (per-id hashes, not full values). A tool-only adapter projects raw base
+   coordinates onto the compiler grid for this comparison while leaving Dynamic Corrections
+   raw, matching Questie's runtime override path (ADR 0006).
 6. **Fake backend + fixture.** An in-memory implementation of the 12-function seam, seeded
    from a few hundred entities checked into Questie. Default for Questie's 15 DB-touching unit
    tests: hermetic, fast, no network. Affordable only because the seam is 12 functions wide.
@@ -634,7 +639,7 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
 
 ## Open risks and gates
 
-### 1. TOC size in the live client — CLEARED at 85 MB; recheck open at 118 MB
+### 1. TOC size in the live client — CLEARED at 85 MB; recheck open at 102.4 MB
 
 Previously the blocking gate. **Resolved by prior in-client testing**: both `toc-database` and
 `Getters` were tested deeply against real clients at full size and load fast, with no parse or
@@ -642,10 +647,10 @@ memory problem at the 20–85 MB range. The merged Vanilla artifact (25.4 MB) is
 live-validated end-to-end on build 69109
 ([`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md) §7b).
 
-The post-merge Mists artifact is 117.7 MB — above the historically cleared range — so one
-Mists-client acceptance session (load time, metadata reads, memory, one non-enUS locale)
-remains an open item; see `docs/merge-program.md` future work. This is a regression check,
-not a return to an undecided storage architecture.
+The post-ADR-0006 Mists artifact is 102,430,533 bytes (102.4 MB decimal, 97.7 MiB) — still
+above the historically cleared range. Run one Mists-client acceptance session (load time,
+metadata reads, memory, one non-enUS locale); see `docs/merge-program.md` future work. This is
+a regression check, not a return to an undecided storage architecture.
 
 This also settles the l10n-in-TOC decision — keeping all nine locales in the store is
 validated, not assumed. Splitting l10n out remains a known mitigation if the artifact grows

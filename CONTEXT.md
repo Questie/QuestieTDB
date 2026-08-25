@@ -25,10 +25,10 @@ never begin or end with client-trimmable bytes — the client strips edge whites
 metadata values (measured; see `docs/client-metadata-probes.md`).
 _Avoid_: Combined parts, split value
 
-**Coordinate grid**:
-The `floor(coord * 40.90) / 40.90` quantization applied to spawn and waypoint coordinates
-during normalization, reproducing what Questie's compiled reads observe (ADR 0003 D1).
-_Avoid_: Rounding, precision trimming
+**Raw coordinate**:
+An authored or Derived Pass spawn/waypoint coordinate preserved without legacy compiler-grid
+quantization in both Source and Baked mode (ADR 0006).
+_Avoid_: Unquantized coordinate, full-precision coordinate
 
 **Generation**:
 The offline process that turns raw entity data plus Static Corrections into a TOC metadata store.
@@ -151,6 +151,12 @@ checked per flavor in CI. The frozen mirror that catches defects where generator
 source mode agree with each other while both diverge from upstream — the class the
 retired `-pi` sibling's independence caught during the merge program.
 _Avoid_: Baseline (that word belongs to the validators), reference dump
+
+**Compiler comparison adapter**:
+The migration-only projection that converts QuestieTDB base coordinates to Questie's legacy
+12-bit read values immediately before the compiler differential. It never runs in Generation
+or runtime reads and retires with the compiler oracle (ADR 0006).
+_Avoid_: Production quantizer, compatibility mode
 
 **Persona**:
 The emulator's mocked client identity — faction, race, class, season — letting gated and

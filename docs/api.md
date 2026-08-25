@@ -248,9 +248,9 @@ apply, and constants the body reads are resolved at apply time.
 * An id absent from the database is **created**, which is how a correction adds an entity.
   An added entity is fully first-class: readable, enumerable through `GetAllIds`, and
   `Exists(id)` is true, until the correction is withdrawn.
-* **Coordinates in a correction must be authored values.** Quantization is deliberately
-  non-idempotent (exactly like Questie's compiler), so never write back a coordinate you
-  read out of the database — supply the original source coordinate.
+* **Correction coordinates preserve their supplied `x` and `y` values.** No compiler-grid
+  quantization runs in production, so a coordinate read from the database may safely be reused.
+  Ordinary tuple rules still apply: spawn phase `0` and waypoint third elements are omitted.
 
 ### Precedence
 
