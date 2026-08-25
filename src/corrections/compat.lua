@@ -42,21 +42,32 @@ local DATA_FIELD_TO_TYPE = {
   questData = "Quest", npcData = "Npc", itemData = "Item", objectData = "Object",
 }
 
-local function buildQuestieDB()
+--- The enum's flat tables hold Classic values; expansion-varying constants (race masks,
+--- npc flags, ALL_CLASSES — see the generated header) also appear per expansion under
+--- `constants.byExpansion`. Serving the flavor's own set here is what keeps Era correction
+--- files, which apply on every expansion, from baking Era-valued masks into TBC+ flavors.
+local function pick(name, expansionName)
+  local per = constants.byExpansion and constants.byExpansion[expansionName]
+  local value = per and per[name]
+  if value ~= nil then return value end
+  return constants[name]
+end
+
+local function buildQuestieDB(expansionName)
   local QuestieDB = {
-    questKeys = constants.questKeys,
-    npcKeys = constants.npcKeys,
-    itemKeys = constants.itemKeys,
-    objectKeys = constants.objectKeys,
-    raceKeys = constants.raceKeys,
-    classKeys = constants.classKeys,
-    sortKeys = constants.sortKeys,
-    specialFlags = constants.specialFlags,
-    factionIDs = constants.factionIDs,
-    questFlags = constants.questFlags,
-    npcFlags = constants.npcFlags,
-    itemClasses = constants.itemClasses,
-    waypointPresets = constants.waypointPresets,
+    questKeys = pick("questKeys", expansionName),
+    npcKeys = pick("npcKeys", expansionName),
+    itemKeys = pick("itemKeys", expansionName),
+    objectKeys = pick("objectKeys", expansionName),
+    raceKeys = pick("raceKeys", expansionName),
+    classKeys = pick("classKeys", expansionName),
+    sortKeys = pick("sortKeys", expansionName),
+    specialFlags = pick("specialFlags", expansionName),
+    factionIDs = pick("factionIDs", expansionName),
+    questFlags = pick("questFlags", expansionName),
+    npcFlags = pick("npcFlags", expansionName),
+    itemClasses = pick("itemClasses", expansionName),
+    waypointPresets = pick("waypointPresets", expansionName),
   }
 
   for name, datatype in pairs(DATA_FIELD_TO_TYPE) do
@@ -70,26 +81,26 @@ local function buildQuestieDB()
     for key, index in pairs(keys) do reversed[index] = key end
     return reversed
   end
-  QuestieDB.questKeysReversed = reverse(constants.questKeys)
-  QuestieDB.npcKeysReversed = reverse(constants.npcKeys)
-  QuestieDB.itemKeysReversed = reverse(constants.itemKeys)
-  QuestieDB.objectKeysReversed = reverse(constants.objectKeys)
+  QuestieDB.questKeysReversed = reverse(QuestieDB.questKeys)
+  QuestieDB.npcKeysReversed = reverse(QuestieDB.npcKeys)
+  QuestieDB.itemKeysReversed = reverse(QuestieDB.itemKeys)
+  QuestieDB.objectKeysReversed = reverse(QuestieDB.objectKeys)
 
   return QuestieDB
 end
 
-local function buildModules()
+local function buildModules(expansionName)
   local modules = {}
 
-  modules.QuestieDB = buildQuestieDB()
-  modules.ZoneDB = { zoneIDs = constants.zoneIDs }
+  modules.QuestieDB = buildQuestieDB(expansionName)
+  modules.ZoneDB = { zoneIDs = pick("zoneIDs", expansionName) }
   modules.QuestieProfessions = {
-    professionKeys = constants.professionKeys,
-    specializationKeys = constants.specializationKeys,
-    rankNames = constants.rankNames,
+    professionKeys = pick("professionKeys", expansionName),
+    specializationKeys = pick("specializationKeys", expansionName),
+    rankNames = pick("rankNames", expansionName),
   }
   modules.QuestieCorrections = compat.objectiveFirst
-  modules.Phasing = { phases = constants.phases }
+  modules.Phasing = { phases = pick("phases", expansionName) }
 
   -- `l10n(...)` appears ~100 times in classicQuestFixes and ~207 times in tbcQuestFixes,
   -- always inside `extraObjectives`. **Store the enUS string, translate at render time** —
@@ -121,7 +132,7 @@ function compat.Install(flavor)
 
   saved = { QuestieLoader = rawget(_G, "QuestieLoader") }
 
-  local modules = buildModules()
+  local modules = buildModules((flavor and flavor.expansion) or "Classic")
   modules.Expansions.Current = order
   compat.modules = modules
 

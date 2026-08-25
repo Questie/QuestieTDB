@@ -1,6 +1,7 @@
 # QuestieTDB — Questie TOC Database
 
-Design document. No implementation yet.
+The design document this implementation was built from. Contracts decided after the
+buildout live in `docs/adr/` — ADR 0003 supersedes this document where they disagree.
 
 Vocabulary is defined in [`CONTEXT.md`](./CONTEXT.md) and used precisely here.
 
@@ -23,7 +24,7 @@ its owner, while retaining the ability to register Corrections.
 | Runtime modes | **Source mode** and **Baked mode**, selected automatically by TOC suffix precedence. |
 | Variants | SoD / Classic+ are Dynamic Correction sets over the Era database, not separate databases. |
 | Localization | Baked into the TOC alongside entity data. |
-| Value ownership | Database-owned. Reads return **Frozen values**. |
+| Value ownership | Caller-owned. Table reads return a **fresh mutable copy** per read (ADR 0003 D10, revised after live measurement — originally "Frozen values"). |
 | Engine base | `toc-database`'s generator, retargeted at Questie's schema. |
 | Schema reference | `Getters` — already encodes Questie's field layout, though **stale** (32 fields vs Questie's current 36). |
 
@@ -216,6 +217,15 @@ Two implementation consequences:
   disqualified anyway — a frozen table carrying `__newindex` redirects writes rather than
   failing.
 
+**Amended by [ADR 0005](./docs/adr/0005-element-level-nil-semantics.md), after the reference
+differential measured it.** Two corrections to the table above: the `questgivers` and
+`objectives` structures read back as `{}` rather than nil, because their compiler readers
+build a table unconditionally — so quest `startedBy`, `finishedBy` and `objectives` are never
+nil for a quest that exists. And the `nil number -> 0` rule is **element-level, not
+field-level**: absent numeric slots inside `objective`, `spellobjective`, killcredit and
+`extraobjective` tuples read back as `0` too. Between them these accounted for 94% of every
+divergence from Questie's compiler.
+
 This remains the highest-risk class of bug, so the rule is enforced by exhaustive differential
 testing rather than trusted to review. Full detail in
 [`docs/storage-format.md`](./docs/storage-format.md).
@@ -334,8 +344,11 @@ This is required by load order, not a convenience: third-party addons declare
 The owner parameter selects **which layer is being refreshed**, never which layers are
 visible. Recomposition always includes every live layer.
 
-Precedence is two-level — outer by owner apply order, inner by `loadOrder` within an owner —
-with **last applied wins**. This follows load order naturally
+Precedence is two-level — outer by owner rank, inner by `loadOrder` within an owner. **An
+owner's rank is fixed at its first apply; re-applying refreshes that owner's layer in
+place, never re-ranks it** (the original "last applied wins" let any owner-scoped refresh —
+including `ApplyParameterized` — hoist a whole layer above consumer corrections; caught in
+review, fixed). First-apply order follows load order naturally
 (`QuestieTDB` < `Questie` < third-party), and must be documented, because `loadOrder` changes
 meaning from "global sequence" to "sequence within an owner".
 
@@ -422,37 +435,36 @@ database is wrong" path.
 
 ## Value ownership
 
-Reads return **Frozen values**. The database owns them; callers must not mutate. A caller
-needing a mutable working copy calls `CopyTable` explicitly.
+**Superseded by [ADR 0003 Decision 10](./docs/adr/0003-merged-storage-and-read-contract.md),
+revised after live measurement.** This section originally mandated frozen shared values; what
+ships is the opposite, and better on this design's own terms.
 
-Enforced with `table.freeze`, which is a **VM-level flag, not a metatable proxy** — reads are
-completely unaffected, `rawset` is blocked, and `getmetatable` still returns `nil`.
-Measurements from [`docs/table.freeze.md`](./docs/table.freeze.md), which records live-client
-verification on Classic Era 1.15.9: deep-freeze allocates **0 KiB** against `CopyTable`'s
-~357 KiB, and runs 8–20% faster.
+Table reads return a **fresh mutable copy per read**, produced by executing a cached compiled
+chunk — Baked mode caches `loadstring` of the stored literal, Source mode and overlay values
+serialize once through the shared serializer and compile once, so both modes execute chunks
+and stay equivalent by construction. Scalar fields keep the plain decoded cache (strings and
+numbers are immutable).
 
-| | |
-| --- | --- |
-| Source-mode base data | frozen after load |
-| Scalar fields | cached unconditionally, both modes — strings and numbers are immutable, so no hazard |
-| Table fields (17 of 32 quest fields) | cached **and** frozen, both modes |
-| Genuine mutation needs | explicit `CopyTable` at the call site |
+Why the reversal, in short (full numbers in
+[`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md)):
 
-Three consequences:
+- **Fresh-per-read is Questie's existing semantics.** The compiler decodes fresh tables per
+  call, and the ~290 call sites were written against that — sites like `GetQuest`'s
+  `creatureObjective[3] = nil` stay harmless, and the consumer-side mutation audit this
+  section used to require disappears entirely.
+- **The original rejection reason is measured away.** "Fresh-per-read" was rejected for the
+  `loadstring` parse per read; caching the compiled chunk removes the parse, and re-execution
+  costs 0.13–1.8 µs for typical field shapes (19 µs for the largest spawn tables) against a
+  0.25 µs cache hit.
+- **Frozen values never actually held in Baked mode.** `table.freeze` is taint-ownership
+  gated, and tables built by `loadstring` chunks belong to the force-taint context — the
+  refusal was measured live, along with the chunk-internal freeze pattern that would fix it,
+  recorded in the probes document should shared values ever return.
 
-- **The audit is self-executing.** `GetQuest` writes `creatureObjective[3] = nil` into its
-  query results — safe today only because the compiler decodes fresh tables per call. Turning
-  freezing on surfaces every such site as
-  `attempted to perform indexed assignment on a frozen table`.
-- **That particular mutation should be fixed in the data.** It exists to normalise "0 means no
-  icon". Normalise during Generation so the reader never needs to write.
-- **`__newindex` sentinels must go.** A frozen table *with* `__newindex` redirects writes to
-  the metamethod instead of failing. `Getters`' `EMPTY` sentinel uses exactly that pattern;
-  replace it with a plain frozen table.
-
-`table.freeze` does not exist in standard Lua 5.1, which is what the generator, `verify.lua`,
-and Questie's `cli/` harness run on. Capability detection is mandatory, and the offline
-harness needs a pure-Lua substitute so CI stays strict.
+`table.freeze` remains in use only for QuestieTDB-internal shared structures (schema meta,
+ID maps), where addon ownership makes it real. `docs/table.freeze.md` holds the underlying
+API research, including the `__newindex` redirect hazard that still forbids metatable-carrying
+sentinels anywhere near frozen internals.
 
 ## Localization
 
@@ -462,6 +474,18 @@ the UI locale changes.
 
 Replace with the l10n overlay: locale-joined values, `SetLocale()` at runtime, getters
 wrapped with enUS fallback. **This deletes the recompile-on-locale-change entirely.**
+
+Two contracts ADR 0003 added after the buildout: **corrections outrank translations** — when
+Correction Overlay provenance supplied a localizable field, the lookup translation is skipped,
+so corrected text is never replaced by a stale copied lookup and provenance never names an
+owner for a value it did not supply (D8); and **table-typed fields keep their table shape per
+locale segment** — `objectivesText` segments are serialized table literals, so a translated
+list is always a table, never a joined string; element counts follow the upstream lookup's
+own shape, which zhCN/zhTW legitimately vary (D3, scope corrected). Chunk parts are split
+trim-safely because the
+client removes edge whitespace from metadata values — measured, with a shipped artifact's
+Russian text corrupted by exactly this, in
+[`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md).
 
 l10n stays **inside** the QuestieTDB TOC rather than becoming a separate addon. TOC metadata
 lives in client-side storage, not the Lua heap — nothing materialises until a getter decodes
@@ -510,6 +534,21 @@ slot in the developer's clone. Deviations from the generic pattern: the install 
 downloaded** so switching test clients needs no re-bootstrap.
 
 ### Measured sizes
+
+Current artifacts, post-ADR-0003 wire changes (quantized-decimal spelling accounts for the
+growth over the pre-ADR build; every flavor remains 4–6% under the sibling `-pi`
+implementation's equivalents):
+
+| Flavor | Raw bytes |
+| --- | ---: |
+| Vanilla | 25,430,676 |
+| TBC | 42,444,718 |
+| Wrath | 60,482,670 |
+| Cata | 96,049,939 |
+| Mists | 117,410,435 |
+| **All five** | **341,818,438** |
+
+Historical prototype measurements, retained for comparison rather than overwritten:
 
 | | Raw | Zipped |
 | --- | ---: | ---: |
@@ -595,11 +634,18 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
 
 ## Open risks and gates
 
-### 1. TOC size in the live client — CLEARED
+### 1. TOC size in the live client — CLEARED at 85 MB; recheck open at 118 MB
 
 Previously the blocking gate. **Resolved by prior in-client testing**: both `toc-database` and
 `Getters` were tested deeply against real clients at full size and load fast, with no parse or
-memory problem at the 20–85 MB range.
+memory problem at the 20–85 MB range. The merged Vanilla artifact (25.4 MB) is additionally
+live-validated end-to-end on build 69109
+([`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md) §7b).
+
+The post-merge Mists artifact is 117.7 MB — above the historically cleared range — so one
+Mists-client acceptance session (load time, metadata reads, memory, one non-enUS locale)
+remains an open item; see `docs/merge-program.md` future work. This is a regression check,
+not a return to an undecided storage architecture.
 
 This also settles the l10n-in-TOC decision — keeping all nine locales in the store is
 validated, not assumed. Splitting l10n out remains a known mitigation if the artifact grows
@@ -629,10 +675,11 @@ Deriving the schema (see Schema) converts this from a silent divergence into a b
 The residual risk is narrower: an unrecognised **compiler type** halts generation and needs a
 storage decision, and the type map must be materialized before phase 13 removes its source.
 
-### 4. Mutation audit
+### 4. Mutation audit — MOOT
 
-Freezing makes this self-executing, but the volume is unknown until it runs. `GetQuest` is one
-site; there will be others, invisible today because current semantics forgive them.
+Retired with the frozen-value contract itself: ADR 0003 D10 (revised) made every table
+read a fresh mutable copy the caller owns — Questie's original semantics — so consumer
+mutation sites like `GetQuest`'s are harmless by construction and no audit is needed.
 
 ## Rejected alternatives
 

@@ -65,6 +65,15 @@ function baked.CreateBackend(meta)
     return decoder(stored)
   end
 
+  --- Compile the stored literal for a table field directly, skipping the decode: the shared
+  --- getter caches this producer and executes it per read (ADR 0003 D10). Baked mode already
+  --- holds the serialized text, so no decode-then-reserialize round trip is ever paid.
+  function backend.tableChunk(id, fieldIndex)
+    local stored = getStored(prefix .. id .. "-" .. fieldIndex)
+    if stored == nil then return nil end
+    return codec.compileTable(stored)
+  end
+
   function backend.getAllIds()
     if not idList then
       local stored = getStored(prefix .. "IDS-LIST")

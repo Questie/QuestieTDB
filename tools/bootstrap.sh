@@ -59,6 +59,15 @@ if [ ! -s "$WORK/files.txt" ]; then
     exit 1
 fi
 
+# A release carrying the combined artifact needs only that one download — it is the union of
+# the per-flavor zips, and "all flavors installed" is this script's whole contract. Releases
+# from before the combined artifact fall back to downloading every flavor.
+if grep -qE '^QuestieTDB-all\.zip ' "$WORK/files.txt"; then
+    grep -E '^QuestieTDB-all\.zip ' "$WORK/files.txt" > "$WORK/files.all"
+    mv "$WORK/files.all" "$WORK/files.txt"
+    echo "bootstrap: release carries QuestieTDB-all.zip — downloading the combined artifact only"
+fi
+
 TARGET="$ADDONS/QuestieTDB"
 mkdir -p "$TARGET"
 

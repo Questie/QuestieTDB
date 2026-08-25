@@ -111,6 +111,11 @@ src\corrections\Shared\itemStartFixes.lua
 src\corrections\manifest.lua
 src\corrections\register.lua
 src\corrections\_end.lua
+src\derived\registry.lua
+src\derived\_begin.lua
+src\derived\RamerDouglasPeucker.lua
+src\derived\waypoints.lua
+src\derived\_end.lua
 src\l10n\overlay.lua
 src\ui\modeIndicator.lua
 src\api.lua

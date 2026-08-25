@@ -11,6 +11,7 @@ local lib = dofile("generator/lib.lua")
 local loader = dofile("generator/loader.lua")
 local schema = dofile("generator/schema.lua")
 local corrections = dofile("generator/corrections.lua")
+local derived = dofile("generator/derived.lua")
 
 local flavorLoader = {}
 
@@ -36,6 +37,9 @@ function flavorLoader.load(flavor, typeFilter, applyCorrections)
   local stats = { applied = 0 }
   if applyCorrections ~= false then
     stats.applied, stats.corrections = corrections.applyStatic(loaded, flavor)
+    -- Derived Passes run after corrections and before anything encodes or normalizes, which
+    -- is the order Questie uses and the only order quantization survives (ADR 0004 D3).
+    stats.derived = derived.run(loaded, flavor)
   end
 
   return loaded, stats

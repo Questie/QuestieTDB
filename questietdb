@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# Root contributor command. Scheduling and gate implementation live in tools/check.sh.
+
+if (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then
+    printf 'QuestieTDB requires Bash 5.1 or newer; found %s.\n' "$BASH_VERSION" >&2
+    exit 2
+fi
+
+set -uo pipefail
+
+print_usage() {
+    cat <<'EOF'
+Usage: ./questietdb <task> [task ...] [flavor ...] [options]
+
+Common tasks:
+  generate                 Generate baked artifacts
+  check                    Run verify, equivalence, reconstruct, validators, and differential
+  all                      Run the standard full suite, including Generation and unit tests
+
+Individual gates:
+  verify equivalence reconstruct validators differential golden test determinism freeze
+  freeze supports Vanilla and Mists only.
+
+Flavors:
+  Vanilla TBC Wrath Cata Mists
+  Omit flavors to select every flavor supported by each task.
+
+Options:
+  --flavors=Vanilla,Mists  Explicit flavor selection for scripts and CI
+  --budget-mb=4000         Scheduler memory budget, 1 to 2147483647 MB
+  --questie=PATH           Questie checkout, default: ../Questie
+  --lua=COMMAND            Lua 5.1-compatible interpreter
+  --sequential             Run one job at a time
+  -h, --help               Show this help
+
+Examples:
+  ./questietdb generate Vanilla
+  ./questietdb generate Vanilla Mists
+  ./questietdb check Vanilla
+  ./questietdb verify equivalence Vanilla Mists
+EOF
+}
+
+if [ "$#" -eq 0 ]; then
+    print_usage
+    exit 0
+fi
+
+declare -a tasks=() positional_flavors=() explicit_flavor_values=() options=()
+declare -a requested_flavors=()
+declare -A seen_tasks=() seen_flavors=() seen_explicit_flavors=()
+explicit_flavors=0
+MAX_BUDGET_MB=2147483647
+
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        --flavors=*)
+            [ "$explicit_flavors" -eq 0 ] || { echo "--flavors may be provided only once" >&2; exit 2; }
+            flavor_value="${arg#*=}"
+            if [ -z "$flavor_value" ] || [[ "$flavor_value" == ,* || "$flavor_value" == *, || "$flavor_value" == *,,* ]]; then
+                echo "--flavors requires a comma-separated list without empty values" >&2
+                exit 2
+            fi
+            explicit_flavors=1
+            IFS=, read -r -a requested_flavors <<< "$flavor_value"
+            for flavor in "${requested_flavors[@]}"; do
+                case "$flavor" in
+                    Vanilla|TBC|Wrath|Cata|Mists) ;;
+                    *)
+                        echo "unknown flavor in --flavors: $flavor" >&2
+                        echo "Flavors: Vanilla TBC Wrath Cata Mists" >&2
+                        exit 2
+                        ;;
+                esac
+                if [ -z "${seen_explicit_flavors[$flavor]+x}" ]; then
+                    explicit_flavor_values+=("$flavor")
+                    seen_explicit_flavors[$flavor]=1
+                fi
+            done
+            ;;
+        --budget-mb=*)
+            budget_value="${arg#*=}"
+            if [[ ! "$budget_value" =~ ^[0-9]+$ ]]; then
+                echo "--budget-mb requires a positive decimal integer" >&2
+                exit 2
+            fi
+            while [[ "$budget_value" == 0* && ${#budget_value} -gt 1 ]]; do
+                budget_value="${budget_value#0}"
+            done
+            if [ "$budget_value" = "0" ]; then
+                echo "--budget-mb requires a positive decimal integer" >&2
+                exit 2
+            fi
+            if [ "${#budget_value}" -gt "${#MAX_BUDGET_MB}" ] ||
+               { [ "${#budget_value}" -eq "${#MAX_BUDGET_MB}" ] && [[ "$budget_value" > "$MAX_BUDGET_MB" ]]; }; then
+                echo "--budget-mb must not exceed $MAX_BUDGET_MB MB" >&2
+                exit 2
+            fi
+            options+=("--budget-mb=$budget_value")
+            ;;
+        --questie=*|--lua=*|--sequential)
+            options+=("$arg")
+            ;;
+        Vanilla|TBC|Wrath|Cata|Mists)
+            if [ -z "${seen_flavors[$arg]+x}" ]; then
+                positional_flavors+=("$arg")
+                seen_flavors[$arg]=1
+            fi
+            ;;
+        check)
+            for task in verify equivalence reconstruct validators differential; do
+                if [ -z "${seen_tasks[$task]+x}" ]; then
+                    tasks+=("$task")
+                    seen_tasks[$task]=1
+                fi
+            done
+            ;;
+        generate|verify|equivalence|reconstruct|validators|differential|golden|test|determinism|freeze|all)
+            if [ -z "${seen_tasks[$arg]+x}" ]; then
+                tasks+=("$arg")
+                seen_tasks[$arg]=1
+            fi
+            ;;
+        --*)
+            echo "unknown option: $arg" >&2
+            echo "Run ./questietdb --help for valid options." >&2
+            exit 2
+            ;;
+        *)
+            echo "unknown task or flavor: $arg" >&2
+            echo "Tasks: generate check all verify equivalence reconstruct validators differential golden test determinism freeze" >&2
+            echo "Flavors: Vanilla TBC Wrath Cata Mists" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [ "${#tasks[@]}" -eq 0 ]; then
+    echo "no task selected" >&2
+    echo "Run ./questietdb --help for usage." >&2
+    exit 2
+fi
+
+if [ -n "${seen_tasks[all]+x}" ] && [ "${#tasks[@]}" -ne 1 ]; then
+    echo "all cannot be combined with other tasks" >&2
+    exit 2
+fi
+
+if [ "$explicit_flavors" -eq 1 ] && [ "${#positional_flavors[@]}" -gt 0 ]; then
+    echo "positional flavors cannot be combined with --flavors" >&2
+    exit 2
+fi
+
+if [ "$explicit_flavors" -eq 1 ]; then
+    selected_flavors=("${explicit_flavor_values[@]}")
+elif [ "${#positional_flavors[@]}" -gt 0 ]; then
+    selected_flavors=("${positional_flavors[@]}")
+else
+    selected_flavors=()
+fi
+
+if [ -n "${seen_tasks[freeze]+x}" ] && [ "${#selected_flavors[@]}" -gt 0 ]; then
+    for flavor in "${selected_flavors[@]}"; do
+        case "$flavor" in
+            Vanilla|Mists) ;;
+            *)
+                echo "freeze supports only Vanilla and Mists; unsupported flavor: $flavor" >&2
+                exit 2
+                ;;
+        esac
+    done
+fi
+
+if [ "${#selected_flavors[@]}" -gt 0 ]; then
+    flavor_list=$(IFS=,; echo "${selected_flavors[*]}")
+    options+=("--flavors=$flavor_list")
+fi
+
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+exec "$BASH" "$root/tools/check.sh" "${tasks[@]}" "${options[@]}"

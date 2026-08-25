@@ -24,8 +24,8 @@ local _, LibQuestieDB = ...
 
 local codec = {}
 
-local tonumber, tostring, loadstring = tonumber, tostring, loadstring
-local match, sub, concat = string.match, string.sub, table.concat
+local tonumber, loadstring = tonumber, loadstring
+local match, sub = string.match, string.sub
 
 codec.EMPTY_STRING = "~E~"
 codec.QUOTED_PREFIX = "~Q~"
@@ -67,8 +67,21 @@ function codec.decodeNumber(value)
   return tonumber(value)
 end
 
+--- Compile a stored table literal into a producer function. Each call of the producer
+--- executes the chunk and yields a **fresh, mutable, deeply independent** table — the
+--- fresh-per-read mechanism of ADR 0003 Decision 10. Lua literal syntax cannot express
+--- aliasing or cycles, so every execution is a tree the caller owns outright.
+---
+--- Measured on Classic Era build 69109: re-execution costs 0.13–1.8 µs for typical field
+--- shapes (19 µs for the largest spawn tables) — the same class as a decoded-cache hit,
+--- which is what voided the design's original reason for rejecting fresh-per-read values.
+---@return function? producer nil when the stored text does not compile
+function codec.compileTable(value)
+  return (loadstring("return " .. value))
+end
+
 function codec.decodeTable(value)
-  local chunk = loadstring("return " .. value)
+  local chunk = codec.compileTable(value)
   if not chunk then return nil end
   return chunk()
 end

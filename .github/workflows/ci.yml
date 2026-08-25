@@ -1,8 +1,7 @@
 name: CI
 
-# Every commit produces a verified, downloadable database. The gates below are the ones
-# QuestieTDB cannot ship without: round-trip verification, source/baked equivalence, and the
-# data validators. All three block merge.
+# Every commit produces a verified, downloadable database. The terminal `gates` job makes
+# every matrix and unit result mandatory for branch protection.
 
 on:
   push:
@@ -23,12 +22,9 @@ jobs:
       - uses: actions/checkout@v4
         with: { path: QuestieTDB }
 
-      # The localization lookup tree and Questie's schema files are generation inputs and are
-      # read from a checkout rather than duplicated here.
-      - uses: actions/checkout@v4
-        with:
-          repository: Questie/Questie
-          path: Questie
+      # Localization, schema and Corrections all come from the reviewed commit in
+      # QUESTIE_COMMIT. Bumping that file makes upstream drift an explicit repository change.
+      - uses: ./QuestieTDB/.github/actions/checkout-questie
 
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
@@ -47,8 +43,8 @@ jobs:
         working-directory: QuestieTDB
         run: |
           lua5.1 tools/port-corrections.lua ../Questie
-          git diff --exit-code src/corrections/ || {
-            echo "::error::Ported corrections differ from Questie's. Review and commit the re-port."
+          git diff --exit-code src/corrections/ src/derived/RamerDouglasPeucker.lua || {
+            echo "::error::Ported Corrections or copied libraries differ from Questie's. Review and commit the re-port."
             exit 1
           }
 
@@ -56,9 +52,26 @@ jobs:
         working-directory: QuestieTDB
         run: lua5.1 generate.lua Vanilla --questie=../Questie
 
+      - name: Generate Mists
+        working-directory: QuestieTDB
+        # The suites that read artifacts off disk sweep every generated flavor. Vanilla alone
+        # left the largest artifact untested; Mists is the other end of the size range.
+        run: lua5.1 generate.lua Mists --questie=../Questie
+
       - name: Unit tests
         working-directory: QuestieTDB
         run: lua5.1 test.lua
+
+      - name: Reconstruct Vanilla
+        working-directory: QuestieTDB
+        # Byte-exact gate: re-derives every data directive with the current generator and
+        # compares exact bytes against the artifact. The determinism check covers
+        # regeneration stability; this covers generator-vs-artifact drift, key by key.
+        run: lua5.1 reconstruct.lua Vanilla --questie=../Questie
+
+      - name: Reconstruct Mists
+        working-directory: QuestieTDB
+        run: lua5.1 reconstruct.lua Mists --questie=../Questie
 
   database:
     name: ${{ matrix.flavor }}
@@ -70,10 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { path: QuestieTDB }
-      - uses: actions/checkout@v4
-        with:
-          repository: Questie/Questie
-          path: Questie
+      - uses: ./QuestieTDB/.github/actions/checkout-questie
 
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
@@ -82,15 +92,25 @@ jobs:
         working-directory: QuestieTDB
         run: lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie
 
+      - name: Determinism
+        working-directory: QuestieTDB
+        # Run this before any reader. Every later gate therefore approves the exact
+        # second-generation bytes whose hash matched the first Generation.
+        run: |
+          sha256sum QuestieTDB_${{ matrix.flavor }}.toc > first.sha
+          lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie --quiet
+          sha256sum -c first.sha
+
       - name: Round-trip verification
         working-directory: QuestieTDB
         run: lua5.1 verify.lua ${{ matrix.flavor }}
 
       - name: Round-trip verification under freezing
         working-directory: QuestieTDB
-        # Opt-in because the pure-Lua freeze substitute costs about 2x wall clock. Running it on
-        # one flavor per commit keeps the ownership guard present in CI rather than absent.
-        if: matrix.flavor == 'Vanilla'
+        # Opt-in because the pure-Lua freeze substitute costs about 2x wall clock. The smallest
+        # and largest flavors keep the ownership guard present in CI without paying 2x on every
+        # matrix leg.
+        if: matrix.flavor == 'Vanilla' || matrix.flavor == 'Mists'
         run: lua5.1 verify.lua ${{ matrix.flavor }} --freeze
 
       - name: Source/baked equivalence
@@ -102,20 +122,20 @@ jobs:
         working-directory: QuestieTDB
         run: lua5.1 validators/run.lua ${{ matrix.flavor }}
 
-      - name: Determinism
+      - name: Golden composed reads
         working-directory: QuestieTDB
-        # Identical input must produce byte-identical output, or every regeneration produces a
-        # spurious diff and checksums stop meaning anything.
-        run: |
-          sha256sum QuestieTDB_${{ matrix.flavor }}.toc > first.sha
-          lua5.1 generate.lua ${{ matrix.flavor }} --questie=../Questie --quiet
-          sha256sum -c first.sha
+        # A-vs-golden gate: composed public reads hashed per entity against the committed
+        # snapshot. Successor to the cross-implementation differential that caught the
+        # Era-gating defect chain - it guards the class of bug where generator and source
+        # mode are consistently wrong together, which verify and equivalence cannot see.
+        # --self-check perturbs one hash in memory and requires exactly one detection.
+        run: python3 tools/differential/golden.py check ${{ matrix.flavor }} --lua=lua5.1 --self-check
 
       - name: Upload validator diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: validator-report-${{ matrix.flavor }}
+          name: validator-diagnostics-${{ matrix.flavor }}
           path: QuestieTDB/.out/validators/
           if-no-files-found: ignore
 
@@ -129,3 +149,59 @@ jobs:
           name: QuestieTDB-${{ matrix.flavor }}
           path: QuestieTDB/.out/dist/*
           retention-days: 14
+
+  differential:
+    name: Compiler differential (${{ matrix.flavor }})
+    runs-on: ubuntu-latest
+    # The only gate that compares against the database QuestieTDB replaces. Every other gate
+    # compares the two sides of this project's own seam, so a shared wrong assumption passes
+    # them all. Needs no generated artifact: both dumps read source mode and a live compile.
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [Vanilla, TBC, Wrath, Cata, Mists]
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: QuestieTDB }
+      - uses: ./QuestieTDB/.github/actions/checkout-questie
+
+      # Questie's apiMocks require bit32, and this is the toolchain Questie's own CI uses to
+      # provide it — so the oracle is built the same way upstream builds it. It installs `lua`
+      # rather than `lua5.1`, which is why the differential runs in its own job instead of
+      # sharing the apt-installed interpreter the other jobs use.
+      - name: Install Lua 5.1
+        uses: leafo/gh-actions-lua@v13.0.0
+        with:
+          luaVersion: "5.1"
+      - name: Install luarocks
+        uses: leafo/gh-actions-luarocks@v6.1.0
+        with:
+          luaRocksVersion: "3.13.0"
+      - name: Install bit32
+        run: luarocks install bit32 5.3.5.1-1
+
+      - name: QuestieTDB vs Questie's compiler
+        working-directory: QuestieTDB
+        # Fails on a divergence class that is new or has grown against
+        # tools/differential/compiler-baseline/, and prints what is still owed either way.
+        # --self-check perturbs one agreeing value and requires exactly one detection.
+        run: >-
+          python3 tools/differential/compiler_diff.py ${{ matrix.flavor }}
+          --questie=../Questie --lua=lua --self-check
+
+  gates:
+    name: All gates
+    runs-on: ubuntu-latest
+    # Terminal aggregate: branch protection requires exactly this one status. `always()` keeps
+    # it running when a dependency fails or is cancelled; the explicit checks then fail it, so
+    # a skipped or cancelled gate can never read as green.
+    needs: [test, database, differential]
+    if: always()
+    steps:
+      - name: Fail unless every gate succeeded
+        run: |
+          ok=1
+          [ "${{ needs.test.result }}" = "success" ] || { echo "::error::Unit tests: ${{ needs.test.result }}"; ok=0; }
+          [ "${{ needs.database.result }}" = "success" ] || { echo "::error::Database matrix: ${{ needs.database.result }}"; ok=0; }
+          [ "${{ needs.differential.result }}" = "success" ] || { echo "::error::Compiler differential: ${{ needs.differential.result }}"; ok=0; }
+          [ "$ok" = "1" ]

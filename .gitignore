@@ -13,3 +13,6 @@ QuestieTDB_Mists.toc
 # Editor and OS noise
 .DS_Store
 *.swp
+
+# Python bytecode from the differential tooling
+__pycache__/

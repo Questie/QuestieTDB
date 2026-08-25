@@ -24,10 +24,30 @@ mkdir -p "$DIST"
 COMMIT="$(git rev-parse HEAD 2>/dev/null || printf '%040d' 0)"
 CONTRACT="$(grep -oE 'config\.contractVersion = [0-9]+' src/config.lua | grep -oE '[0-9]+$')"
 BUILT="$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y-%m-%dT%H:%M:%SZ)"
+LUA="${LUA:-lua5.1}"
 
 # The addon folder must be named QuestieTDB in the zip, because that is what
 # `## Dependencies: QuestieTDB` resolves against.
 mkdir -p "$STAGE/QuestieTDB"
+
+# Ship exactly the files a TOC lists, plus the TOC itself. Static-only correction files are
+# build-time input and are already absent from that list. Staging into an existing folder is
+# safe because every copy comes from the same working tree: a path two flavors share is the
+# same file, which is what lets the combined artifact union five TOCs below.
+stage_toc() {
+    local toc="$1" dest="$2" line rel
+    cp "$toc" "$dest/"
+    while IFS= read -r line; do
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        rel="${line//\\//}"
+        if [ -f "$rel" ]; then
+            mkdir -p "$dest/$(dirname "$rel")"
+            cp "$rel" "$dest/$rel"
+        fi
+    done < "$toc"
+}
 
 entries=()
 
@@ -41,19 +61,13 @@ for FLAVOR in "${FLAVORS[@]}"; do
     rm -rf "${STAGE:?}/QuestieTDB"
     mkdir -p "$STAGE/QuestieTDB"
 
-    # Ship exactly the files the artifact's own TOC lists, plus the TOC. Static-only correction
-    # files are build-time input and are already absent from that list.
-    cp "$TOC" "$STAGE/QuestieTDB/"
-    while IFS= read -r line; do
-        case "$line" in
-            ''|'#'*) continue ;;
-        esac
-        rel="${line//\\//}"
-        if [ -f "$rel" ]; then
-            mkdir -p "$STAGE/QuestieTDB/$(dirname "$rel")"
-            cp "$rel" "$STAGE/QuestieTDB/$rel"
-        fi
-    done < "$TOC"
+    stage_toc "$TOC" "$STAGE/QuestieTDB"
+
+    # Mixed correction files ship for their Dynamic functions, but their Static bodies are
+    # already folded into the metadata store — 94-96% of the bytes (issue #5). Strip the
+    # staged copies; src/corrections/ in the repo stays byte-identical to upstream, which is
+    # what the drift gate and port-corrections compare.
+    "$LUA" tools/strip-static.lua "$STAGE/QuestieTDB"
 
     ZIP="$DIST/QuestieTDB-${FLAVOR}.zip"
     (cd "$STAGE" && zip -qr9X "../../$ZIP" QuestieTDB)
@@ -62,9 +76,52 @@ for FLAVOR in "${FLAVORS[@]}"; do
     SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
     RAW=$(stat -c %s "$TOC")
 
+    # The artifact records the Questie checkout its l10n was generated from. One release is
+    # one Questie state: artifacts that disagree must never share a manifest.
+    QC=$(sed -n 's/^## X-QUESTIE-COMMIT: //p' "$TOC" | head -1 | tr -d '\r')
+    [ -n "$QC" ] || QC="$(printf '%040d' 0)"
+    if [ -z "${QUESTIE_COMMIT:-}" ]; then
+        QUESTIE_COMMIT="$QC"
+    elif [ "$QUESTIE_COMMIT" != "$QC" ]; then
+        echo "package: $TOC was generated against Questie $QC but an earlier artifact against $QUESTIE_COMMIT — regenerate all flavors from one checkout" >&2
+        exit 1
+    fi
+
     echo "packaged $ZIP  ($(( SIZE / 1048576 )) MB zipped, $(( RAW / 1048576 )) MB raw)"
     entries+=("    {\"flavor\": \"${FLAVOR}\", \"file\": \"QuestieTDB-${FLAVOR}.zip\", \"sha256\": \"${SHA}\", \"bytes\": ${SIZE}, \"rawBytes\": ${RAW}}")
 done
+
+# The combined artifact: every flavor's TOC plus the union of the files they list. Dropped
+# into any Classic client's AddOns folder, the client picks its own suffixed TOC — the same
+# precedence rule that makes a dev clone work everywhere. The per-flavor zips above stay as
+# the smaller downloads; this is the "works anywhere" install and what bootstrap fetches.
+#
+# The base QuestieTDB.toc deliberately does not ship: the package carries no data/, so source
+# mode cannot run from it, and every Classic client matches one of the five suffixed TOCs.
+# Built only when every flavor was packaged in this run — CI's per-flavor matrix jobs skip it.
+if [ ${#entries[@]} -eq 5 ]; then
+    rm -rf "${STAGE:?}/QuestieTDB"
+    mkdir -p "$STAGE/QuestieTDB"
+
+    RAW_ALL=0
+    for FLAVOR in "${FLAVORS[@]}"; do
+        TOC="QuestieTDB_${FLAVOR}.toc"
+        stage_toc "$TOC" "$STAGE/QuestieTDB"
+        RAW_ALL=$(( RAW_ALL + $(stat -c %s "$TOC") ))
+    done
+
+    "$LUA" tools/strip-static.lua "$STAGE/QuestieTDB"
+
+    ZIP="$DIST/QuestieTDB-all.zip"
+    (cd "$STAGE" && zip -qr9X "../../$ZIP" QuestieTDB)
+
+    SIZE=$(stat -c %s "$ZIP")
+    SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
+    echo "packaged $ZIP  ($(( SIZE / 1048576 )) MB zipped, $(( RAW_ALL / 1048576 )) MB raw, every flavor)"
+    entries+=("    {\"flavor\": \"All\", \"file\": \"QuestieTDB-all.zip\", \"sha256\": \"${SHA}\", \"bytes\": ${SIZE}, \"rawBytes\": ${RAW_ALL}}")
+else
+    echo "package: QuestieTDB-all.zip needs all five flavors in one run — skipped" >&2
+fi
 
 rm -rf "$STAGE"
 
@@ -74,11 +131,13 @@ rm -rf "$STAGE"
 {
     printf '{\n'
     printf '  "producerCommit": "%s",\n' "$COMMIT"
+    printf '  "questieCommit": "%s",\n' "${QUESTIE_COMMIT:-$(printf '%040d' 0)}"
     printf '  "contractVersion": %s,\n' "$CONTRACT"
     printf '  "builtAt": "%s",\n' "$BUILT"
     printf '  "nolib": false,\n'
     printf '  "artifacts": [\n'
-    printf '%s\n' "$(IFS=$',\n'; echo "${entries[*]}")"
+    joined="$(printf '%s,\n' "${entries[@]}")"
+    printf '%s\n' "${joined%,}"
     printf '  ]\n'
     printf '}\n'
 } > "$DIST/release.json"
@@ -87,7 +146,12 @@ rm -rf "$STAGE"
     echo "# QuestieTDB"
     echo
     echo "Producing commit: \`$COMMIT\`"
+    echo "Questie input commit: \`${QUESTIE_COMMIT:-unknown}\`"
     echo "Contract version: \`$CONTRACT\`"
+    echo
+    echo "Not sure which zip matches your client? \`QuestieTDB-all.zip\` contains every flavor"
+    echo "and the client loads the one that matches. The per-flavor zips are the same content,"
+    echo "one flavor at a time, as smaller downloads."
     echo
     echo "Verify a download before installing:"
     echo

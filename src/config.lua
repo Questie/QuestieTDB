@@ -17,6 +17,11 @@ config.addonName = "QuestieTDB"
 --- can observe. Questie checks this at init and fails with a specific message on mismatch.
 config.contractVersion = 1
 
+--- The oldest consumer contract this release still honors. `RequireContract` passes any
+--- required version in [minSupportedContract, contractVersion]; raise this floor only when a
+--- breaking change genuinely abandons older consumers (ADR 0003 D12).
+config.minSupportedContract = 1
+
 --- Values longer than this many bytes are stored as a Chunked metadata value.
 --- See docs/storage-format.md.
 config.maxValueLength = 1000
@@ -162,6 +167,19 @@ function config.correctionFiles(flavor, mode)
   return files
 end
 
+--- The derived-pass block, bracketed by the files that install and remove its loader shim.
+---
+--- Source mode only. Baked artifacts never list these files: Generation already applied every
+--- pass before encoding, exactly as it already folded in Static Corrections, so a baked client
+--- would be re-running a transform over data that has had it (ADR 0004 D3).
+config.derivedFiles = {
+  "src/derived/registry.lua",
+  "src/derived/_begin.lua",
+  "src/derived/RamerDouglasPeucker.lua",
+  "src/derived/waypoints.lua",
+  "src/derived/_end.lua",
+}
+
 --------------------------------------------------------------------------------------------
 -- Support data
 --------------------------------------------------------------------------------------------
@@ -281,6 +299,7 @@ function config.sourceFileList()
   append(files, config.supportFiles(nil), seen)
   append(files, { "src/read/shared.lua", "src/corrections/registry.lua" }, seen)
   append(files, config.correctionFiles(nil, "source"), seen)
+  append(files, config.derivedFiles, seen)
   append(files, config.runtimeFiles.tail, seen)
   return files
 end

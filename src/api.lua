@@ -68,14 +68,23 @@ LibQuestieDB.addonName = ADDON_NAME
 
 --- Check compatibility from a consumer's init in one call, so the failure message is specific
 --- rather than an obscure nil index three files later.
+---
+--- The check is a **range, not an equality** (ADR 0003 D12): a consumer written against an
+--- older contract keeps working across additive releases, down to `minSupportedContract`.
+--- Equality would force lockstep updates — the exact thing two independent release streams
+--- exist to avoid.
 ---@param required number The contract version the consumer was written against
 ---@return boolean ok
 ---@return string? message
 function LibQuestieDB.RequireContract(required)
-  if required == config.contractVersion then return true end
+  if type(required) == "number" and
+     required >= config.minSupportedContract and required <= config.contractVersion then
+    return true
+  end
   return false, ("QuestieTDB contract mismatch: this consumer needs version %s, the installed " ..
-    "QuestieTDB provides %s. Update whichever is older.")
-    :format(tostring(required), tostring(config.contractVersion))
+    "QuestieTDB provides %s (supporting consumers back to %s). Update whichever is older.")
+    :format(tostring(required), tostring(config.contractVersion),
+            tostring(config.minSupportedContract))
 end
 
 --- "source" or "baked". Mode must be unmistakable, so this is public rather than internal.
@@ -96,7 +105,10 @@ function LibQuestieDB.InvalidateCache(datatype, id)
     end
     return
   end
-  local entity = LibQuestieDB[datatype]
+  -- Accept the same case-insensitive datatype spellings the corrections API accepts;
+  -- `InvalidateCache("quest", 2)` silently doing nothing was a live-probed defect.
+  local canonical = LibQuestieDB.Corrections.CanonicalDatatype(datatype)
+  local entity = canonical and LibQuestieDB[canonical]
   if entity then entity.InvalidateCache(id) end
 end
 

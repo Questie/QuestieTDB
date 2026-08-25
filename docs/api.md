@@ -27,8 +27,11 @@ LibQuestieDB.Object  -- ObjectDB
 
 ### `Entity.Get(id, key) -> value`
 
-`key` is a canonical field name or a positional index. Both are equivalent; the name is
-clearer and costs one table lookup.
+`key` is a canonical field name or a positional index. Both return the same value, but the
+name is the faster path as well as the clearer one: a name resolves in a single lookup, a
+number misses that map and falls through to a type check. The gap is small, 0.55 µs against
+0.63 µs warm, and `GetByIndex` closes most of it if you need positional access. See
+[`read-performance.md`](./read-performance.md).
 
 ```lua
 QuestDB.Get(2, "name")           --> "Sharptalon's Claw"
@@ -46,13 +49,18 @@ QuestDB.requiredLevel(2)         --> 20
 NpcDB.spawns(30)                 --> { [12] = { {36.43, 55.89}, ... } }
 ```
 
-### `Entity.GetAll(id, keys) -> values`
+### `Entity.GetAll(id, keys) -> values | nil`
 
-Bulk access. Values come back in the order the keys were requested.
+Bulk access. Values come back in the order the keys were requested, in a **packed** table
+carrying `n` — because a nullable field leaves a hole, and a bare `unpack` over a table with
+holes silently drops everything after the first one.
 
 ```lua
-local name, level = unpack(QuestDB.GetAll(2, { "name", "requiredLevel" }))
+local values = QuestDB.GetAll(2, { "name", "triggerEnd", "requiredLevel" })
+local name, trigger, level = unpack(values, 1, values.n)   -- always all three
 ```
+
+Returns `nil` for an unknown entity id.
 
 ### `Entity.GetAllIds(hashmap) -> list | map`
 
@@ -64,10 +72,19 @@ QuestDB.Exists(2)                --> true
 
 The hashmap form is a drop-in for an existence check.
 
+The hashmap and list answer over the **composed view**: an entity a Dynamic Correction adds
+is readable, enumerable, and exists — all three or none. Treat both returns as read-only;
+they are shared, not copies.
+
 ### `Entity.GetRaw(id, key) -> value`
 
-Base data only, bypassing the Correction Overlay. For tooling and debugging — use `Get` for
-anything a player sees.
+Base data only, bypassing the Correction Overlay and localization. For tooling and
+debugging — use `Get` for anything a player sees. An overlay-added entity has no raw row, so
+`GetRaw` legitimately returns nil for it.
+
+**`GetRaw` is not cached.** It reaches the backend on every call, so it stays at roughly
+2.7 µs no matter how often you read the same field, where `Get` drops to 0.6 µs once warm.
+Do not reach for it in a loop.
 
 ---
 
@@ -83,15 +100,28 @@ against them for years.
 | string nil | `nil` |
 | string `""` | `""` — distinct from nil |
 | table nil | `nil` |
-| table `{}` | **`nil`** — empty tables never come back |
+| table `{}` | **`nil`** — empty tables never come back… |
+| …except `startedBy`, `finishedBy`, `objectives` | **`{}`** — these three are never nil for an entity that exists |
 | pair `{0, 0}` | `nil` |
-| unknown entity ID | `nil` |
+| unknown entity ID | **`nil` for every field** — including numerics |
+| invalid id (`nil`, a string) | `nil`, never an error |
 
-Two consequences worth stating plainly:
+Three consequences worth stating plainly:
 
-* **Numeric getters return `0`, never `nil`.** `0` is truthy in Lua, so test `~= 0` rather than
-  truthiness.
-* **Table getters return `nil`, never an empty table.** Guard before indexing.
+* **Numeric getters return `0`, never `nil` — for an entity that exists.** `0` is truthy in
+  Lua, so test `~= 0` rather than truthiness.
+* **An unknown id is `nil` everywhere.** A missing entity can never masquerade as a valid
+  all-zero row; check `Exists(id)` when the distinction matters.
+* **Table getters return `nil`, never an empty table — with three exceptions.** Quest
+  `startedBy`, `finishedBy` and `objectives` return `{}` rather than nil when the quest has
+  none, matching Questie's compiler, whose readers build those tables unconditionally. So a
+  table getter is *not* a presence test for those three: check contents, not truthiness. Guard
+  before indexing everywhere else.
+* **Numeric slots inside structured values default to `0`, not nil.** The field-level rule
+  applies element-wise: `objective[3]` (icon), `spellObjective[3]` (item),
+  `killCredit[4]` and `extraObjective[4]` (objectiveIndex) are numbers, never nil. `0` is
+  truthy, so test `~= 0`. String slots inside structures stay nil. See
+  [`adr/0005-element-level-nil-semantics.md`](./adr/0005-element-level-nil-semantics.md).
 
 Full detail in [`storage-format.md`](./storage-format.md).
 
@@ -99,18 +129,19 @@ Full detail in [`storage-format.md`](./storage-format.md).
 
 ## Value ownership
 
-**Reads return frozen values. The database owns them.**
+**Every table read returns a fresh mutable copy. You own it** (ADR 0003 Decision 10).
 
 ```lua
 local spawns = NpcDB.spawns(30)
-spawns[12] = nil                     --> error: indexed assignment on a frozen table
-local mine = CopyTable(spawns)       --> take a copy, deliberately and visibly
-mine[12] = nil                       --> fine
+spawns[12] = nil                     --> fine: this copy is yours
+local again = NpcDB.spawns(30)       --> a fresh, unmutated copy — your edit never persists
 ```
 
-Freezing is a VM-level flag, not a metatable proxy: reads are completely unaffected and
-`getmetatable` still returns nil. On a client without `table.freeze` the guard is absent and
-mutation silently succeeds — so treat returned tables as read-only regardless.
+This matches the semantics Questie's compiler always had: every query decoded fresh tables,
+so consumers that annotate or trim what they read keep working unchanged. Two reads are
+never the same table — do not use table identity to compare reads, and hold onto a value
+rather than re-reading if you need stability. The copy costs 0.13–1.8 µs for typical field
+shapes (measured live), the same class as a cache hit.
 
 ---
 
@@ -183,16 +214,29 @@ apply, and constants the body reads are resolved at apply time.
 * `[key] = {}` **clears** the field — an empty table reads back as nil.
 * `[key] = nil` is a **no-op**: Lua's table constructor drops it. It is documentation, not code.
 * An id absent from the database is **created**, which is how a correction adds an entity.
+  An added entity is fully first-class: readable, enumerable through `GetAllIds`, and
+  `Exists(id)` is true, until the correction is withdrawn.
+* **Coordinates in a correction must be authored values.** Quantization is deliberately
+  non-idempotent (exactly like Questie's compiler), so never write back a coordinate you
+  read out of the database — supply the original source coordinate.
 
 ### Precedence
 
-Two levels, **last applied wins**:
+Two levels, the later-ranked writer wins:
 
-* outer: the order owners called `ApplyRegisteredCorrections`
+* outer: the order owners **first** called `ApplyRegisteredCorrections` — an owner's rank is
+  fixed at first apply, and re-applying refreshes that owner's layer **in place**. A refresh
+  (including `ApplyParameterized`, which re-applies the `QuestieTDB` owner) can therefore
+  never hoist a layer above corrections registered later.
 * inner: `loadOrder` within one owner
 
 `loadOrder` means "sequence within an owner", not a global sequence. Load order makes the outer
 level fall out naturally: `QuestieTDB` < `Questie` < third-party.
+
+One idiom note: `[key] = {}` in a correction deletes the field for **every** field type — a
+deleted string or table reads `nil`, a deleted number falls to the existence-gated `0`
+default. A *non-empty* table written to a number- or string-typed field is an authoring
+error: the write is reported and dropped.
 
 ### When to apply
 
@@ -210,6 +254,26 @@ recomposition always includes every live layer. Registering later stays legal; c
 
 Re-applying is **idempotent**: the composed view is rebuilt from the registry rather than
 accumulated into, which is also what makes a *withdrawn* correction actually disappear.
+
+### Corrections outrank localization
+
+A corrected field is returned as corrected in **every** locale — the lookup translation is
+skipped, because a copied lookup must not replace a fix with stale text. `GetProvenance`
+therefore always names the owner whose value you actually received. An *uncorrected*
+localizable field translates normally.
+
+### Parameterized corrections
+
+A few correction sets need a runtime fact only the consumer knows — the Darkmoon Faire's
+current location. These are never applied automatically:
+
+```lua
+LibQuestieDB.Corrections.ApplyParameterized("LoadDarkmoonFixes", faireLocation)
+```
+
+Registers and applies the recorded set as an ordinary QuestieTDB Dynamic layer. Calling it
+again with a new argument **replaces** the previous application rather than accumulating.
+Returns how many recorded sets matched (0 when none are recorded for this flavor).
 
 ### Who won
 
@@ -236,7 +300,9 @@ LibQuestieDB.l10n.onLocaleChanged[#… + 1] = function(locale) … end
 
 Nine locales — `deDE esES esMX frFR koKR ptBR ruRU zhCN zhTW`. `enUS` means "no overlay",
 because base data is already English. Missing translations fall back to English. Changing
-locale needs no regeneration and no rebuild.
+locale needs no regeneration and no rebuild. A translated `objectivesText` remains a table;
+element counts follow the upstream lookup and may differ where a locale combines objectives.
+A field a Correction supplied is never overridden by a translation (see Corrections above).
 
 Translated fields: quest `name` and `objectivesText`, npc `name` and `subName`, item `name`,
 object `name`.
@@ -293,13 +359,18 @@ end
 `LibQuestieDB.contractVersion` is also readable directly. It is bumped when the API or the
 storage format changes in a way a consumer can observe.
 
+The check is a **range**: `RequireContract(v)` passes for any
+`minSupportedContract <= v <= contractVersion`, so a consumer built against an older
+contract keeps working across additive releases. The floor rises only when a breaking
+change genuinely abandons older consumers.
+
 ---
 
 ## Cache
 
 ```lua
 LibQuestieDB.InvalidateCache("Quest", 2)   -- one entity
-LibQuestieDB.InvalidateCache("Quest")      -- one type
+LibQuestieDB.InvalidateCache("Quest")      -- one type ("quest" works too)
 LibQuestieDB.InvalidateCache()             -- everything
 ```
 

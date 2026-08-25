@@ -1,0 +1,12 @@
+# Known QuestieTDB-vs-compiler divergences for Wrath.
+#
+# This is a to-do list, not an approval. Only POLICY rows are permanent;
+# every other row is work we still owe. Dispositions and rationale live in
+# docs/questie-handover.md.
+#
+# Refresh with: compiler_diff.py Wrath --update-baseline
+# entityType	field	class	count	reason
+Npc	spawns	VALUE	25	OPEN
+Object	spawns	EMPTY_VS_ABSENT	24	POLICY
+Object	spawns	VALUE	13	OPEN
+Quest	requiredRaces	VALUE	339	OPEN

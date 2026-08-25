@@ -29,7 +29,7 @@ local _, LibQuestieDB = ...
 local registry = {}
 
 local type, pairs, ipairs, next = type, pairs, ipairs, next
-local sort, concat = table.sort, table.concat
+local sort = table.sort
 local format = string.format
 
 --------------------------------------------------------------------------------------------
@@ -40,8 +40,10 @@ local format = string.format
 -- ones so hand corrections win.
 --
 -- `loadOrder` means "sequence within an owner", not a global sequence. Precedence is
--- two-level — outer by owner apply order, inner by loadOrder — with last applied wins. That
--- follows load order naturally: QuestieTDB < Questie < third-party.
+-- two-level — outer by the order owners FIRST applied, inner by loadOrder — and within a
+-- field the later-ranked owner wins. An owner's rank is fixed at first apply; re-applying
+-- refreshes that owner's layer in place. That follows load order naturally:
+-- QuestieTDB < Questie < third-party.
 
 registry.loadOrder = {
   EraStatic = 0,     EraDynamic = 100,
@@ -76,6 +78,8 @@ registry.debug = false
 local registrationSequence = 0
 
 local VALID_DATATYPES = { Quest = true, Npc = true, Item = true, Object = true }
+
+registry.expansionOrder = { Classic = 1, TBC = 2, Wotlk = 3, Cata = 4, MoP = 5 }
 
 --- Accept `"quest"` as well as `"Quest"`: the prototype and Questie's own correction files use
 --- lowercase, and refusing it would make porting them a rename exercise for no gain.
@@ -247,18 +251,23 @@ end
 ---     docs/storage-format.md, so writing `{}` into base data removes the field for every
 ---     reader — the generator omits the line, Source mode normalizes it away.
 ---
---- An id absent from the base data is created, which is how `LoadMissingQuests` and the
---- `InsertMissing*Ids` helpers make the database emit a row at all.
+--- An id absent from the base data is normally created, which is how `LoadMissingQuests`
+--- and the `InsertMissing*Ids` helpers make the database emit a row at all. `noNewEntries`
+--- forbids creation outright. Inherited Static Corrections additionally set
+--- `allowNamedInheritedEntry`, matching Questie's exception for a Correction whose field 1 names
+--- a complete entity rather than adding fields to an entity a later expansion removed.
 ---@param entities table id -> field array
 ---@param corrections table id -> fieldIndex -> value
----@param options table? { noOverwrites = boolean, noNewEntries = boolean }
+---@param options table? { noOverwrites = boolean, noNewEntries = boolean, allowNamedInheritedEntry = boolean }
 ---@return number applied
 function registry.MergeInto(entities, corrections, options)
   options = options or {}
   local applied = 0
   for id, fields in pairs(corrections) do
     local row = entities[id]
-    if not row and not options.noNewEntries then
+    local mayCreate = not options.noNewEntries
+      or (options.allowNamedInheritedEntry and fields[1] ~= nil)
+    if not row and mayCreate then
       row = {}
       entities[id] = row
     end
@@ -281,6 +290,26 @@ function registry.MergeInto(entities, corrections, options)
   return applied
 end
 
+--- Resolve merge policy for one Static Correction in the target flavor.
+--- Older-expansion Corrections may update surviving entities but cannot resurrect entities the
+--- target expansion removed. A field-1 name is the explicit exception for a complete entity.
+--- The exception is confined here so generic `noNewEntries` remains strict.
+---@param entry table Registered Static Correction
+---@param flavor table? Target flavor
+---@return table? options Merge options, or the entry's original options when no overlay is needed
+local function staticMergeOptions(entry, flavor)
+  if not flavor or not entry.sourceExpansionOrder then return entry.options end
+
+  local targetOrder = registry.expansionOrder[flavor.expansion]
+  if not targetOrder or targetOrder <= entry.sourceExpansionOrder then return entry.options end
+
+  local options = {}
+  for key, value in pairs(entry.options or {}) do options[key] = value end
+  options.noNewEntries = true
+  options.allowNamedInheritedEntry = true
+  return options
+end
+
 --- Apply every Static Correction for one entity type to a loaded table.
 ---
 --- Used by Generation and by Source mode. Same code, same order, same result — which is the
@@ -297,7 +326,8 @@ function registry.ApplyStaticToEntities(datatype, entities, flavor, owner)
     if registry.EntryApplies(entry, flavor) then
       local corrections = entry.func()
       if type(corrections) == "table" then
-        applied = applied + registry.MergeInto(entities, corrections, entry.options)
+        applied = applied + registry.MergeInto(
+          entities, corrections, staticMergeOptions(entry, flavor))
       end
     end
   end
@@ -315,8 +345,6 @@ function registry.EntryApplies(entry, flavor)
   end
   return true
 end
-
-registry.expansionOrder = { Classic = 1, TBC = 2, Wotlk = 3, Cata = 4, MoP = 5 }
 
 --------------------------------------------------------------------------------------------
 -- Composing the Correction Overlay
@@ -352,21 +380,38 @@ local function recompose(flavor)
 
             for fieldIndex, value in pairs(fields) do
               if type(fieldIndex) == "number" and meta and fieldIndex <= meta.fieldCount then
-                if registry.debug and provRow[fieldIndex] and provRow[fieldIndex] ~= owner then
-                  warn(format('owner "%s" overrode "%s" on %s %s field %s',
-                    owner, provRow[fieldIndex], datatype, tostring(id),
-                    tostring(meta.names[fieldIndex])))
-                end
-                -- Normalizing here rather than at read time means the overlay stores exactly
-                -- what a read must return, so `{}` deletes and `{0,0}` reads nil in the
-                -- overlay for the same reason they do in base data.
-                local normalized = normalize.field(meta, fieldIndex, value)
-                if normalized == nil then
+                -- `[key] = {}` is the delete idiom for EVERY field type, exactly as MergeInto
+                -- documents for the static path. Scalar-typed fields need it decided here:
+                -- normalize passes tables through its number/string branches untouched, and a
+                -- stored empty table would reach consumers as a fresh table where they expect
+                -- a number or string.
+                if type(value) == "table" and next(value) == nil then
                   row[fieldIndex] = registry.NIL
+                  provRow[fieldIndex] = owner
+                elseif type(value) == "table" and meta.types[fieldIndex] ~= "table" then
+                  -- A non-empty table arriving at a scalar-typed field is a correction-author
+                  -- error. Generation fails loudly on the same input; the overlay reports and
+                  -- drops the write rather than raising out of recomposition.
+                  warn(format('owner "%s" wrote a table into %s-typed %s %s field %s — dropped',
+                    owner, tostring(meta.types[fieldIndex]), datatype, tostring(id),
+                    tostring(meta.names[fieldIndex])))
                 else
-                  row[fieldIndex] = normalized
+                  if registry.debug and provRow[fieldIndex] and provRow[fieldIndex] ~= owner then
+                    warn(format('owner "%s" overrode "%s" on %s %s field %s',
+                      owner, provRow[fieldIndex], datatype, tostring(id),
+                      tostring(meta.names[fieldIndex])))
+                  end
+                  -- Normalizing here rather than at read time means the overlay stores exactly
+                  -- what a read must return, so `{0,0}` reads nil in the overlay for the same
+                  -- reason it does in base data.
+                  local normalized = normalize.field(meta, fieldIndex, value)
+                  if normalized == nil then
+                    row[fieldIndex] = registry.NIL
+                  else
+                    row[fieldIndex] = normalized
+                  end
+                  provRow[fieldIndex] = owner
                 end
-                provRow[fieldIndex] = owner
               end
             end
           end
@@ -413,15 +458,22 @@ function registry.ApplyRegisteredCorrections(owner)
   end
 
   for _, name in ipairs(owners) do
-    -- Last applied wins, so an owner re-applying moves to the end of the outer order.
-    for index, applied in ipairs(registry.appliedOrder) do
-      if applied == name then table.remove(registry.appliedOrder, index); break end
+    -- Owner rank is fixed at first apply; a re-apply refreshes the owner's layer in place.
+    -- Moving a re-applying owner to the end would let any refresh — ApplyParameterized, a
+    -- settings change — hoist QuestieTDB's whole layer above corrections consumers registered
+    -- later, inverting the documented QuestieTDB < Questie < third-party order.
+    local ranked = false
+    for _, applied in ipairs(registry.appliedOrder) do
+      if applied == name then ranked = true; break end
     end
-    registry.appliedOrder[#registry.appliedOrder + 1] = name
+    if not ranked then registry.appliedOrder[#registry.appliedOrder + 1] = name end
     registry.owners[name].pending = false
   end
 
-  recompose(LibQuestieDB.read and LibQuestieDB.read.source and LibQuestieDB.read.source.flavor)
+  -- Both read modes publish their flavor as LibQuestieDB.flavor (source.lua, baked.lua), so
+  -- entry-level expansion filters compose identically in both — reading only the Source
+  -- backend here left them inert in Baked mode.
+  recompose(LibQuestieDB.flavor)
   publish()
   return #owners
 end

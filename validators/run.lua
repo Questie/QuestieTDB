@@ -13,6 +13,7 @@
 --   lua validators/run.lua --out=.out/v    where diagnostics land
 --   lua validators/run.lua --raw           validate uncorrected data, to see what corrections fix
 --   lua validators/run.lua --update-baseline    re-record the accepted findings
+--   lua validators/run.lua --self-check    prove fingerprinting and baseline comparison are live
 --
 -- Exits non-zero on any finding that is not in the flavor's baseline.
 --
@@ -40,6 +41,16 @@ local zones = dofile("validators/zones.lua")
 -- Arguments
 --------------------------------------------------------------------------------------------
 
+---@class ValidatorOptions
+---@field flavors string[]
+---@field out string
+---@field raw boolean
+---@field quiet boolean
+---@field updateBaseline? boolean
+---@field selfCheck? boolean
+
+---@param argv string[]?
+---@return ValidatorOptions opts
 local function parseArgs(argv)
   local opts = { flavors = {}, out = ".out/validators", raw = false, quiet = false }
   for _, value in ipairs(argv or {}) do
@@ -52,6 +63,8 @@ local function parseArgs(argv)
       opts.updateBaseline = true
     elseif value == "--quiet" then
       opts.quiet = true
+    elseif value == "--self-check" then
+      opts.selfCheck = true
     elseif value:sub(1, 2) == "--" then
       error("Unknown option: " .. value, 0)
     else
@@ -62,6 +75,9 @@ local function parseArgs(argv)
 end
 
 local opts = parseArgs(arg)
+
+---@param ... any
+---@return nil
 local function say(...)
   if not opts.quiet then print(...) end
 end
@@ -74,9 +90,11 @@ end
 -- kept: the printed lines are captured so a run can be summarised and retained as an artifact,
 -- and the correction files land in the output directory ready to paste into a fix.
 
+---@type string[]?
 local captured
 local realPrint = print
 
+---@return nil
 local function beginCapture()
   captured = {}
   _G.print = function(...)
@@ -86,29 +104,187 @@ local function beginCapture()
   end
 end
 
+---@return string[] output
 local function endCapture()
   _G.print = realPrint
   return captured
 end
 
 --- Strip ANSI colour so a finding's fingerprint is stable across terminals.
+---@param line string
+---@return string clean
 local function strip(line)
   return (line:gsub("\27%[[%d;]*m", ""))
 end
 
---- A line is a finding rather than a heading if it names an entity. Questie's checks print
---- free-form text, so this is a heuristic — it decides the *summary count*, never whether the
---- run fails, which is driven by the checks' own return values.
-local function looksLikeFinding(line)
-  return line:find("%d") ~= nil and (line:find("[Qq]uest") or line:find("[Nn]pc") or
-         line:find("[Oo]bject") or line:find("[Ii]tem") or line:find("area"))
+---@type table<string, string>
+local ENTITY_TYPE = { quest = "Quest", npc = "Npc", object = "Object", item = "Item" }
+
+---Extracts stable finding fingerprints from one check's human-readable output.
+---Owner headings establish context for their indented reasons but are not findings themselves.
+---@param checkName string
+---@param output string[]
+---@return string[] fingerprints
+local function fingerprintOutput(checkName, output)
+  local fingerprints = {}
+  local owner
+
+  ---Records one reason under its owning entity.
+  ---@param entity string Canonical `Type:id` identity.
+  ---@param reason string Finding text without the display-only owner heading.
+  ---@return nil
+  local function add(entity, reason)
+    reason = reason:gsub("^%s+", ""):gsub("%s+$", "")
+    fingerprints[#fingerprints + 1] = checkName .. "|" .. entity .. "|" .. reason
+  end
+
+  for _, line in ipairs(output) do
+    local clean = strip(line)
+    local typeName, id, tail = clean:match("^%-%s+([%a]+)%s+(%d+)(.*)$")
+    local canonicalType = typeName and ENTITY_TYPE[typeName:lower()]
+
+    if canonicalType then
+      owner = canonicalType .. ":" .. id
+      if not tail:match("^%s*:%s*$") then
+        local parenthesized, after = tail:match("^%s*(%b())%s*:?(.*)$")
+        local reason
+        if parenthesized and after:match("%S") then
+          -- Display names are unstable and add no identity; the area detail is the finding.
+          reason = after
+        elseif parenthesized then
+          reason = parenthesized:sub(2, -2)
+        else
+          reason = tail:gsub("^%s*:%s*", "")
+          if reason == "" then reason = "entity" end
+        end
+        add(owner, reason)
+      end
+    else
+      local nestedReason = owner and clean:match("^%s+%-%s+(.+)$")
+      if nestedReason then
+        add(owner, nestedReason)
+      elseif clean:match("%S") then
+        owner = nil
+      end
+    end
+  end
+
+  return fingerprints
+end
+
+---Counts the findings in a validator's owner-indexed result table.
+---A list of reason strings contributes one finding per reason. Other values, including
+---number lists such as unknown area IDs, describe one finding for their owning entity.
+---@param findings table?
+---@return integer count
+local function structuredFindingCount(findings)
+  if type(findings) ~= "table" then return 0 end
+
+  local count = 0
+  for _, detail in pairs(findings) do
+    local reasonCount = 0
+    if type(detail) == "table" and #detail > 0 then
+      reasonCount = #detail
+      for index = 1, #detail do
+        if type(detail[index]) ~= "string" then
+          reasonCount = 0
+          break
+        end
+      end
+    end
+    count = count + (reasonCount > 0 and reasonCount or 1)
+  end
+  return count
+end
+
+---Reports when display-output parsing did not preserve the validator's structured findings.
+---@param failed boolean
+---@param structuredFindings table?
+---@param parsedCount integer
+---@return string? errorMessage
+local function fingerprintCountError(failed, structuredFindings, parsedCount)
+  if not failed then return nil end
+
+  local expected = structuredFindingCount(structuredFindings)
+  if expected == 0 then
+    return "check failed but returned no structured findings"
+  end
+  if parsedCount ~= expected then
+    return ("check returned %d structured findings but output produced %d fingerprints")
+      :format(expected, parsedCount)
+  end
+  return nil
+end
+
+---Counts validator execution or fingerprint errors.
+---@param results table[]
+---@return integer count
+local function countResultErrors(results)
+  local count = 0
+  for _, result in ipairs(results) do
+    if result.error then count = count + 1 end
+  end
+  return count
+end
+
+---Consumes one accepted occurrence, reporting whether the fingerprint is new.
+---@param fingerprint string
+---@param accepted table<string, integer>
+---@return boolean isRegression
+local function consumeFingerprint(fingerprint, accepted)
+  if (accepted[fingerprint] or 0) == 0 then return true end
+  accepted[fingerprint] = accepted[fingerprint] - 1
+  return false
+end
+
+---Proves owner parsing and multiset baseline comparison remain sensitive.
+---@return nil
+local function selfCheckFingerprints()
+  local parsed = fingerprintOutput("sample", {
+    "Found 1 NPCs with invalid questStarts:",
+    "- NPC 3061:",
+    "  - quest 27021 is missing in questStarts",
+    "",
+    "- Object 42 (Display Name): areaIds 999",
+  })
+  assert(#parsed == 2, "validator fingerprint self-check: expected two findings")
+  assert(parsed[1] == "sample|Npc:3061|quest 27021 is missing in questStarts",
+    "validator fingerprint self-check: nested owner was lost")
+  assert(parsed[2] == "sample|Object:42|areaIds 999",
+    "validator fingerprint self-check: display name leaked into identity")
+
+  local structured = {
+    [3061] = { "quest 27021 is missing", "quest 27022 is missing" },
+    [42] = { 999, 1000 },
+    [43] = true,
+  }
+  assert(structuredFindingCount(structured) == 4,
+    "validator fingerprint self-check: structured finding count changed")
+  assert(fingerprintCountError(true, structured, 3) ~= nil,
+    "validator fingerprint self-check: partial parse loss was accepted")
+  assert(fingerprintCountError(true, structured, 4) == nil,
+    "validator fingerprint self-check: complete parse was rejected")
+  assert(countResultErrors({ { error = "partial parse" }, { findings = 1 } }) == 1,
+    "validator fingerprint self-check: result errors were not counted")
+
+  local duplicate = parsed[1]
+  local accepted = { [duplicate] = 1 }
+  assert(not consumeFingerprint(duplicate, accepted),
+    "validator fingerprint self-check: accepted occurrence was rejected")
+  assert(consumeFingerprint(duplicate, accepted),
+    "validator fingerprint self-check: duplicate occurrence was not detected")
 end
 
 --------------------------------------------------------------------------------------------
 -- Checks
 --------------------------------------------------------------------------------------------
 
+---@class ValidatorCheck
+---@field name string
+---@field run fun(db: table): any
+
 --- Every invariant, in the order Questie's `validate-*.lua` drivers run them.
+---@type ValidatorCheck[]
 local CHECKS = {
   { name = "npcQuestStarts", run = function(db) return Validators.checkNpcQuestStarts(db.npc, db.npcKeys, db.quest, db.questKeys) end },
   { name = "npcQuestEnds", run = function(db) return Validators.checkNpcQuestEnds(db.npc, db.npcKeys, db.quest, db.questKeys) end },
@@ -131,6 +307,8 @@ local CHECKS = {
 -- Driver
 --------------------------------------------------------------------------------------------
 
+---@param flavor table
+---@return integer regressions
 local function validateFlavor(flavor)
   local started = os.clock()
   local loaded = flavorLoader.load(flavor, nil, not opts.raw)
@@ -159,14 +337,13 @@ local function validateFlavor(flavor)
     local output = endCapture()
     local checkFailed = Validators.failed
 
-    local findings = 0
     for _, line in ipairs(output) do
-      local clean = strip(line)
-      lines[#lines + 1] = check.name .. ": " .. clean
-      if looksLikeFinding(clean) and clean:find("^%s*%-") then
-        findings = findings + 1
-        fingerprints[#fingerprints + 1] = check.name .. "|" .. clean:gsub("^%s+", "")
-      end
+      lines[#lines + 1] = check.name .. ": " .. strip(line)
+    end
+    local checkFingerprints = fingerprintOutput(check.name, output)
+    local findings = #checkFingerprints
+    for _, fingerprint in ipairs(checkFingerprints) do
+      fingerprints[#fingerprints + 1] = fingerprint
     end
 
     if not ok then
@@ -177,7 +354,13 @@ local function validateFlavor(flavor)
       -- Questie's checks signal failure by exiting; here that became a flag (see
       -- validators/checks.lua). `result == false` covers the one check that returns a boolean.
       local failed = checkFailed or (result == false)
-      results[#results + 1] = { name = check.name, failed = failed, findings = findings }
+      local countError = fingerprintCountError(failed, result, findings)
+      if countError then
+        -- A changed print shape must not turn all or part of a failed check into "fixed" rows.
+        results[#results + 1] = { name = check.name, error = countError }
+      else
+        results[#results + 1] = { name = check.name, failed = failed, findings = findings }
+      end
       if failed then failures = failures + 1 end
     end
   end
@@ -187,8 +370,17 @@ local function validateFlavor(flavor)
 
   table.sort(fingerprints)
 
+  local errored = countResultErrors(results)
   local baselinePath = "validators/baseline/" .. flavor.name .. ".txt"
   if opts.updateBaseline then
+    if errored > 0 then
+      say(("[FAIL] %s: baseline not updated because %d checks produced invalid evidence")
+        :format(flavor.name, errored))
+      for _, result in ipairs(results) do
+        if result.error then say(("    ERROR %-30s %s"):format(result.name, result.error)) end
+      end
+      return errored
+    end
     lib.mkdirp("validators/baseline")
     lib.writeAll(baselinePath, table.concat(fingerprints, "\n") .. "\n")
     say(("[BASELINE] %s: recorded %d accepted findings -> %s")
@@ -207,18 +399,18 @@ local function validateFlavor(flavor)
 
   local regressions = {}
   for _, fingerprint in ipairs(fingerprints) do
-    if (baseline[fingerprint] or 0) > 0 then
-      baseline[fingerprint] = baseline[fingerprint] - 1
-    else
+    if consumeFingerprint(fingerprint, baseline) then
       regressions[#regressions + 1] = fingerprint
     end
   end
 
+  if opts.selfCheck then
+    say(("    self-check: %s fingerprint ownership, counts, and duplicates are live")
+      :format(flavor.name))
+  end
+
   local fixed = 0
   for _, remaining in pairs(baseline) do fixed = fixed + remaining end
-
-  local errored = 0
-  for _, result in ipairs(results) do if result.error then errored = errored + 1 end end
 
   local status = (#regressions == 0 and errored == 0) and "PASS" or "FAIL"
   say(("[%s] %s: %d/%d checks clean, %d findings (%d baselined, %d new, %d fixed), %.1fs  (%s)")
@@ -246,6 +438,8 @@ local function validateFlavor(flavor)
 
   return #regressions + errored
 end
+
+if opts.selfCheck then selfCheckFingerprints() end
 
 local flavors = {}
 if #opts.flavors == 0 then

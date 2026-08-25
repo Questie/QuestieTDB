@@ -1,0 +1,14 @@
+# Known QuestieTDB-vs-compiler divergences for TBC.
+#
+# This is a to-do list, not an approval. Only POLICY rows are permanent;
+# every other row is work we still owe. Dispositions and rationale live in
+# docs/questie-handover.md.
+#
+# Refresh with: compiler_diff.py TBC --update-baseline
+# entityType	field	class	count	reason
+Npc	spawns	VALUE	11	OPEN
+Object	spawns	EMPTY_VS_ABSENT	24	POLICY
+Object	spawns	VALUE	11	OPEN
+Quest	preQuestGroup	EMPTY_VS_ABSENT	1	POLICY
+Quest	preQuestSingle	EMPTY_VS_ABSENT	2	POLICY
+Quest	requiredRaces	VALUE	27	OPEN

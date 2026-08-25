@@ -36,14 +36,19 @@ local floor = math.floor
 
 --- Shortest decimal literal that reads back as exactly this number.
 ---
---- Lua 5.1 renders numbers with `%.14g`, which is exact for the coordinates and IDs in this
---- data but not for every double. Widening to `%.17g` only when the shorter form does not
---- round-trip keeps output compact without ever being lossy.
+--- Lua 5.1 renders numbers with `%.14g`, which is exact for IDs and the source data's short
+--- coordinates but not for every double — in particular not for the 40.90-grid quantized
+--- coordinates ADR 0003 stores (`floor(c * 40.90) / 40.90` rarely has a short decimal form).
+--- Widening one significant digit at a time and taking the first spelling that round-trips
+--- keeps output as compact as exactness allows and is never lossy (`%.17g` always round-trips
+--- a double).
 function serialize.number(value)
   local short = tostring(value)
   if tonumber(short) == value then return short end
-  local wide = format("%.17g", value)
-  if tonumber(wide) == value then return wide end
+  for precision = 15, 17 do
+    local wide = format("%." .. precision .. "g", value)
+    if tonumber(wide) == value then return wide end
+  end
   return format("%.20g", value)
 end
 
@@ -161,10 +166,12 @@ local function serializeTable(value, depth)
   end
 
   local intKeys, otherKeys
+  local maxIntKey = 0
   for key in pairs(value) do
     if isArrayIndex(key) then
       intKeys = intKeys or {}
       intKeys[#intKeys + 1] = key
+      if key > maxIntKey then maxIntKey = key end
     else
       otherKeys = otherKeys or {}
       otherKeys[#otherKeys + 1] = key
@@ -174,17 +181,21 @@ local function serializeTable(value, depth)
   local parts = {}
 
   if intKeys then
-    sort(intKeys)
-    -- Sparse arrays keep their holes — `{{12676},nil,{16305}}` — and the decoder relies on
-    -- Lua's own table constructor semantics to restore them. Trailing nils are neither
-    -- representable nor observable, so they fall out naturally.
-    local arrayLength = arrayPrefixLength(intKeys)
+    local dense = #intKeys == maxIntKey
+    if not dense then sort(intKeys) end
+
+    -- Dense tuples and coordinate rows need neither sorting nor sparse-prefix analysis. Sparse
+    -- arrays keep their holes, and distant keys stay explicit so zone IDs never create a huge
+    -- run of `nil` slots.
+    local arrayLength = dense and maxIntKey or arrayPrefixLength(intKeys)
     for i = 1, arrayLength do
       parts[#parts + 1] = serializeValue(value[i], depth + 1)
     end
-    for _, key in ipairs(intKeys) do
-      if key > arrayLength then
-        parts[#parts + 1] = "[" .. encodeKey(key) .. "]=" .. serializeValue(value[key], depth + 1)
+    if not dense then
+      for _, key in ipairs(intKeys) do
+        if key > arrayLength then
+          parts[#parts + 1] = "[" .. encodeKey(key) .. "]=" .. serializeValue(value[key], depth + 1)
+        end
       end
     end
   end

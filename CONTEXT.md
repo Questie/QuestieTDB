@@ -20,12 +20,27 @@ One stored value addressed by entity ID and positional field index inside the TO
 _Avoid_: Metadata row, TOC row
 
 **Chunked metadata value**:
-A long Metadata field split into numbered parts and reassembled before decoding.
+A long Metadata field split into numbered parts and reassembled before decoding. Parts
+never begin or end with client-trimmable bytes — the client strips edge whitespace from
+metadata values (measured; see `docs/client-metadata-probes.md`).
 _Avoid_: Combined parts, split value
+
+**Coordinate grid**:
+The `floor(coord * 40.90) / 40.90` quantization applied to spawn and waypoint coordinates
+during normalization, reproducing what Questie's compiled reads observe (ADR 0003 D1).
+_Avoid_: Rounding, precision trimming
 
 **Generation**:
 The offline process that turns raw entity data plus Static Corrections into a TOC metadata store.
 _Avoid_: Compilation, build, cooking
+
+**Derived Pass**:
+A deterministic transform over corrected entity data, run before storage, in both Generation
+and Source mode. Distinct from a Correction, which is data (`id` to field index to value) — a
+Derived Pass is code, and may read one entity type while writing another. Reproduces a
+transform Questie applies between corrections and compilation, so that reads match the
+database a player actually receives (ADR 0004).
+_Avoid_: Preprocess, precompile, postprocess, pipeline stage
 
 **Support data**:
 Game reference data consumed as whole tables rather than through the TOC metadata store —
@@ -57,6 +72,17 @@ A Correction whose applicability cannot be known before Generation — because i
 runtime state such as faction, season, expansion, or user settings. Always applied at query time.
 _Avoid_: Runtime correction, conditional fix
 
+**Gated Dynamic function**:
+A correction function that registers only while its named runtime condition holds — the
+SoD and Titan Reforged season gates. An unrecognized gate name stays closed.
+_Avoid_: Conditional registration, feature flag
+
+**Parameterized Correction**:
+A correction function never applied automatically because it needs a runtime fact the
+database does not own (the Darkmoon Faire location). Applied only through
+`Corrections.ApplyParameterized` with the consumer-supplied argument.
+_Avoid_: Manual correction, callback fix
+
 **Correction Overlay**:
 The composed query-time layer of Dynamic Corrections that entity reads resolve through.
 _Avoid_: Runtime override, override table, merged correction
@@ -76,17 +102,60 @@ A function on an Entity global returning one field by positional field index.
 _Avoid_: Index getter, raw getter
 
 **Decoded field cache**:
-The runtime cache holding decoded Metadata field values after first access.
+The runtime cache behind the getters: scalar values are cached directly; table fields
+cache a Producer.
 _Avoid_: Getter cache, Lua cache
 
-**Frozen value**:
-A table returned from an entity read that the database owns and callers must not modify.
-A caller needing a mutable working copy takes one explicitly.
-_Avoid_: Read-only table, immutable table, const
+**Producer**:
+The cached mechanism a table read executes to return a value — a compiled chunk of the
+stored literal in Baked mode, a deep-copy closure for Source, overlay, and translated
+values. Executing it costs 0.13–1.8 µs for typical shapes (measured).
+_Avoid_: Factory, thunk, generator (collides with the offline Generation vocabulary)
+
+**Caller-owned value**:
+Every table returned from an entity read is a fresh, mutable, deeply independent copy the
+caller owns — Questie's original per-call semantics (ADR 0003 D10, revised). `table.freeze`
+applies only to QuestieTDB-internal shared structures.
+_Avoid_: Frozen value (the retired original contract), shared value, borrowed table
+
+**Composed enumeration**:
+`GetAllIds` and `Exists` answering over the union of the backend's entities and those the
+Correction Overlay adds — an added entity is readable, enumerable, and exists, all three.
+_Avoid_: Merged id list, extended pointers
 
 **l10n overlay**:
 The optional localization layer wrapping selected Named getters for the active locale.
+The Correction Overlay outranks it: a corrected field skips its lookup (ADR 0003 D8).
 _Avoid_: Localization DB, translation patch
+
+### Verification
+
+**Equivalence sweep**:
+The gate proving Source and Baked modes read identically for every id × field across every
+public read form, ending in a Self-proof.
+_Avoid_: Parity test, mode test
+
+**Self-proof**:
+A gate's built-in demonstration that it fails when it should — an injected divergence or
+corrupted byte that must be detected exactly once. A gate without one is decoration.
+_Avoid_: Sanity check, canary
+
+**Reconstruction gate**:
+`reconstruct.lua` — re-derives every data directive with the current generator and
+compares against the artifact as exact bytes, localizing mismatches to named keys.
+_Avoid_: Round-trip test (that is `verify.lua`, which decodes)
+
+**Golden snapshot**:
+The committed per-id hashes of accepted composed reads (`tools/differential/golden/`),
+checked per flavor in CI. The frozen mirror that catches defects where generator and
+source mode agree with each other while both diverge from upstream — the class the
+retired `-pi` sibling's independence caught during the merge program.
+_Avoid_: Baseline (that word belongs to the validators), reference dump
+
+**Persona**:
+The emulator's mocked client identity — faction, race, class, season — letting gated and
+faction-differentiated correction branches execute offline.
+_Avoid_: Test profile, mock player
 
 ## Boundary with Questie
 

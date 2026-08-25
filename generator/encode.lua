@@ -29,10 +29,14 @@ end
 
 --- Store a string raw where possible, because that is what makes a generated TOC legible and
 --- keeps the artifact small. Fall back to a Lua literal for anything a line-oriented format
---- cannot carry.
+--- cannot carry — control characters, marker lookalikes, and strings the client's own parser
+--- would alter: it trims leading and trailing whitespace from every metadata value (measured,
+--- docs/client-metadata-probes.md §1), so an edge-whitespace string survives only in quoted
+--- form, where the quote characters become the value's edges.
 function encode.string(value)
   if value == "" then return codec.EMPTY_STRING end
-  if find(value, "[%z\1-\31\127]") or collidesWithMarker(value) then
+  if find(value, "[%z\1-\31\127]") or collidesWithMarker(value)
+     or find(value, "^ ") or find(value, " $") then
     return codec.QUOTED_PREFIX .. serialize.quote(value)
   end
   return value
@@ -42,49 +46,49 @@ end
 -- Fields
 --------------------------------------------------------------------------------------------
 
+---Whether a normalized field needs a metadata line.
+---Verification calls this after normalization so it shares Generation's omission rules
+---without serializing every table a second time.
+---@param meta table
+---@param fieldIndex number
+---@param normalized any Value returned by `normalize.field`
+---@return boolean
+local function hasStoredValue(meta, fieldIndex, normalized)
+  if normalized == nil then return false end
+
+  local storage = meta.types[fieldIndex]
+  if storage ~= "number" and storage ~= "string" and storage ~= "table" then
+    error("encode: unknown storage type " .. tostring(storage), 0)
+  end
+  if type(normalized) ~= storage then
+    error(string.format("%s field %d (%s): expected a %s, got %s (%s)",
+      meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), storage, type(normalized),
+      tostring(normalized)), 0)
+  end
+
+  if storage == "number" then return normalized ~= 0 end
+  if storage == "table" then return next(normalized) ~= nil end
+  return true
+end
+
+encode.hasStoredValue = hasStoredValue
+
 --- Encode one field of one entity, or return nil when no line should be written.
 ---
---- Absence is the encoding for nil, and for a numeric zero — a numeric read with no stored
---- metadata returns 0, so writing `0` explicitly would cost bytes and say nothing.
+--- Absence is the encoding for nil, numeric zero, and empty tables whose read-time default is
+--- already in the schema.
 ---@param meta table
 ---@param fieldIndex number
 ---@param value any Raw source value
 ---@return string? encoded
 function encode.field(meta, fieldIndex, value)
   local normalized = normalize.field(meta, fieldIndex, value)
-  if normalized == nil then return nil end
+  if not hasStoredValue(meta, fieldIndex, normalized) then return nil end
 
   local storage = meta.types[fieldIndex]
-
-  if storage == "number" then
-    if type(normalized) ~= "number" then
-      error(string.format("%s field %d (%s): expected a number, got %s (%s)",
-        meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), type(normalized),
-        tostring(normalized)), 0)
-    end
-    if normalized == 0 then return nil end
-    return serialize.number(normalized)
-  end
-
-  if storage == "string" then
-    if type(normalized) ~= "string" then
-      error(string.format("%s field %d (%s): expected a string, got %s (%s)",
-        meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), type(normalized),
-        tostring(normalized)), 0)
-    end
-    return encode.string(normalized)
-  end
-
-  if storage == "table" then
-    if type(normalized) ~= "table" then
-      error(string.format("%s field %d (%s): expected a table, got %s (%s)",
-        meta.entity, fieldIndex, tostring(meta.names[fieldIndex]), type(normalized),
-        tostring(normalized)), 0)
-    end
-    return serialize.value(normalized)
-  end
-
-  error("encode: unknown storage type " .. tostring(storage), 0)
+  if storage == "number" then return serialize.number(normalized) end
+  if storage == "string" then return encode.string(normalized) end
+  return serialize.value(normalized)
 end
 
 --------------------------------------------------------------------------------------------

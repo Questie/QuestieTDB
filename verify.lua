@@ -113,30 +113,44 @@ local function verifyFlavor(flavor, opts)
     if value:match("^~%d+~$") then report.chunked = report.chunked + 1 end
   end
 
-  -- No line may exceed what the client will actually read. Measured on Classic Era 1.15.9:
-  -- `GetAddOnMetadata` silently truncates beyond lib.TOC_LINE_LIMIT and reports nothing, so
-  -- an over-long line is data corruption with no symptom until a consumer reads a short
-  -- value. This is the check that would have caught it: the emulator reads the file directly
-  -- and never truncates, so nothing else offline can see the problem.
+  -- Scan the raw artifact once for the two client parser constraints the metadata emulator
+  -- cannot reproduce. The client silently truncates over-long lines and trims value edges.
   do
     local overLimit, worst, worstKey = 0, 0, nil
+    local edgeWhitespace, exampleKey = 0, nil
     local file = assert(io.open(tocPath, "rb"))
     for line in file:lines() do
       line = line:gsub("\r$", "")
-      if line:sub(1, 5) == "## X-" and #line > lib.TOC_LINE_LIMIT then
-        overLimit = overLimit + 1
-        if #line > worst then
-          worst = #line
-          worstKey = line:match("^## ([^:]+):")
+      if line:sub(1, 5) == "## X-" then
+        local key, value = line:match("^## ([^:]+): (.*)$")
+        if #line > lib.TOC_LINE_LIMIT then
+          overLimit = overLimit + 1
+          if #line > worst then
+            worst, worstKey = #line, key
+          end
+        end
+        if value and #value > 0 then
+          local first, lastByte = value:byte(1), value:byte(#value)
+          if lib.TRIMMABLE[first] or lib.TRIMMABLE[lastByte] then
+            edgeWhitespace = edgeWhitespace + 1
+            exampleKey = exampleKey or key
+          end
         end
       end
     end
     file:close()
+
     if overLimit > 0 then
       io.write(("  LINE LIMIT %s: %d lines exceed %d bytes (worst %d, key %s) — the client " ..
         "will truncate these silently\n"):format(tocPath, overLimit, lib.TOC_LINE_LIMIT, worst,
         tostring(worstKey)))
       report.errors = report.errors + overLimit
+    end
+    if edgeWhitespace > 0 then
+      io.write(("  EDGE WHITESPACE %s: %d stored values begin or end with a byte the client " ..
+        "trims (first: %s) — reassembly loses those bytes in-client\n")
+        :format(tocPath, edgeWhitespace, tostring(exampleKey)))
+      report.errors = report.errors + edgeWhitespace
     end
   end
 
@@ -153,10 +167,12 @@ local function verifyFlavor(flavor, opts)
       local meta = LibQuestieDB.Meta[entityType.name]
       local sourceEntities = loadedFlavor[entityType.name].entities
 
-      -- The ID list must round-trip in both forms consumers build from it.
+      -- The ID list must round-trip in both forms consumers build from it. This reads the
+      -- BACKEND's list, not `entity.GetAllIds()`: public enumeration is the composed view
+      -- (ADR 0003 D7), which legitimately includes entities Dynamic Corrections add, while
+      -- this check's subject is the stored artifact alone.
       local sourceIds = lib.sortedIds(sourceEntities)
-      local storedList = entity.GetAllIds()
-      local storedMap = entity.GetAllIds(true)
+      local storedList, storedMap = entity.backend.getAllIds()
       if not lib.deepEqual(sourceIds, storedList) then
         io.write(("  MISMATCH %s IDS-LIST: %d source ids, %d stored\n")
           :format(entityType.name, #sourceIds, #storedList))
@@ -199,22 +215,31 @@ local function verifyFlavor(flavor, opts)
             reportMismatch(report, entityType.name, id, fieldIndex,
               meta.names[fieldIndex] .. " (named vs generic getter)", generic, named)
           end
-          if encode.field(meta, fieldIndex, row[fieldIndex]) ~= nil then
+          -- Orphan detection needs presence, not encoded bytes. Reuse the normalized value
+          -- instead of running table serialization again inside this exhaustive sweep.
+          if encode.hasStoredValue(meta, fieldIndex, expected) then
             seenKeys["X-" .. meta.metaPrefix .. id .. "-" .. fieldIndex] = true
           end
          end
         end
       end
 
-      -- An unknown entity ID must read as nil, never as a stray default.
+      -- An unknown entity ID reads as nil for every field — numeric defaults are gated on
+      -- existence (ADR 0003 Decision 6), so a missing entity can never masquerade as a valid
+      -- all-zero row. Checked through both the raw and the composed getter.
       local absentId = sourceIds[#sourceIds] + 1000000
       for fieldIndex = 1, meta.fieldCount do
        if not opts.fields or opts.fields[meta.names[fieldIndex]] then
         local value = entity.GetRaw(absentId, fieldIndex)
-        local expectedAbsent = normalize.default(meta, fieldIndex)
-        if value ~= expectedAbsent then
-          io.write(("  MISMATCH %s unknown id %d field %d: expected %s, got %s\n")
-            :format(entityType.name, absentId, fieldIndex, tostring(expectedAbsent), tostring(value)))
+        if value ~= nil then
+          io.write(("  MISMATCH %s unknown id %d field %d: expected nil, got %s\n")
+            :format(entityType.name, absentId, fieldIndex, tostring(value)))
+          report.errors = report.errors + 1
+        end
+        local composedValue = entity.Get(absentId, fieldIndex)
+        if composedValue ~= nil then
+          io.write(("  MISMATCH %s unknown id %d field %d (composed): expected nil, got %s\n")
+            :format(entityType.name, absentId, fieldIndex, tostring(composedValue)))
           report.errors = report.errors + 1
         end
        end
@@ -226,7 +251,7 @@ local function verifyFlavor(flavor, opts)
   if not opts.types and not opts.sample and not opts.fields then
     local headerKeys = {
       ["X-Contract-Version"] = true, ["X-Flavor"] = true, ["X-Mode"] = true,
-      ["X-BUILD-COMMIT"] = true, ["X-BUILD-TIME"] = true,
+      ["X-BUILD-COMMIT"] = true, ["X-BUILD-TIME"] = true, ["X-QUESTIE-COMMIT"] = true,
     }
     local orphans = 0
     for key in pairs(map) do
@@ -260,10 +285,56 @@ local function verifyFlavor(flavor, opts)
   -- and every segment must be non-empty or absent — an empty segment means "no translation"
   -- and the reader falls back, so a stray one is a silent English string in a German client.
   local l10nFields, l10nSegments = 0, 0
+  local l10nGen = dofile("generator/l10n.lua")
+  local listFieldByType = {}
+  for typeName, typeCfg in pairs(l10nGen.types) do
+    listFieldByType[typeName] = {}
+    for fieldPos, fieldCfg in ipairs(typeCfg.fields) do
+      if fieldCfg.list then listFieldByType[typeName][fieldPos] = true end
+    end
+  end
+  local function splitLocales(joined)
+    local segments, pos = {}, 1
+    while true do
+      local s, e = joined:find(config.localeSeparator, pos, true)
+      if not s then
+        segments[#segments + 1] = joined:sub(pos)
+        return segments
+      end
+      segments[#segments + 1] = joined:sub(pos, s - 1)
+      pos = e + 1
+    end
+  end
   for key, value in pairs(map) do
     -- `X-l10n-<Type>-<id>-<fieldIndex>`. A chunk part carries a fourth number and is skipped.
-    if key:match("^X%-l10n%-%a+%-%d+%-%d+$") then
+    local typeName, fieldPos = key:match("^X%-l10n%-(%a+)%-%d+%-(%d+)$")
+    if typeName then
       l10nFields = l10nFields + 1
+      local joined = emulator.getValue(map, key)
+      local segments = splitLocales(joined)
+      if #segments > #config.locales then
+        io.write(("  L10N %s: %d locale segments, only %d locales declared\n")
+          :format(key, #segments, #config.locales))
+        report.errors = report.errors + 1
+      end
+      -- A list-valued field's segments are Lua table literals — the shape contract of
+      -- ADR 0003 Decision 3. Every non-empty segment must decode to a table.
+      if listFieldByType[typeName] and listFieldByType[typeName][tonumber(fieldPos)] then
+        for i = 1, #segments do
+          local segment = segments[i]
+          if segment ~= "" then
+            local chunk = loadstring("return " .. segment)
+            local ok, decoded = false, nil
+            if chunk then ok, decoded = pcall(chunk) end
+            if not ok or type(decoded) ~= "table" then
+              io.write(("  L10N %s segment %d does not decode to a table: %s\n")
+                :format(key, i, segment:sub(1, 80)))
+              report.errors = report.errors + 1
+              break
+            end
+          end
+        end
+      end
     end
   end
   for _, entityType in ipairs(config.entityTypes) do
