@@ -960,11 +960,16 @@ suite("negative-controls", function()
   check(truncated ~= original, "corruption fixture did not apply (truncated id list)")
   runVerify(truncated, "truncated id list")
 
-  -- 4. A missing chunk part must raise rather than return a short string.
+  -- 4. A missing chunk part must raise rather than return a short string. Pick the first
+  -- eligible key deterministically so this control fails the same field on every run.
   local map = emulator.parse(sourceToc)
   local chunkKey
   for key, value in pairs(map) do
-    if value:match("^~%d+~$") then chunkKey = key; break end
+    local partCount = tonumber(value:match("^~(%d+)~$"))
+    if partCount and partCount >= 2 and map[key .. "-2"] ~= nil and
+       (not chunkKey or key < chunkKey) then
+      chunkKey = key
+    end
   end
   if chunkKey then
     map[chunkKey .. "-2"] = nil
@@ -977,6 +982,12 @@ suite("negative-controls", function()
   else
     check(false, "no chunked value found to corrupt")
   end
+
+  -- Later suites share the client emulator, so restore valid metadata after the intentional
+  -- corruption instead of relying on their setup order to replace this global accessor.
+  client.reset()
+  client.install({ expansion = "Classic" })
+  emulator.install(config.addonName, emulator.parse(sourceToc))
 
   os.remove(".out/corrupt/" .. sourceToc)
 end)
