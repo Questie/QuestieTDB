@@ -1,6 +1,6 @@
 # QuestieTDB golden composed-read hashes - Vanilla
 # One line per entity: type, id, sha256/16 over its sorted canonical field lines.
-# Produced from worktree at 2a2e8cae86adccb1abbfc5501ee9811543ccf9d5+dirty
+# Produced from worktree at fcbd2a49eb497efb7152b49606d265f259bd5c92+dirty
 # Refresh (after an INTENTIONAL data change, with review):
 #   python3 tools/differential/golden.py refresh Vanilla
 Quest	2	14e69b09da774d6b
@@ -1070,7 +1070,7 @@ Quest	1125	b2e48d8b67a14815
 Quest	1126	c0e98ff778d15dd7
 Quest	1127	94cac119785cb409
 Quest	1130	4dbd0b7967c6702e
-Quest	1131	5cb11ec954ad542e
+Quest	1131	1f01ea5fc73df40d
 Quest	1132	feeb97a03fd0e1fd
 Quest	1133	55553cc15ad6b7c9
 Quest	1134	bbecb608a9f04415
@@ -2402,7 +2402,7 @@ Quest	5222	70f0e82e77235ab5
 Quest	5223	0cef87e39fcbf7c7
 Quest	5224	918b45f8a4aaac1e
 Quest	5225	7f9b05880286edd9
-Quest	5226	491072b48f3de8e4
+Quest	5226	db690f5e17240876
 Quest	5227	0ed0579f73bc3faf
 Quest	5228	3677293aa999f58d
 Quest	5229	fa35804ee086cd35
@@ -11968,7 +11968,7 @@ Npc	11829	3ea6654a003cade0
 Npc	11830	59a7d98c75a7efb6
 Npc	11831	70138f432c9ad5e8
 Npc	11832	ed0cb78d7999ec09
-Npc	11833	1cfc626de44635af
+Npc	11833	b8db472ddf8cd728
 Npc	11834	48ef01cbfe71548b
 Npc	11835	819fe4ba810c55c7
 Npc	11836	9dcee09ed2a2a214
@@ -32075,7 +32075,7 @@ Object	142344	8685de89312dc2c0
 Object	142345	b007a43ee033f3d9
 Object	142475	e09b72b33d6cbdbc
 Object	142476	72792802d3ee1e1a
-Object	142477	bad62c033e9bbc6d
+Object	142477	379ae89237a4e05c
 Object	142487	e5dbe542ef5bf83c
 Object	142689	c817133068e42e60
 Object	142690	0f15b185d4f0f224
@@ -33179,7 +33179,7 @@ Object	174953	97b105faf6228c45
 Object	175075	e1700a16483e7b36
 Object	175076	63825695d7be5cbd
 Object	175078	4cc90fad47f61014
-Object	175084	367392eddc761de0
+Object	175084	97faf80d2003ea29
 Object	175085	a3d7f352fe653f02
 Object	175087	ff4b72a58d9cc97a
 Object	175104	f3c29b877ec23fb5

@@ -6,6 +6,6 @@
 #
 # Refresh with: compiler_diff.py Cata --update-baseline
 # entityType	field	class	count	reason
-Npc	maxLevelHealth	VALUE	39718	POLICY
-Npc	minLevelHealth	VALUE	46316	POLICY
+Npc	maxLevelHealth	VALUE	39712	POLICY
+Npc	minLevelHealth	VALUE	46311	POLICY
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY

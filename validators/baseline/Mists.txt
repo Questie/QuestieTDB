@@ -64,39 +64,6 @@ npcQuestEnds|Npc:14885|questEnd 29266 is not in the database
 npcQuestEnds|Npc:14885|questEnd 7962 is not in the database
 npcQuestEnds|Npc:14885|questEnd 9596 is not in the database
 npcQuestEnds|Npc:14885|questEnd 9597 is not in the database
-npcQuestEnds|Npc:14910|quest 98183 is missing in questEnds
-npcQuestEnds|Npc:14921|quest 95205 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95072 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95074 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95075 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95076 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95077 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95078 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95079 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95080 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95081 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95082 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95083 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95084 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95085 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95088 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95089 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95090 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95092 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95093 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95094 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95095 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95096 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95097 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95098 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95099 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95100 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95101 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95102 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95103 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95104 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95105 is missing in questEnds
-npcQuestEnds|Npc:15042|quest 95106 is missing in questEnds
 npcQuestEnds|Npc:15077|quest 32435 is missing in questEnds
 npcQuestEnds|Npc:15077|quest 32436 is missing in questEnds
 npcQuestEnds|Npc:15395|questEnd 8461 is not in the database
@@ -896,39 +863,6 @@ npcQuestStarts|Npc:10839|quest 5503 is not started by this NPC
 npcQuestStarts|Npc:10840|quest 27175 is missing in questStarts
 npcQuestStarts|Npc:10840|quest 27683 is missing in questStarts
 npcQuestStarts|Npc:110017|quest 30490 is missing in questStarts
-npcQuestStarts|Npc:14910|quest 98183 is missing in questStarts
-npcQuestStarts|Npc:14921|quest 95205 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95072 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95074 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95075 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95076 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95077 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95078 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95079 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95080 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95081 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95082 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95083 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95084 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95085 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95088 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95089 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95090 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95092 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95093 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95094 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95095 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95096 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95097 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95098 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95099 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95100 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95101 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95102 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95103 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95104 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95105 is missing in questStarts
-npcQuestStarts|Npc:15042|quest 95106 is missing in questStarts
 npcQuestStarts|Npc:15077|quest 32435 is missing in questStarts
 npcQuestStarts|Npc:15077|quest 32436 is missing in questStarts
 npcQuestStarts|Npc:15271|quest 8334 is not started by this NPC
@@ -1457,7 +1391,6 @@ requiredRaces|Quest:78221|no requiredRaces entry
 requiredRaces|Quest:88777|no requiredRaces entry
 requiredRaces|Quest:88781|no requiredRaces entry
 requiredRaces|Quest:88784|no requiredRaces entry
-requiredRaces|Quest:96211|no requiredRaces entry
 requiredSourceItems|Quest:10945|sourceItemId in requiredSourceItems: 31880
 requiredSourceItems|Quest:10950|sourceItemId in requiredSourceItems: 31881
 requiredSourceItems|Quest:10951|sourceItemId in requiredSourceItems: 31880

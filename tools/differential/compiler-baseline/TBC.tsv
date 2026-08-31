@@ -9,5 +9,3 @@
 Npc	maxLevelHealth	VALUE	17403	POLICY
 Npc	minLevelHealth	VALUE	18499	POLICY
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
-Quest	preQuestGroup	EMPTY_VS_ABSENT	1	POLICY
-Quest	preQuestSingle	EMPTY_VS_ABSENT	2	POLICY
