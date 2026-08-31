@@ -74,9 +74,9 @@ faction, expansion, and season. A consumer registers its own Dynamic Corrections
 consumer-owned runtime state or policy.
 _Avoid_: Runtime correction, conditional fix
 
-**Gated Dynamic function**:
-A correction function that registers only while its named runtime condition holds — the
-SoD and Titan Reforged season gates. An unrecognized gate name stays closed.
+**Gated Dynamic set**:
+A group of Dynamic Correction functions registered only while its runtime condition holds.
+SoD and Titan Reforged use file-level season gates.
 _Avoid_: Conditional registration, feature flag
 
 **Correction Overlay**:

@@ -153,6 +153,7 @@ a discovery months later. CI runs both and fails on any diff.
 git -C ../Questie checkout "$(cat QUESTIE_COMMIT)"
 lua5.1 generate.lua meta --questie=../Questie # schema -> src/meta/*Meta.lua
 lua5.1 tools/port-corrections.lua ../Questie  # corrections + constants
+lua5.1 generate.lua toc                      # refresh the committed Source-mode file list
 ```
 
 The ported correction files preserve Questie's bytes except for explicit whole-function
@@ -162,6 +163,11 @@ excluded block is absent or duplicated. To advance Questie, change `QUESTIE_COMM
 check out that commit, then review schema drift, the Correction re-port, validators, compiler
 differential, and Golden snapshots in the same working tree. Automation reads the same pin
 through `.github/actions/checkout-questie`.
+
+The port requires Questie's four Titan entity files under `Database/Corrections/`. QuestieTDB
+ports them under `src/corrections/Titan/` and applies every provider dynamically over the Wrath
+base, gated by Wrath plus active season 109. Titan quest tags and availability blacklists remain
+in Questie because they are consumer policy.
 
 ---
 

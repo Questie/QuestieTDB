@@ -1,361 +1,98 @@
-# Titan Correction split plan
+# Titan Correction split status and remaining plan
 
-## Purpose
+## Status
 
-Finish the Titan Reforged Correction split after Questie PR
-[#7784](https://github.com/Questie/Questie/pull/7784), merged as
-`b1a6dc8c50a92ab88723a11556421d6462cdea49` on 2026-08-31.
+Implementation is complete. Full all-flavor validation is still pending.
 
-The current QuestieTDB worktree prepares both Questie's old embedded layout and its new split
-layout. That transition support is unnecessary. QuestieTDB is unreleased, Titan files now
-always exist upstream, and no consumer needs compatibility with the old arrangement.
-
-The final implementation must support only the split layout.
-
-## Safety constraint
-
-Do not access, inspect, modify, check out, reset, clean, fetch, or otherwise touch:
-
-```text
-/home/david/private/qu-tdb/questie
-```
-
-That is David's active Questie worktree. Use a separate clean disposable checkout for the
-mechanical re-port and all Questie-backed validation.
-
-## Locked decisions
-
-1. Titan Reforged is a Dynamic Correction set over the Wrath database, like SoD over Era.
-2. QuestieTDB continues to ship one Wrath TOC metadata store. It does not add a Titan TOC.
-3. Every function in the four Titan entity files is Dynamic in QuestieTDB, even when Questie
-   calls that function before compiling its separate Titan cache.
-4. The complete Titan set registers only for Wrath with active season `109`.
-5. The four Titan source files are mandatory. A missing file is a normal hard port failure.
-6. WotLK Correction files contain no Titan providers.
-7. Titan quest tags and availability blacklists stay in Questie. They are consumer semantics
-   and policy, not QuestieTDB entity data.
-8. TBC and MoP content-phase functions stay excluded under ADR 0007.
-9. No old-layout fallback, layout detection, compatibility shim, or conditional test remains.
-10. `contractVersion` remains `1`. No released consumer depends on the old arrangement.
-
-## Current worktree
-
-Branch: `ownership`
-
-Current Questie pin:
-
-```text
-7615c03bd4294b046f3db66c2a2e97a3b49c39ef
-```
-
-That pin predates the split and must advance atomically with the re-port.
-
-The worktree currently has uncommitted changes in:
-
-```text
-.github/workflows/ci.yml
-README.md
-src/corrections/MoP/mopNPCFixes.lua
-src/corrections/MoP/mopObjectFixes.lua
-src/corrections/MoP/mopQuestFixes.lua
-src/corrections/Tbc/tbcQuestFixes.lua
-src/corrections/manifest.lua
-src/corrections/register.lua
-src/corrections/registry.lua
-test.lua
-tools/port-corrections.lua
-```
-
-It also has the untracked transitional file:
-
-```text
-generator/correction-layout.lua
-```
-
-Do not discard the whole worktree. It contains useful ownership, runtime, test, documentation,
-and CI work. Remove only the transition machinery identified below.
-
-## Keep from the current changes
-
-### Runtime behavior
-
-Keep these parts of `src/corrections/register.lua`:
-
-- `Titan/` file recognition.
-- File-level Titan gating.
-- The exact predicate requiring both Wrath and season `109`.
-- Fail-closed behavior when `C_Seasons` or the flavor is absent.
-
-Keep the dedicated Titan load-order window in `src/corrections/registry.lua`. Titan must apply
-after inherited WotLK Dynamic Corrections.
-
-Titan manifest entries must use:
-
-```lua
-expansions = { Wotlk = true }
-```
-
-Do not use `minExpansionOrder = 3`. That also admits Cata and Mists.
-
-### ADR 0007 ownership cleanup
-
-Keep the port exclusions and copied-file removals for:
-
-- `QuestieTBCQuestFixes:LoadContentPhaseFixes`
-- `MopQuestFixes:LoadContentPhaseFixes`
-- `MopNpcFixes:LoadContentPhaseFixes`
-- `MopObjectFixes:LoadContentPhaseFixes`
-
-Keep the existing Darkmoon exclusions.
-
-Keep the updated exclusion helper that accepts an attached ordinary `--` comment as well as a
-LuaDoc `---` block. The upstream content-phase functions use ordinary comments.
-
-### Tests and CI
-
-Keep:
-
-- The exact `QuestieTDB.toc` versus `config.sourceFileList()` assertion.
-- The CI Source TOC drift gate before flavor Generation can rewrite the file.
-- The CI no-localization Wrath runtime fixture.
-- Source and Baked Titan persona coverage.
-- Exact Titan file-list assertions.
-- Representative public reads for all eight Titan providers.
-- Plain Wrath isolation assertions.
-
-### Documentation
-
-Keep the README instruction to run:
-
-```sh
-lua5.1 generate.lua toc
-```
-
-after the Correction port.
-
-## Remove the compatibility design
-
-### Delete the layout module
-
-Delete:
-
-```text
-generator/correction-layout.lua
-```
-
-Remove its import and the `correction-layout` suite from `test.lua`.
-
-### Simplify `tools/port-corrections.lua`
-
-Remove:
-
-- `correctionLayout` import.
-- Split-file counting and detection.
-- `HAS_SPLIT_TITAN_CORRECTIONS`.
-- `WOTLK_DYNAMIC` and `WOTLK_DYNAMIC_GATES`.
-- `requiresSplitTitan`.
-- `SELECTED_FILES` and conditional file selection.
-- Transitional comments about legacy and split layouts.
-- `gatedDynamic` serialization.
-
-Every loop should use the one unconditional `FILES` list.
-
-The WotLK entries should declare only their ordinary Dynamic function:
-
-```lua
-dynamic = { "LoadFactionFixes" }
-```
-
-They must not mention `LoadTitanReforgedFixes`.
-
-### Simplify `src/corrections/register.lua`
-
-Remove:
-
-- `register.variantActive`.
-- Per-function `gatedDynamic` lookup.
-- Legacy gate invocation.
-- Comments about embedded WotLK Titan functions.
-
-Once a manifest entry passes its expansion and file-level variant checks, register every
-function listed in `spec.dynamic` directly.
-
-Keep independent file-level gates:
-
-- `Sod/` requires the active SoD season.
-- `Titan/` requires Wrath and season `109`.
-
-### Simplify tests
-
-Remove:
-
-- `FakeLegacyTitan`.
-- Legacy provider counts.
-- `usesSplitTitan`.
-- Three-versus-eight expected count branches.
-- Conditional split assertions.
-- All wording about old pins, old layouts, or transitions.
-
-The permanent assertions should expect exactly four Titan files and eight Dynamic provider
-functions.
-
-## Permanent port declarations
-
-Declare these four files unconditionally in `tools/port-corrections.lua`.
-
-### Quest
-
-```lua
-{
-  src = "titanReforgedQuestFixes.lua",
-  dst = "Titan/titanReforgedQuestFixes.lua",
-  datatype = "Quest",
-  expansions = { Wotlk = true },
-  module = "TitanReforgedQuestFixes",
-  dynamic = { "LoadQuests", "LoadQuestOverrides" },
-}
-```
-
-### NPC
-
-```lua
-{
-  src = "titanReforgedNPCFixes.lua",
-  dst = "Titan/titanReforgedNPCFixes.lua",
-  datatype = "Npc",
-  expansions = { Wotlk = true },
-  module = "TitanReforgedNpcFixes",
-  dynamic = { "LoadNPCs", "LoadNPCOverrides", "LoadFactionNPCOverrides" },
-}
-```
-
-### Item
-
-```lua
-{
-  src = "titanReforgedItemFixes.lua",
-  dst = "Titan/titanReforgedItemFixes.lua",
-  datatype = "Item",
-  expansions = { Wotlk = true },
-  module = "TitanReforgedItemFixes",
-  dynamic = { "LoadItems", "LoadItemOverrides" },
-}
-```
-
-### Object
-
-```lua
-{
-  src = "titanReforgedObjectFixes.lua",
-  dst = "Titan/titanReforgedObjectFixes.lua",
-  datatype = "Object",
-  expansions = { Wotlk = true },
-  module = "TitanReforgedObjectFixes",
-  dynamic = { "LoadObjects" },
-}
-```
-
-Provider order is load-bearing:
-
-1. Add Titan rows.
-2. Modify inherited Wrath rows.
-3. Apply faction-specific Titan values.
-
-The copied Titan functions use dot-call definitions. The existing wrapper passes an extra
-receiver, which Lua ignores. No adapter is needed.
-
-## Atomic Questie re-sync
-
-### 1. Choose the target Questie commit
-
-PR #7784 merged as:
+Questie PR [#7784](https://github.com/Questie/Questie/pull/7784) merged as:
 
 ```text
 b1a6dc8c50a92ab88723a11556421d6462cdea49
 ```
 
-At execution time, select one exact Questie `master` commit that contains this merge and the
-latest Corrections intended for the re-sync. Record the full lowercase SHA. Do not pin the old
-PR head.
+QuestieTDB is pinned to that commit. The worktree is intentionally uncommitted so the remaining
+validation can review the complete change before it is committed.
 
-Verify the selected commit is a descendant of the merge commit.
+## Permanent design
 
-### 2. Create a disposable clean checkout
+These decisions are implemented and should not be reopened during validation unless evidence
+shows a defect:
 
-Use a path outside the protected Questie worktree, for example:
+1. Titan Reforged is a Dynamic Correction set over the Wrath database, like SoD over Era.
+2. QuestieTDB continues to ship one Wrath TOC metadata store. It does not add a separate Titan
+   artifact.
+3. Every provider from the four Titan entity files is Dynamic in QuestieTDB.
+4. The complete Titan set registers only when the active flavor is Wrath and the active season
+   ID is `109`.
+5. All four Titan source files are mandatory. Missing files are a hard port failure.
+6. WotLK Correction files contain no Titan providers.
+7. Titan quest tags and availability blacklists stay in Questie as consumer policy.
+8. TBC and MoP content-phase functions stay excluded under ADR 0007.
+9. No old-layout fallback, layout detection, compatibility shim, or conditional compatibility
+   test remains.
+10. `contractVersion` remains `1` because no released consumer depended on the old arrangement.
 
-```sh
-SYNC_DIR="/tmp/questie-tdb-titan-sync"
-git clone https://github.com/Questie/Questie.git "$SYNC_DIR"
-git -C "$SYNC_DIR" checkout --detach "<selected-sha>"
+## Completed work
+
+### Upstream pin and mechanical port
+
+- [x] Advanced `QUESTIE_COMMIT` from
+  `7615c03bd4294b046f3db66c2a2e97a3b49c39ef` to
+  `b1a6dc8c50a92ab88723a11556421d6462cdea49`.
+- [x] Verified the selected Questie commit contains the merged four-file Titan split.
+- [x] Regenerated the schema against a clean Questie project directory. No committed schema
+  changes were required.
+- [x] Mechanically re-ported all Questie Correction files from the selected commit.
+- [x] Regenerated `QuestieTDB.toc`.
+- [x] Added these committed provider files:
+  - `src/corrections/Titan/titanReforgedQuestFixes.lua`
+  - `src/corrections/Titan/titanReforgedNPCFixes.lua`
+  - `src/corrections/Titan/titanReforgedItemFixes.lua`
+  - `src/corrections/Titan/titanReforgedObjectFixes.lua`
+- [x] Refreshed Correction files for the other expansions as required by the new Questie pin.
+- [x] Kept the copied `src/derived/RamerDouglasPeucker.lua` faithful to the pin.
+
+### Compatibility removal
+
+- [x] Deleted the transitional `generator/correction-layout.lua` module.
+- [x] Removed split-layout detection and partial-layout handling.
+- [x] Removed old WotLK-embedded Titan provider support.
+- [x] Removed per-function variant-gate machinery from runtime registration and manifest
+  generation.
+- [x] Removed conditional legacy-versus-split tests and counts.
+- [x] Made the four Titan file declarations unconditional in `tools/port-corrections.lua`.
+- [x] Confirmed no implementation reference to `LoadTitanReforgedFixes` remains.
+
+### Permanent provider manifest
+
+The generated manifest now declares exactly these providers in this order:
+
+| File | Datatype | Dynamic providers |
+| --- | --- | --- |
+| `Titan/titanReforgedQuestFixes.lua` | Quest | `LoadQuests`, `LoadQuestOverrides` |
+| `Titan/titanReforgedNPCFixes.lua` | Npc | `LoadNPCs`, `LoadNPCOverrides`, `LoadFactionNPCOverrides` |
+| `Titan/titanReforgedItemFixes.lua` | Item | `LoadItems`, `LoadItemOverrides` |
+| `Titan/titanReforgedObjectFixes.lua` | Object | `LoadObjects` |
+
+All four entries use exact expansion membership:
+
+```lua
+expansions = { Wotlk = true }
 ```
 
-Before using it:
+This prevents season `109` from admitting Titan Corrections on Cata or Mists.
 
-```sh
-git -C "$SYNC_DIR" status --short
-git -C "$SYNC_DIR" rev-parse HEAD
-```
+### Runtime behavior
 
-The status must be empty and HEAD must equal the selected SHA.
+- [x] Added file-level `Titan/` recognition in `src/corrections/register.lua`.
+- [x] Required both Wrath and season `109`.
+- [x] Kept the gate closed when flavor or `C_Seasons` information is unavailable.
+- [x] Added a dedicated Titan load-order window after WotLK.
+- [x] Registered all eight providers only after the complete file-level gate succeeds.
+- [x] Preserved provider order so base rows load before overrides and faction overrides run last.
+- [x] Kept SoD and Titan as independent gated Dynamic sets.
 
-### 3. Advance the pin
-
-Write the selected SHA to:
-
-```text
-QUESTIE_COMMIT
-```
-
-The pin, tooling simplification, and re-port belong in one atomic change.
-
-### 4. Finish split-only code changes
-
-Apply the removals and unconditional declarations above before running the port. It is fine for
-the working tree to refer briefly to Titan files not yet copied into `src/corrections/`.
-
-### 5. Re-materialize from the clean checkout
-
-Run:
-
-```sh
-lua5.1 generate.lua meta --questie="$SYNC_DIR"
-lua5.1 tools/port-corrections.lua "$SYNC_DIR"
-lua5.1 generate.lua toc
-```
-
-The port must fail normally if any Titan source file is absent.
-
-### 6. Review the mechanical output
-
-Review:
-
-```text
-QUESTIE_COMMIT
-src/meta/
-src/corrections/
-src/derived/RamerDouglasPeucker.lua
-QuestieTDB.toc
-```
-
-Expected results:
-
-- Four new files under `src/corrections/Titan/`.
-- Titan-only rows removed from the copied WotLK files.
-- No `LoadTitanReforgedFixes` definition or manifest entry.
-- Four `Titan/` manifest entries.
-- Eight Titan Dynamic functions.
-- No `gatedDynamic` anywhere.
-- No `LoadContentPhaseFixes` registration or copied function body.
-- Existing Darkmoon functions remain excluded.
-- `QuestieTDB.toc` lists all four Titan files.
-
-The pin advance may also bring unrelated Correction, schema, constant, or localization changes.
-Review those against the selected Questie commit rather than treating them as Titan work.
-
-## Permanent runtime contract
-
-### Registration matrix
+The permanent registration matrix is:
 
 | Flavor | Season | Titan registers |
 | --- | --- | --- |
@@ -366,42 +103,40 @@ Review those against the selected Questie commit rather than treating them as Ti
 | TBC | 109 | no |
 | Cata | 109 | no |
 | Mists | 109 | no |
-| Wrath | missing `C_Seasons` | no |
+| Wrath | missing seasons API | no |
 
-### Source mode
+### ADR 0007 ownership cleanup
 
-The committed base TOC loads all four Titan files. Registration remains closed unless the
-client is Titan Reforged.
+- [x] Removed and excluded `QuestieTBCQuestFixes:LoadContentPhaseFixes`.
+- [x] Removed and excluded `MopQuestFixes:LoadContentPhaseFixes`.
+- [x] Removed and excluded `MopNpcFixes:LoadContentPhaseFixes`.
+- [x] Removed and excluded `MopObjectFixes:LoadContentPhaseFixes`.
+- [x] Kept existing Darkmoon ownership exclusions.
+- [x] Updated the port exclusion helper to handle the ordinary comments attached to the
+  upstream content-phase functions.
+- [x] Kept Titan quest tags and availability blacklists out of QuestieTDB.
 
-### Baked mode
+### Tests
 
-Only the Wrath flavor TOC lists the four Titan files. Vanilla, TBC, Cata, and Mists exclude
-them.
+- [x] Assert exactly four Titan manifest files.
+- [x] Assert the exact four paths, datatypes, expansion gates, and provider lists.
+- [x] Assert exactly eight Titan Dynamic providers.
+- [x] Assert the exact provider registration order and numeric load order.
+- [x] Assert WotLK files expose only their ordinary faction providers.
+- [x] Assert the retired per-function manifest field is absent.
+- [x] Assert Source mode includes all four Titan files.
+- [x] Assert only the Wrath Baked file list includes them.
+- [x] Cover the complete registration matrix, including Cata and Mists season-109 rejection.
+- [x] Cover representative public reads for all eight providers.
+- [x] Assert representative Titan-only entities return true from `Exists`.
+- [x] Assert representative Titan-only entities appear in composed enumeration.
+- [x] Run those entity assertions in both Source and Baked mode.
+- [x] Assert representative Titan-only entities remain absent from plain Wrath.
+- [x] Keep Correction fidelity exclusions aligned with ADR 0007 ownership.
 
-The Wrath TOC metadata store contains ordinary Wrath base data. Titan-only rows enter through
-the Correction Overlay and Composed enumeration.
+Representative provider probes currently cover:
 
-## Tests
-
-### Manifest assertions
-
-Assert unconditionally:
-
-- Exactly four manifest paths begin with `Titan/`.
-- Exactly eight Dynamic functions are declared across them.
-- No WotLK entry declares `LoadTitanReforgedFixes`.
-- No manifest entry has `gatedDynamic`.
-- Source mode lists all four Titan files.
-- Wrath Baked mode lists all four Titan files.
-- Every other baked flavor lists none.
-- `QuestieTDB.toc` exactly matches `config.sourceFileList()`.
-
-### Provider behavior
-
-Exercise these through public reads in both Source and Baked mode. Confirm the values against
-the final merged Questie source before retaining the literals.
-
-| Provider | Representative assertion from the merged PR |
+| Provider | Assertion |
 | --- | --- |
 | `LoadQuests` | Quest `93950` is `"A Message From The Stars"` |
 | `LoadQuestOverrides` | Quest `6823` has level and required level `80` |
@@ -412,158 +147,229 @@ the final merged Questie source before retaining the literals.
 | `LoadItemOverrides` | Item `22734` drops from NPC `15172` |
 | `LoadObjects` | Object `420002` is `"Blood Ritual Altar"` |
 
-Plain Wrath must not contain these Titan-only IDs:
+### CI and documentation
 
-- Quest `93950`
-- NPC `257012`
-- Item `264272`
-- Object `420002`
+- [x] Added a Source TOC drift check before flavor Generation can mask it.
+- [x] Added a Wrath runtime fixture so Baked Titan persona tests cannot silently skip in CI.
+- [x] Updated the README re-sync process to include Source TOC regeneration.
+- [x] Updated `CONTEXT.md` from a per-function gate term to a gated Dynamic set.
+- [x] Marked issue #16 as implemented with full validation pending in
+  `docs/questie-handover.md`.
+- [x] Marked the old per-function gate discussion in `CLAUDE_REVIEW_FINDINGS.md` as historical.
 
-The Titan persona must read and enumerate each ID, and `Exists` must return true.
+### Reviewed data changes
 
-### Correction fidelity
+- [x] Refreshed the Wrath Golden snapshot after reviewing:
+  - 60 Titan-only entities removed from plain Wrath.
+  - 30 inherited entities with changed composed hashes.
+- [x] Removed the obsolete Wrath validator baseline entry for Titan quest `96211`.
+- [x] Confirmed the resulting Wrath Golden and validator gates are clean.
 
-Run against the disposable pinned checkout. Require:
+## Validation already completed
 
-- Byte-for-byte comparison for all four Titan files.
-- Byte-for-byte comparison for every other manifest file after declared ownership exclusions.
-- Every manifest file participates in the fidelity sweep.
-- No old WotLK Titan function is expected.
+The following checks passed against a clean Questie project directory at the pinned commit:
 
-## CI
+- [x] `git diff --check`.
+- [x] TOC suite: 159 checks, 0 failed.
+- [x] Correction fidelity: 284 checks, 0 failed.
+- [x] Source and Baked personas: 61 checks, 0 failed.
+- [x] Read contract: 62 checks, 0 failed.
+- [x] Reconstruction negative control with a localized Vanilla artifact: 3 checks, 0 failed.
+- [x] Wrath round-trip verification: 88,640 entities, 1,454,521 fields, 0 errors.
+- [x] Wrath Source/Baked equivalence.
+- [x] Wrath validators: no new or stale accepted findings after the reviewed baseline change.
+- [x] Wrath Golden composed reads: no differences after the reviewed refresh.
+- [x] Mechanical Correction fidelity for every manifest file.
+- [x] Four Titan files byte-identical to the pinned Questie sources.
+- [x] Fresh focused review with no findings.
 
-Keep the current CI preparation:
+Temporary generated flavor TOCs were removed after validation.
 
-1. Re-run the mechanical Correction port.
-2. Fail on Correction or copied-library drift.
-3. Run `generate.lua toc` before flavor Generation.
-4. Fail if the committed Source TOC differs.
-5. Generate a no-localization Wrath runtime fixture in the unit job.
-6. Run mandatory Source and Baked Titan persona assertions.
+## Remaining work
 
-The Source TOC drift check must remain before ordinary flavor Generation. Flavor Generation also
-rewrites the base TOC and would otherwise hide an uncommitted file-list change.
+### 1. Prepare a clean Questie project directory
 
-## Documentation
-
-### README
-
-Replace transitional language about accepting both layouts with the permanent rule:
-
-- All four Titan files are required.
-- Titan is Dynamic over Wrath.
-- Wrath plus season `109` selects the set.
-- Quest tags and availability blacklists remain in Questie.
-- Re-sync includes `generate.lua toc`.
-
-### CONTEXT.md
-
-The current **Gated Dynamic function** term describes per-function gates and names SoD and Titan.
-Replace it with a set-level term such as:
-
-**Gated Dynamic set**: a group of Dynamic Correction functions registered only while its named
-runtime condition holds. SoD and Titan Reforged use file-level season gates.
-
-### Current status documents
-
-After validation, update `docs/questie-handover.md` so issue #16 no longer describes Titan's
-flavor gate as open. Do not rewrite historical ADR text or `docs/merge-program.md`; those files
-record what happened at the time.
-
-## Validation sequence
-
-Set:
+On the validation computer, set a shell variable to a clean Questie checkout:
 
 ```sh
-export QUESTIE_PATH="$SYNC_DIR"
+QUESTIE_DIR="<a clean Questie project directory>"
 ```
 
-Run focused checks first:
+The checkout must have no local changes and must be at the exact commit in `QUESTIE_COMMIT`.
+Verify without changing the checkout:
 
 ```sh
-git diff --check
-lua5.1 test.lua toc
-lua5.1 test.lua correction-fidelity
-lua5.1 test.lua personas
-lua5.1 test.lua lua-types
+git -C "$QUESTIE_DIR" status --short
+git -C "$QUESTIE_DIR" rev-parse HEAD
+cat QUESTIE_COMMIT
 ```
 
-Generate explicit runtime fixtures:
+If the checkout is not clean or is used for active Questie development, create a separate clean
+Questie project directory instead of changing it in place.
+
+### 2. Re-run the mechanical drift gates
+
+From the QuestieTDB project directory:
 
 ```sh
-lua5.1 generate.lua Vanilla Wrath --no-l10n --questie="$SYNC_DIR"
-lua5.1 test.lua
+lua5.1 generate.lua meta --questie="$QUESTIE_DIR"
+lua5.1 tools/port-corrections.lua "$QUESTIE_DIR"
+lua5.1 generate.lua toc
 ```
 
-Remove generated flavor TOCs afterward. A suffixed TOC changes a junctioned addon checkout to
-Baked mode.
+Review the worktree afterward. These commands should reproduce the already reviewed files. They
+must not restore content-phase functions, old embedded Titan providers, or consumer policy.
 
-Then run the full project suite:
+Expected permanent output:
+
+- Four files under `src/corrections/Titan/`.
+- Four Titan manifest entries.
+- Eight Titan Dynamic providers.
+- No `LoadTitanReforgedFixes` implementation.
+- No per-function variant gate in the generated manifest.
+- No copied `LoadContentPhaseFixes` bodies.
+- `QuestieTDB.toc` lists all four Titan files.
+
+### 3. Run the complete all-flavor matrix
+
+This is the main remaining task:
 
 ```sh
-./questietdb all --questie="$SYNC_DIR"
+./questietdb all --questie="$QUESTIE_DIR"
 ```
 
-Review failures before changing accepted records.
+This should cover Generation, unit tests, round-trip verification, Source/Baked equivalence,
+reconstruction, validators, Golden snapshots, and the Questie compiler differential for all
+five base flavors.
 
-Expected intentional changes may include:
+Do not treat a failure as a request to refresh a baseline automatically. The pin advance also
+ported unrelated upstream Correction changes, especially in TBC, Wrath, Cata, and Mists.
+Classify every changed entity first.
 
-- Wrath Golden changes because Titan-only entities leave plain Wrath.
-- Compiler differential changes because Questie also stopped compiling Titan rows into ordinary
-  Wrath.
-- Validator changes after Titan-only relationships leave the base database.
-- Unrelated changes caused by advancing the Questie pin.
+### 4. Review any non-Wrath changes
 
-Refresh Golden snapshots only after reviewing the public-read changes:
+The focused pass reviewed Wrath. The complete matrix may expose intentional upstream changes in
+other flavors.
+
+For each failure:
+
+1. Compare the entity and field against the pinned Questie source.
+2. Decide whether it came from the mechanical Correction re-port, schema drift, runtime gating,
+   or an actual QuestieTDB regression.
+3. Confirm Titan-only IDs never appear in plain Wrath or another flavor.
+4. Confirm TBC and MoP content-phase exclusions did not return.
+5. Confirm no Titan tags, blacklists, or calendar policy entered the entity files.
+6. Update an accepted record only after the change is understood.
+
+If a Golden change is intentional:
 
 ```sh
-uv run python tools/differential/golden.py refresh all --lua=lua5.1
+uv run python tools/differential/golden.py refresh <Flavor> --lua=lua5.1
 ```
 
-Update validator or compiler baselines only after classifying each changed row. Never use a
-baseline refresh merely to make CI green.
+If validator findings intentionally changed:
 
-## Review
+```sh
+lua5.1 validators/run.lua <Flavor> --update-baseline
+```
 
-Use a fresh reviewer after implementation. The review should focus on:
+If a compiler differential baseline intentionally changed:
 
-- Titan data absent from plain Wrath.
-- Exact Wrath plus season-109 selection.
-- All eight providers represented and ordered correctly.
-- Source and Baked behavior.
-- No Cata or Mists leakage.
-- No quest tags, blacklists, or content-phase policy imported.
-- Source TOC freshness.
-- Correction fidelity.
-- Snapshot and baseline review quality.
+```sh
+uv run python tools/differential/compiler_diff.py <Flavor> \
+  --questie="$QUESTIE_DIR" --update-baseline
+```
 
-## Deferred work
+Review each baseline diff directly, then rerun the failing gate before continuing.
 
-Do not add these to the Titan split unless they block validation:
+### 5. Re-run the full matrix after accepted-record changes
 
-- Long-term Correction authoring ownership, issue #9.
-- General Correction registry redesign.
-- A Titan quest-tag API.
-- A separate Titan artifact.
-- Broader side-channel differential coverage.
-- Release-cadence decisions.
+If any Golden, validator, or compiler baseline changes were needed, run the complete matrix again:
+
+```sh
+./questietdb all --questie="$QUESTIE_DIR"
+```
+
+The final run must pass without unreviewed output changes.
+
+### 6. Final review and issue status
+
+After the full matrix passes:
+
+- [ ] Run `git diff --check` again.
+- [ ] Confirm no generated flavor TOCs or validation scratch files are staged.
+- [ ] Review the complete diff, including unrelated upstream Correction changes from the pin.
+- [ ] Ask for one final focused review if validation changed any accepted records.
+- [ ] Update `docs/questie-handover.md` from “full validation pending” to resolved.
+- [ ] Close GitHub issue #16 with the gate matrix and validation evidence.
+- [ ] Prepare the final commit or pull request. Do not commit before the reviewed matrix is green.
+
+## Expected final file groups
+
+The completed change should contain:
+
+### Hand-written implementation and tooling
+
+```text
+.github/workflows/ci.yml
+CONTEXT.md
+README.md
+src/corrections/register.lua
+src/corrections/registry.lua
+test.lua
+tools/port-corrections.lua
+```
+
+### Mechanically generated or ported data
+
+```text
+QUESTIE_COMMIT
+QuestieTDB.toc
+src/corrections/manifest.lua
+src/corrections/Titan/*.lua
+src/corrections/Era/*.lua
+src/corrections/Tbc/*.lua
+src/corrections/Wotlk/*.lua
+src/corrections/Cata/*.lua
+src/corrections/MoP/*.lua
+src/corrections/Sod/*.lua
+```
+
+Only files actually changed by the selected Questie pin should appear in the final diff.
+
+### Reviewed accepted records
+
+```text
+tools/differential/golden/Wrath.tsv
+validators/baseline/Wrath.txt
+```
+
+Additional flavor baselines belong in the change only when the remaining all-flavor review
+proves they are intentional.
+
+### Status and historical documentation
+
+```text
+CLAUDE_REVIEW_FINDINGS.md
+docs/questie-handover.md
+docs/titan-correction-split-plan.md
+```
 
 ## Completion criteria
 
-The work is complete when:
+This work is fully complete only when:
 
-- `generator/correction-layout.lua` is gone.
-- No legacy/split compatibility branch remains.
-- No `LoadTitanReforgedFixes` remains in QuestieTDB.
-- No `gatedDynamic` remains.
-- Four Titan files are mechanically ported.
-- Eight Titan Dynamic providers are declared.
-- Titan applies only on Wrath season `109`.
-- Plain Wrath has no Titan-only entities.
-- Source and Baked representative reads cover all eight providers.
-- TBC and MoP content-phase functions remain excluded.
-- Correction fidelity runs without skipping.
-- The committed Source TOC matches configuration.
-- Full validation passes against the new clean pinned Questie checkout.
-- Golden and baseline changes were reviewed before refresh.
-- `/home/david/private/qu-tdb/questie` was not touched.
+- [x] No legacy/split compatibility implementation remains.
+- [x] Four Titan files are mechanically ported.
+- [x] Eight Titan Dynamic providers are declared in the required order.
+- [x] Titan applies only on Wrath season `109`.
+- [x] Plain Wrath excludes representative Titan-only entities.
+- [x] Source and Baked representative reads cover all eight providers.
+- [x] TBC and MoP content-phase functions remain excluded.
+- [x] Correction fidelity passes against the pinned Questie commit.
+- [x] The committed Source TOC matches configuration.
+- [x] Focused implementation review has no findings.
+- [ ] The complete all-flavor matrix passes.
+- [ ] Any non-Wrath Golden, validator, or compiler baseline changes are reviewed.
+- [ ] Issue #16 and its status documentation are finalized.
+- [ ] The final diff is reviewed and ready to commit.

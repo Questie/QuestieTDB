@@ -654,10 +654,11 @@ present in the re-synced file. `static = {'Load','LoadAutomatics'}` ->
 `{'LoadAutomatics','Load'}` matches upstream `QuestieCorrections.lua:285-286`; the old order was
 the defect.
 
-**Manifest vs upstream call order** — every entry matches except the two recorded above (B1, L1).
-`gatedDynamic` is on exactly the three Wotlk files upstream guards with `Questie.IsTitanReforged`
-(quest/npc/item, not object). SoD ordering is correct. `parameterized LoadDarkmoonFixes` is
-called nowhere in `QuestieCorrections.lua`, so "never applied automatically" is right.
+**Manifest vs upstream call order at the reviewed pre-split pin** — every entry matched except
+the two recorded above (B1, L1). The now-retired per-function Titan gate covered exactly the
+three WotLK files upstream guarded with `Questie.IsTitanReforged` (quest/npc/item, not object).
+SoD ordering was correct. `parameterized LoadDarkmoonFixes` was called nowhere in
+`QuestieCorrections.lua`, so "never applied automatically" was right.
 
 **The removed direction of the validator churn is clean.** `validators/checks.lua` was not
 touched by any of the seven commits, so the 264 removed findings cannot be a blinded checker.
