@@ -91,6 +91,10 @@ src\corrections\Wotlk\wotlkQuestFixes.lua
 src\corrections\Wotlk\wotlkNPCFixes.lua
 src\corrections\Wotlk\wotlkItemFixes.lua
 src\corrections\Wotlk\wotlkObjectFixes.lua
+src\corrections\Titan\titanReforgedQuestFixes.lua
+src\corrections\Titan\titanReforgedNPCFixes.lua
+src\corrections\Titan\titanReforgedItemFixes.lua
+src\corrections\Titan\titanReforgedObjectFixes.lua
 src\corrections\Cata\cataQuestFixes.lua
 src\corrections\Cata\cataNPCFixes.lua
 src\corrections\Cata\cataItemFixes.lua

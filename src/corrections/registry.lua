@@ -36,8 +36,8 @@ local format = string.format
 -- Load-order namespaces
 --------------------------------------------------------------------------------------------
 --
--- Each expansion gets a 100-wide window. Auto-generated sets sit below the hand-maintained
--- ones so hand corrections win.
+-- Each expansion or seasonal variant gets a 100-wide window. Variant windows follow their
+-- base database; auto-generated sets sit below hand-maintained ones so hand corrections win.
 --
 -- `loadOrder` means "sequence within an owner", not a global sequence. Precedence is
 -- two-level — outer by the order owners FIRST applied, inner by loadOrder — and within a
@@ -46,12 +46,13 @@ local format = string.format
 -- QuestieTDB < Questie < third-party.
 
 registry.loadOrder = {
-  EraStatic = 0,     EraDynamic = 100,
-  SoDStatic = 200,   SoDDynamic = 300,
-  TbcStatic = 400,   TbcDynamic = 500,
-  WotlkStatic = 600, WotlkDynamic = 700,
-  CataStatic = 800,  CataDynamic = 900,
-  MoPStatic = 1000,  MoPDynamic = 1100,
+  EraStatic = 0,      EraDynamic = 100,
+  SoDStatic = 200,    SoDDynamic = 300,
+  TbcStatic = 400,    TbcDynamic = 500,
+  WotlkStatic = 600,  WotlkDynamic = 700,
+  TitanStatic = 800,  TitanDynamic = 900,
+  CataStatic = 1000,  CataDynamic = 1100,
+  MoPStatic = 1200,   MoPDynamic = 1300,
 }
 
 registry.OWNER = "QuestieTDB"

@@ -1664,16 +1664,27 @@ suite("correction-fidelity", function()
     return
   end
 
-  -- Every non-excluded byte must match Questie. The two ownership exclusions remove one
-  -- complete, documented top-level function while keeping drift detection exact everywhere
-  -- else in those files.
+  -- Every non-excluded byte must match Questie. Ownership exclusions remove complete,
+  -- documented top-level functions while keeping drift detection exact everywhere else.
   local manifest = dofile("src/corrections/manifest.lua")
   local ownershipExclusions = {
     ["Era/classicNPCFixes.lua"] = {
       module = "QuestieNPCFixes", functionName = "LoadDarkmoonFixes",
     },
+    ["Tbc/tbcQuestFixes.lua"] = {
+      module = "QuestieTBCQuestFixes", functionName = "LoadContentPhaseFixes",
+    },
     ["Tbc/tbcNPCFixes.lua"] = {
       module = "QuestieTBCNpcFixes", functionName = "LoadDarkmoonFixes",
+    },
+    ["MoP/mopQuestFixes.lua"] = {
+      module = "MopQuestFixes", functionName = "LoadContentPhaseFixes",
+    },
+    ["MoP/mopNPCFixes.lua"] = {
+      module = "MopNpcFixes", functionName = "LoadContentPhaseFixes",
+    },
+    ["MoP/mopObjectFixes.lua"] = {
+      module = "MopObjectFixes", functionName = "LoadContentPhaseFixes",
     },
   }
 
@@ -1700,8 +1711,8 @@ suite("correction-fidelity", function()
     if not headerIndex then return source end
 
     local docStart = headerIndex
-    while docStart > 1 and lines[docStart - 1]:find("^%-%-%-") do docStart = docStart - 1 end
-    check(docStart < headerIndex, label .. " excluded function retains attached LuaDoc upstream")
+    while docStart > 1 and lines[docStart - 1]:find("^%-%-") do docStart = docStart - 1 end
+    check(docStart < headerIndex, label .. " excluded function retains an attached comment upstream")
 
     local endIndex
     for index = headerIndex + 1, #lines do
@@ -1713,6 +1724,7 @@ suite("correction-fidelity", function()
     if not endIndex then return source end
 
     for index = endIndex, docStart, -1 do table.remove(lines, index) end
+    while lines[#lines] == "" do lines[#lines] = nil end
     return table.concat(lines, "\n") .. (source:sub(-1) == "\n" and "\n" or "")
   end
   local sourceFor = {
@@ -1976,7 +1988,7 @@ suite("read-contract", function()
 
   client.reset()
 
-  --- ADR D9: SoD manifest entries register only when the season is actually active.
+  -- Seasonal variant directories register only for their exact client and active season.
   local runtime = dofile("generator/runtime.lua")
   local savedSeasons, savedEnum = rawget(_G, "C_Seasons"), rawget(_G, "Enum")
 
@@ -1985,37 +1997,64 @@ suite("read-contract", function()
       dynamic = { "LoadDynamic" }, expansions = { Classic = true } },
     { file = "Sod/fake.lua", module = "FakeSod", datatype = "Quest",
       dynamic = { "LoadSod" }, expansions = { Classic = true } },
+    { file = "Titan/fake.lua", module = "FakeTitan", datatype = "Quest",
+      dynamic = { "LoadTitan" }, expansions = { Wotlk = true } },
   }
   local fakeModules = {
     FakeEra = { LoadDynamic = function() return { [2] = { [4] = 42 } } end },
     FakeSod = { LoadSod = function() return { [2] = { [4] = 60 } } end },
+    FakeTitan = { LoadTitan = function() return { [2] = { [4] = 80 } } end },
   }
-  local function registerSynthetic()
+  ---Registers the synthetic manifest for one client flavor.
+  ---@param flavorName string Key in `config.flavorByName`.
+  ---@return table Lib
+  ---@return number registered
+  ---@return number sodEntries
+  ---@return number titanEntries
+  ---@return number eraEntries
+  local function registerSynthetic(flavorName)
     local Lib = runtime.build()
     Lib.CorrectionManifest = syntheticManifest
     local registered = Lib.CorrectionRegister.FromManifest(
-      Lib.config.flavorByName.Vanilla, function(name) return fakeModules[name] end)
-    local sodEntries, eraEntries = 0, 0
+      Lib.config.flavorByName[flavorName], function(name) return fakeModules[name] end)
+    local sodEntries, titanEntries, eraEntries = 0, 0, 0
     for _, entry in ipairs(Lib.Corrections.Select({ dynamic = true })) do
       if entry.name:find("^Sod/") then sodEntries = sodEntries + 1 end
+      if entry.name:find("^Titan/") then titanEntries = titanEntries + 1 end
       if entry.name:find("^Era/") then eraEntries = eraEntries + 1 end
     end
-    return Lib, registered, sodEntries, eraEntries
+    return Lib, registered, sodEntries, titanEntries, eraEntries
   end
 
   _G.C_Seasons = { GetActiveSeason = function() return 0 end }
   _G.Enum = { SeasonID = { SeasonOfDiscovery = 2 } }
-  local _, _, sodInactive, eraInactive = registerSynthetic()
+  local _, _, sodInactive, _, eraInactive = registerSynthetic("Vanilla")
   equal(sodInactive, 0, "no season active: SoD sets do not register")
   equal(eraInactive, 1, "no season active: Era sets register normally")
 
   _G.C_Seasons = { GetActiveSeason = function() return 2 end }
-  local _, _, sodActive = registerSynthetic()
+  local _, _, sodActive = registerSynthetic("Vanilla")
   equal(sodActive, 1, "SoD active: SoD sets register")
+  local _, _, _, titanWrongSeason = registerSynthetic("Wrath")
+  equal(titanWrongSeason, 0, "SoD season on Wrath: Titan sets do not register")
+
+  _G.C_Seasons = { GetActiveSeason = function() return 109 end }
+  local _, _, _, titanWrath = registerSynthetic("Wrath")
+  equal(titanWrath, 1, "Titan active on Wrath: Titan sets register")
+  local _, _, _, titanVanilla = registerSynthetic("Vanilla")
+  equal(titanVanilla, 0, "season 109 on Vanilla: Titan sets do not register")
+  local _, _, _, titanTbc = registerSynthetic("TBC")
+  equal(titanTbc, 0, "season 109 on TBC: Titan sets do not register")
+  local _, _, _, titanCata = registerSynthetic("Cata")
+  equal(titanCata, 0, "season 109 on Cata: Titan sets do not register")
+  local _, _, _, titanMists = registerSynthetic("Mists")
+  equal(titanMists, 0, "season 109 on Mists: Titan sets do not register")
 
   _G.C_Seasons = nil
-  local _, _, sodAbsent = registerSynthetic()
+  local _, _, sodAbsent = registerSynthetic("Vanilla")
+  local _, _, _, titanAbsent = registerSynthetic("Wrath")
   equal(sodAbsent, 0, "no C_Seasons API at all: SoD sets do not register")
+  equal(titanAbsent, 0, "no C_Seasons API at all: Titan sets do not register")
 
   _G.C_Seasons = savedSeasons
   _G.Enum = savedEnum
@@ -2180,6 +2219,17 @@ suite("toc", function()
   check(config.correctionManifest ~= nil and #config.correctionManifest > 0,
     "the correction manifest loaded")
 
+  -- The base TOC is committed, so changing the manifest is not enough: Source mode can only
+  -- load a new Correction file after `generate.lua toc` refreshes this exact list.
+  local committedSourceFiles = {}
+  for line in lib.readAll("QuestieTDB.toc"):gmatch("[^\r\n]+") do
+    if line ~= "" and line:sub(1, 1) ~= "#" then
+      committedSourceFiles[#committedSourceFiles + 1] = line:gsub("\\", "/")
+    end
+  end
+  equal(committedSourceFiles, config.sourceFileList(),
+    "QuestieTDB.toc exactly matches the computed Source-mode file list")
+
   -- The client rejects a file listed twice with `Duplicate File Load Detected`, and it is
   -- right to: the file re-executes, rebuilding whatever it defines while earlier files still
   -- hold references to the first copy. Blocks declare their own prerequisites — the support
@@ -2255,6 +2305,70 @@ suite("toc", function()
       "api applies QuestieTDB's own corrections, so they must be registered first")
     before("src/support/_begin.lua", "src/support/_end.lua", "brackets are ordered")
     before("src/corrections/_begin.lua", "src/corrections/_end.lua", "brackets are ordered")
+  end
+
+  -- Titan's four provider files ship in Source mode and the Wrath artifact, never in another
+  -- baked flavor. Registration gates decide whether the loaded Wrath files apply.
+  local expectedTitanSpecs = {
+    {
+      file = "Titan/titanReforgedQuestFixes.lua", datatype = "Quest",
+      dynamic = { "LoadQuests", "LoadQuestOverrides" }, expansions = { Wotlk = true },
+    },
+    {
+      file = "Titan/titanReforgedNPCFixes.lua", datatype = "Npc",
+      dynamic = { "LoadNPCs", "LoadNPCOverrides", "LoadFactionNPCOverrides" },
+      expansions = { Wotlk = true },
+    },
+    {
+      file = "Titan/titanReforgedItemFixes.lua", datatype = "Item",
+      dynamic = { "LoadItems", "LoadItemOverrides" }, expansions = { Wotlk = true },
+    },
+    {
+      file = "Titan/titanReforgedObjectFixes.lua", datatype = "Object",
+      dynamic = { "LoadObjects" }, expansions = { Wotlk = true },
+    },
+  }
+  local titanFiles, titanSpecs, titanProviders = {}, {}, 0
+  for _, spec in ipairs(config.correctionManifest) do
+    check(spec.gatedDynamic == nil, spec.file .. " has no retired per-function variant gate")
+    if spec.file:find("^Titan/") then
+      titanFiles[#titanFiles + 1] = "src/corrections/" .. spec.file
+      titanSpecs[#titanSpecs + 1] = {
+        file = spec.file,
+        datatype = spec.datatype,
+        dynamic = spec.dynamic,
+        expansions = spec.expansions,
+      }
+      titanProviders = titanProviders + #(spec.dynamic or {})
+    end
+    if spec.file:find("^Wotlk/") then
+      equal(spec.dynamic, { "LoadFactionFixes" },
+        spec.file .. " declares only its ordinary faction provider")
+    end
+  end
+  equal(titanSpecs, expectedTitanSpecs,
+    "manifest fixes Titan file names, datatypes, provider order, and exact expansion gate")
+  equal(titanProviders, 8, "manifest declares all eight Titan providers")
+  ---@param files string[]
+  ---@return table<string, boolean> set
+  local function fileSet(files)
+    local set = {}
+    for _, file in ipairs(files) do set[file] = true end
+    return set
+  end
+  local sourceSet = fileSet(config.sourceFileList())
+  local wrathSet = fileSet(config.bakedFileList(config.flavorByName.Wrath))
+  for _, file in ipairs(titanFiles) do
+    check(sourceSet[file] == true, "Source mode lists Titan provider " .. file)
+    check(wrathSet[file] == true, "Wrath Baked mode lists Titan provider " .. file)
+  end
+  for _, flavor in ipairs(config.flavors) do
+    if flavor.name ~= "Wrath" then
+      local otherSet = fileSet(config.bakedFileList(flavor))
+      for _, file in ipairs(titanFiles) do
+        check(otherSet[file] ~= true, flavor.name .. " excludes Titan provider " .. file)
+      end
+    end
   end
 
   -- Source mode only: the reader installs the loader shim, so it has to precede the data it
@@ -3025,16 +3139,15 @@ suite("personas", function()
   end
   check(sodSets > 0, "SoD persona: Sod/ correction sets registered")
 
-  -- Titan Reforged gate. Upstream applies `LoadTitanReforgedFixes` only under
-  -- `Questie.IsTitanReforged` (QuestieCorrections:Initialize), detected as a Wrath client
-  -- with active season 109 (Modules/VersionCheck.lua:89). The gate is per-function: the same
-  -- manifest entries carry `LoadFactionFixes`, which must apply either way. Probe: quest 6823
-  -- "Agent of Hydraxis" — the Titan set raises questLevel/requiredLevel to 80
-  -- (src/corrections/Wotlk/wotlkQuestFixes.lua:8816-8819).
+  -- Titan Reforged is a Dynamic variant over Wrath, selected by Wrath plus season 109.
+  -- Probe: quest 6823 "Agent of Hydraxis" gains level 80.
+  ---Counts the dedicated Titan providers.
+  ---@param loaded table Loaded QuestieTDB namespace.
+  ---@return integer count
   local function titanSets(loaded)
     local count = 0
     for _, entry in ipairs(loaded.Corrections.Select({ dynamic = true })) do
-      if entry.name:find("LoadTitanReforgedFixes", 1, true) then count = count + 1 end
+      if entry.name:find("^Titan/") then count = count + 1 end
     end
     return count
   end
@@ -3047,9 +3160,78 @@ suite("personas", function()
 
   local titanWrath = loadMode(config.addonName .. ".toc",
     { expansion = "Wotlk", faction = "Horde", season = "TitanReforged" })
-  equal(titanSets(titanWrath), 3, "Titan persona: all three gated sets register")
+  equal(titanSets(titanWrath), 8, "Titan persona: every declared Titan provider registers")
+  local titanOrder = {}
+  for _, entry in ipairs(titanWrath.Corrections.Select({ dynamic = true })) do
+    if entry.name:find("^Titan/") then
+      titanOrder[#titanOrder + 1] = { entry.name, entry.loadOrder }
+    end
+  end
+  equal(titanOrder, {
+    { "Titan/titanReforgedQuestFixes.lua:LoadQuests", 911 },
+    { "Titan/titanReforgedNPCFixes.lua:LoadNPCs", 911 },
+    { "Titan/titanReforgedItemFixes.lua:LoadItems", 911 },
+    { "Titan/titanReforgedObjectFixes.lua:LoadObjects", 911 },
+    { "Titan/titanReforgedQuestFixes.lua:LoadQuestOverrides", 912 },
+    { "Titan/titanReforgedNPCFixes.lua:LoadNPCOverrides", 912 },
+    { "Titan/titanReforgedItemFixes.lua:LoadItemOverrides", 912 },
+    { "Titan/titanReforgedNPCFixes.lua:LoadFactionNPCOverrides", 913 },
+  }, "Titan persona: provider application order stays base, overrides, then faction overrides")
   equal(titanWrath.Quest.Get(6823, "questLevel"), 80, "Titan persona: quest 6823 questLevel 80")
   equal(titanWrath.Quest.Get(6823, "requiredLevel"), 80, "Titan persona: quest 6823 requiredLevel 80")
+
+  -- Dedicated providers restore Titan-only rows over plain Wrath. These literal probes catch
+  -- an empty, misordered, or misclassified provider even when all eight functions registered.
+  ---Checks every Titan provider through representative public reads.
+  ---@param plainView table Plain Wrath namespace.
+  ---@param titanView table Titan Reforged namespace.
+  ---@param label string Assertion prefix identifying the read mode.
+  ---@return nil
+  local function checkTitanView(plainView, titanView, label)
+    local addedEntities = {
+      { entity = titanView.Quest, id = 93950, name = "quest" },
+      { entity = titanView.Npc, id = 257012, name = "NPC" },
+      { entity = titanView.Item, id = 264272, name = "Item" },
+      { entity = titanView.Object, id = 420002, name = "Object" },
+    }
+    for _, probe in ipairs(addedEntities) do
+      equal(probe.entity.Exists(probe.id), true,
+        label .. ": Titan-only " .. probe.name .. " exists")
+      equal(probe.entity.GetAllIds(true)[probe.id], true,
+        label .. ": Titan-only " .. probe.name .. " is enumerable")
+    end
+
+    equal(plainView.Quest.Exists(93950), false,
+      label .. ": Titan-only quest is absent from plain Wrath")
+    equal(titanView.Quest.Get(93950, "name"), "A Message From The Stars",
+      label .. ": LoadQuests adds Titan quest templates")
+    equal(titanView.Quest.Get(6823, "questLevel"), 80,
+      label .. ": LoadQuestOverrides changes inherited quests")
+
+    equal(plainView.Npc.Exists(257012), false,
+      label .. ": Titan-only NPC is absent from plain Wrath")
+    equal(titanView.Npc.Get(257012, "name"), "Algalon the Observer",
+      label .. ": LoadNPCs adds Titan NPCs")
+    equal(titanView.Npc.Get(14834, "minLevel"), 83,
+      label .. ": LoadNPCOverrides changes inherited NPCs")
+    local zoneIDs = titanView.Support.Get("ZoneDB").zoneIDs
+    equal(titanView.Npc.Get(257012, "zoneID"), zoneIDs.DUROTAR,
+      label .. ": LoadFactionNPCOverrides selects the Horde capital")
+
+    equal(plainView.Item.Exists(264272), false,
+      label .. ": Titan-only Item is absent from plain Wrath")
+    equal(titanView.Item.Get(264272, "name"), "Celestial Missive",
+      label .. ": LoadItems adds Titan Items")
+    equal(titanView.Item.Get(22734, "npcDrops"), { 15172 },
+      label .. ": LoadItemOverrides changes inherited Items")
+
+    equal(plainView.Object.Exists(420002), false,
+      label .. ": Titan-only Object is absent from plain Wrath")
+    equal(titanView.Object.Get(420002, "name"), "Blood Ritual Altar",
+      label .. ": LoadObjects adds Titan Objects")
+  end
+
+  checkTitanView(plainWrath, titanWrath, "source Titan")
 
   -- The ungated sibling function still applies with the gate closed AND open: Horde elder
   -- quest 13012 gains reputationReward {{HORDE, 75}} from LoadFactionFixes
@@ -3075,6 +3257,7 @@ suite("personas", function()
     equal(bakedTitan.Quest.Get(6823, "questLevel"), 80, "baked Titan: gate composes over the artifact")
     local bakedPlain = loadMode(wrathToc, { expansion = "Wotlk", faction = "Horde" })
     check(bakedPlain.Quest.Get(6823, "questLevel") ~= 80, "baked plain Wrath: gate stays closed")
+    checkTitanView(bakedPlain, bakedTitan, "baked Titan")
   end
 
   client.reset()

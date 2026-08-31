@@ -48,6 +48,14 @@ jobs:
             exit 1
           }
 
+      - name: Fail on Source TOC drift
+        working-directory: QuestieTDB
+        # Run before flavor Generation, which also refreshes the base TOC and would otherwise
+        # hide an uncommitted file-list change from the unit test.
+        run: |
+          lua5.1 generate.lua toc
+          git diff --exit-code QuestieTDB.toc
+
       - name: Generate Vanilla
         working-directory: QuestieTDB
         run: lua5.1 generate.lua Vanilla --questie=../Questie
@@ -57,6 +65,12 @@ jobs:
         # The suites that read artifacts off disk sweep every generated flavor. Vanilla alone
         # left the largest artifact untested; Mists is the other end of the size range.
         run: lua5.1 generate.lua Mists --questie=../Questie
+
+      - name: Generate Wrath runtime fixture
+        working-directory: QuestieTDB
+        # Titan is a Dynamic variant over the Wrath artifact. A small no-l10n fixture keeps
+        # the Source and Baked persona assertions mandatory in the unit job.
+        run: lua5.1 generate.lua Wrath --no-l10n --no-base-toc
 
       - name: Unit tests
         working-directory: QuestieTDB

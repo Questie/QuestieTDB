@@ -2,5 +2,4 @@ parentChildQuestRelations|Quest:310|quest 403 is missing in childQuests list
 requiredRaces|Quest:78219|no requiredRaces entry
 requiredRaces|Quest:78220|no requiredRaces entry
 requiredRaces|Quest:78221|no requiredRaces entry
-requiredRaces|Quest:96211|no requiredRaces entry
 requiredSourceItems|Quest:11886|sourceItemId in requiredSourceItems: 35828

@@ -1,7 +1,7 @@
 #!/usr/bin/env lua
 -- tools/port-corrections.lua
 --
--- One-shot port of Questie's corrections into QuestieTDB.
+-- Mechanical port of Questie's corrections into QuestieTDB.
 --
 -- Two jobs, both mechanical on purpose:
 --
@@ -245,8 +245,9 @@ end
 --- `dynamic` names functions that depend only on provider-owned data or generic character and
 --- game facts QuestieTDB determines itself, and therefore go through the Correction Overlay.
 ---
---- Blacklists, ContentPhases and Holidays are deliberately absent: hiding an entity is
---- consumer policy, not a database fact. See DESIGN.md, the boundary rule.
+--- Blacklists, ContentPhases, Holidays and Titan quest tags are deliberately absent. Hiding,
+--- phase selection and semantic quest tags are consumer policy, not entity data. See
+--- DESIGN.md, the boundary rule.
 local FILES = {
   -- Era
   --
@@ -280,7 +281,9 @@ local FILES = {
   -- TBC
   { src = "tbcQuestFixes.lua", dst = "Tbc/tbcQuestFixes.lua", datatype = "Quest", minExpansion = 2,
     module = "QuestieTBCQuestFixes",
-    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    static = { "Load" }, dynamic = { "LoadFactionFixes" },
+    -- Questie owns this selection because it depends on consumer-owned content phase state.
+    ownershipExclusion = { module = "QuestieTBCQuestFixes", functionName = "LoadContentPhaseFixes" } },
   { src = "tbcNPCFixes.lua", dst = "Tbc/tbcNPCFixes.lua", datatype = "Npc", minExpansion = 2,
     module = "QuestieTBCNpcFixes", static = { "Load" },
     dynamic = { "LoadFactionFixes" },
@@ -294,27 +297,37 @@ local FILES = {
     static = { "Load" }, dynamic = { "LoadFactionFixes" } },
 
   -- Wotlk
-  --
-  -- `LoadTitanReforgedFixes` is Titan Reforged-only: `QuestieCorrections:Initialize` applies
-  -- it under `if Questie.IsTitanReforged` while the sibling `LoadFactionFixes` in the same
-  -- files runs ungated, so the gate must be per-function, not per-file. The runtime predicate
-  -- lives in src/corrections/register.lua (`variantActive`), mirroring upstream's detection
-  -- (`Modules/VersionCheck.lua:89`: a Wrath client with active season 109).
   { src = "wotlkQuestFixes.lua", dst = "Wotlk/wotlkQuestFixes.lua", datatype = "Quest", minExpansion = 3,
-    module = "QuestieWotlkQuestFixes",
-    static = { "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
-    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
+    module = "QuestieWotlkQuestFixes", static = { "Load" },
+    dynamic = { "LoadFactionFixes" } },
   { src = "wotlkNPCFixes.lua", dst = "Wotlk/wotlkNPCFixes.lua", datatype = "Npc", minExpansion = 3,
-    module = "QuestieWotlkNpcFixes",
-    static = { "LoadAutomatics", "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
-    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
+    module = "QuestieWotlkNpcFixes", static = { "LoadAutomatics", "Load" },
+    dynamic = { "LoadFactionFixes" } },
   { src = "wotlkItemFixes.lua", dst = "Wotlk/wotlkItemFixes.lua", datatype = "Item", minExpansion = 3,
     module = "QuestieWotlkItemFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
-    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
+    dynamic = { "LoadFactionFixes" } },
   { src = "wotlkObjectFixes.lua", dst = "Wotlk/wotlkObjectFixes.lua", datatype = "Object", minExpansion = 3,
     module = "QuestieWotlkObjectFixes",
     static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+
+  -- Titan Reforged
+  --
+  -- Questie's split compiler calls the `Load*` providers static because it builds a separate
+  -- Titan cache. QuestieTDB has one Wrath artifact, so every Titan function is Dynamic over
+  -- the Wrath base, exactly like SoD over Era. The Titan/ directory supplies one file-level
+  -- Wrath-plus-season-109 gate, and the declared order preserves base rows before overrides.
+  { src = "titanReforgedQuestFixes.lua", dst = "Titan/titanReforgedQuestFixes.lua",
+    datatype = "Quest", expansions = { Wotlk = true }, module = "TitanReforgedQuestFixes",
+    dynamic = { "LoadQuests", "LoadQuestOverrides" } },
+  { src = "titanReforgedNPCFixes.lua", dst = "Titan/titanReforgedNPCFixes.lua",
+    datatype = "Npc", expansions = { Wotlk = true }, module = "TitanReforgedNpcFixes",
+    dynamic = { "LoadNPCs", "LoadNPCOverrides", "LoadFactionNPCOverrides" } },
+  { src = "titanReforgedItemFixes.lua", dst = "Titan/titanReforgedItemFixes.lua",
+    datatype = "Item", expansions = { Wotlk = true }, module = "TitanReforgedItemFixes",
+    dynamic = { "LoadItems", "LoadItemOverrides" } },
+  { src = "titanReforgedObjectFixes.lua", dst = "Titan/titanReforgedObjectFixes.lua",
+    datatype = "Object", expansions = { Wotlk = true }, module = "TitanReforgedObjectFixes",
+    dynamic = { "LoadObjects" } },
 
   -- Cata
   { src = "cataQuestFixes.lua", dst = "Cata/cataQuestFixes.lua", datatype = "Quest", minExpansion = 4,
@@ -332,16 +345,16 @@ local FILES = {
 
   -- MoP
   { src = "mopQuestFixes.lua", dst = "MoP/mopQuestFixes.lua", datatype = "Quest", minExpansion = 5,
-    module = "QuestieMoPQuestFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadContentPhaseFixes" } },
+    module = "QuestieMoPQuestFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" },
+    ownershipExclusion = { module = "MopQuestFixes", functionName = "LoadContentPhaseFixes" } },
   { src = "mopNPCFixes.lua", dst = "MoP/mopNPCFixes.lua", datatype = "Npc", minExpansion = 5,
-    module = "QuestieMoPNpcFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadContentPhaseFixes" } },
+    module = "QuestieMoPNpcFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" },
+    ownershipExclusion = { module = "MopNpcFixes", functionName = "LoadContentPhaseFixes" } },
   { src = "mopItemFixes.lua", dst = "MoP/mopItemFixes.lua", datatype = "Item", minExpansion = 5,
     module = "QuestieMoPItemFixes", static = { "Load" } },
   { src = "mopObjectFixes.lua", dst = "MoP/mopObjectFixes.lua", datatype = "Object", minExpansion = 5,
-    module = "QuestieMoPObjectFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadContentPhaseFixes" } },
+    module = "QuestieMoPObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" },
+    ownershipExclusion = { module = "MopObjectFixes", functionName = "LoadContentPhaseFixes" } },
 
   -- Season of Discovery: a Dynamic Correction set over the Era database, not a separate
   -- database. This is what lets Questie's parallel compiled SoD database be deleted.
@@ -388,7 +401,7 @@ local function correctionSourcePath(spec)
   return "Database/Corrections/" .. spec.src
 end
 
----Remove one top-level method together with its immediately attached LuaDoc block.
+---Remove one top-level method together with its immediately attached comment block.
 ---The exact shape is intentionally strict so upstream drift cannot broaden an ownership
 ---exclusion without an explicit port-tool change.
 ---@param source string
@@ -418,11 +431,11 @@ local function removeOwnershipExclusion(source, exclusion, relativeSource)
   end
 
   local docStart = headerIndex
-  while docStart > 1 and lines[docStart - 1]:find("^%-%-%-") do
+  while docStart > 1 and lines[docStart - 1]:find("^%-%-") do
     docStart = docStart - 1
   end
   if docStart == headerIndex then
-    error(("port: %s excluded function %s has no attached LuaDoc block")
+    error(("port: %s excluded function %s has no attached comment block")
       :format(relativeSource, exclusion.functionName), 0)
   end
 
@@ -443,6 +456,7 @@ local function removeOwnershipExclusion(source, exclusion, relativeSource)
   end
 
   for index = endIndex, docStart, -1 do table.remove(lines, index) end
+  while lines[#lines] == "" do lines[#lines] = nil end
   return table.concat(lines, "\n") .. (source:sub(-1) == "\n" and "\n" or "")
 end
 
@@ -519,7 +533,6 @@ local function renderManifest()
     }
     if spec.static then parts[#parts + 1] = "static = " .. serialize.value(spec.static) end
     if spec.dynamic then parts[#parts + 1] = "dynamic = " .. serialize.value(spec.dynamic) end
-    if spec.gatedDynamic then parts[#parts + 1] = "gatedDynamic = " .. serialize.value(spec.gatedDynamic) end
     if spec.expansions then parts[#parts + 1] = "expansions = " .. serialize.value(spec.expansions) end
     if spec.minExpansion then parts[#parts + 1] = "minExpansionOrder = " .. spec.minExpansion end
     if spec.sourceExpansionOrder then
