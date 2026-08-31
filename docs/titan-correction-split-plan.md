@@ -2,8 +2,7 @@
 
 ## Status
 
-Implementation and full all-flavor validation are complete. The GitHub issue remains open until
-the validation evidence is posted.
+Implementation, full all-flavor validation, and GitHub issue closure are complete.
 
 Questie PR [#7784](https://github.com/Questie/Questie/pull/7784) merged as:
 
@@ -198,9 +197,7 @@ The following checks passed against a clean Questie project directory at the pin
 
 ## Remaining work
 
-- [ ] Close GitHub issue #16 with the pin, gate matrix, accepted-record review, and final validation
-  evidence.
-- [ ] Commit this completion record and the matching handover-ledger update.
+None.
 
 ## Expected final file groups
 
@@ -269,5 +266,5 @@ This work is fully complete only when:
 - [x] Non-Wrath Golden, validator, and compiler baseline changes are reviewed.
 - [x] Reviewed accepted-record changes are committed.
 - [x] Status documentation records the completed validation.
-- [ ] GitHub issue #16 is closed with the validation evidence.
-- [ ] The status documentation is committed.
+- [x] GitHub issue #16 is closed with the validation evidence.
+- [x] The status documentation is committed.

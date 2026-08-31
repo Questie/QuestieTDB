@@ -184,7 +184,7 @@ cutover audit found provider work outside ordinary entity-field parity:
   ([#15](https://github.com/Questie/QuestieTDB/issues/15)).
 - Titan corrections require both the Wrath flavor and active season 109
   ([#16](https://github.com/Questie/QuestieTDB/issues/16)). The complete all-flavor matrix and
-  accepted-record review passed; the GitHub issue is ready to close.
+  accepted-record review passed, and the GitHub issue is closed.
 - `ObjectiveFirst` needs Source/Baked flavor parity and a documented public contract
   ([#17](https://github.com/Questie/QuestieTDB/issues/17)).
 - Differential coverage needs to include side channels and a working SoD oracle
@@ -213,7 +213,7 @@ yet been closed.
 | [#13](https://github.com/Questie/QuestieTDB/issues/13) | Handle SoD `requiredRaces` inference after dynamic composition | Open |
 | [#14](https://github.com/Questie/QuestieTDB/issues/14) | Import lookup overrides and Titan zhCN corrections | Open |
 | [#15](https://github.com/Questie/QuestieTDB/issues/15) | Synchronize support data and add drift validation | Open |
-| [#16](https://github.com/Questie/QuestieTDB/issues/16) | Restrict Titan corrections to Wrath | Resolved; full all-flavor matrix passed |
+| [#16](https://github.com/Questie/QuestieTDB/issues/16) | Restrict Titan corrections to Wrath | Closed; full all-flavor matrix passed |
 | [#17](https://github.com/Questie/QuestieTDB/issues/17) | Keep `ObjectiveFirst` flavor-scoped in Source mode | Open |
 | [#18](https://github.com/Questie/QuestieTDB/issues/18) | Former parameterized-correction follow-up | Closed — superseded by ADR 0007 |
 | [#19](https://github.com/Questie/QuestieTDB/issues/19) | Cover correction side channels and SoD in differential tests | Open |
