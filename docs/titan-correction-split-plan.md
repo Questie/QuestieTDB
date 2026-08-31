@@ -1,8 +1,9 @@
-# Titan Correction split status and remaining plan
+# Titan Correction split completion record
 
 ## Status
 
-Implementation is complete. Full all-flavor validation is still pending.
+Implementation and full all-flavor validation are complete. The GitHub issue remains open until
+the validation evidence is posted.
 
 Questie PR [#7784](https://github.com/Questie/Questie/pull/7784) merged as:
 
@@ -10,12 +11,12 @@ Questie PR [#7784](https://github.com/Questie/Questie/pull/7784) merged as:
 b1a6dc8c50a92ab88723a11556421d6462cdea49
 ```
 
-QuestieTDB is pinned to that commit. The worktree is intentionally uncommitted so the remaining
-validation can review the complete change before it is committed.
+QuestieTDB is pinned to that commit. The reviewed accepted-record updates from the full matrix
+were committed as `d2ac61d` (`test(corrections): refresh Titan split baselines`).
 
 ## Permanent design
 
-These decisions are implemented and should not be reopened during validation unless evidence
+These decisions are implemented and validated. They should not be reopened unless evidence
 shows a defect:
 
 1. Titan Reforged is a Dynamic Correction set over the Wrath database, like SoD over Era.
@@ -153,7 +154,7 @@ Representative provider probes currently cover:
 - [x] Added a Wrath runtime fixture so Baked Titan persona tests cannot silently skip in CI.
 - [x] Updated the README re-sync process to include Source TOC regeneration.
 - [x] Updated `CONTEXT.md` from a per-function gate term to a gated Dynamic set.
-- [x] Marked issue #16 as implemented with full validation pending in
+- [x] Kept issue #16's implementation and validation status synchronized in
   `docs/questie-handover.md`.
 - [x] Marked the old per-function gate discussion in `CLAUDE_REVIEW_FINDINGS.md` as historical.
 
@@ -163,146 +164,43 @@ Representative provider probes currently cover:
   - 60 Titan-only entities removed from plain Wrath.
   - 30 inherited entities with changed composed hashes.
 - [x] Removed the obsolete Wrath validator baseline entry for Titan quest `96211`.
-- [x] Confirmed the resulting Wrath Golden and validator gates are clean.
+- [x] Refreshed the remaining Golden snapshots after reviewing every changed entity:
+  - Vanilla: 5 upstream Correction changes.
+  - TBC: 26 upstream Correction changes.
+  - Cata: 60 Titan-only entities removed and 32 inherited hashes changed.
+  - Mists: 60 Titan-only entities removed and 31 inherited hashes changed.
+- [x] Removed 67 Titan-derived accepted validator findings from both Cata and Mists.
+- [x] Refreshed compiler baselines only for reviewed reductions:
+  - TBC: 3 prerequisite-field divergences resolved by the active phase advancing to 3.
+  - Wrath, Cata, and Mists: 11 health-field divergences removed with six Titan-only NPCs.
+- [x] Confirmed all resulting Golden, validator, and compiler gates are clean.
 
-## Validation already completed
+## Validation
 
 The following checks passed against a clean Questie project directory at the pinned commit:
 
-- [x] `git diff --check`.
+- [x] Mechanical schema, Correction, and Source TOC regeneration produced no tracked changes.
+- [x] Full all-flavor matrix: 31 jobs passed.
+- [x] Test suite: 1,613 checks, 0 failed.
 - [x] TOC suite: 159 checks, 0 failed.
 - [x] Correction fidelity: 284 checks, 0 failed.
 - [x] Source and Baked personas: 61 checks, 0 failed.
 - [x] Read contract: 62 checks, 0 failed.
 - [x] Reconstruction negative control with a localized Vanilla artifact: 3 checks, 0 failed.
+- [x] Round-trip verification, Source/Baked equivalence, reconstruction, validators, Golden
+  snapshots, and compiler differentials passed for all five base flavors.
 - [x] Wrath round-trip verification: 88,640 entities, 1,454,521 fields, 0 errors.
-- [x] Wrath Source/Baked equivalence.
-- [x] Wrath validators: no new or stale accepted findings after the reviewed baseline change.
-- [x] Wrath Golden composed reads: no differences after the reviewed refresh.
-- [x] Mechanical Correction fidelity for every manifest file.
-- [x] Four Titan files byte-identical to the pinned Questie sources.
-- [x] Fresh focused review with no findings.
-
-Temporary generated flavor TOCs were removed after validation.
+- [x] No Titan-only entity leaked into Vanilla, TBC, plain Wrath, Cata, or Mists.
+- [x] Four Titan files are byte-identical to the pinned Questie sources.
+- [x] `git diff --check` passed.
+- [x] Two fresh focused reviews completed with no findings.
+- [x] Generated flavor TOCs and validation scratch files remained ignored and unstaged.
 
 ## Remaining work
 
-### 1. Prepare a clean Questie project directory
-
-On the validation computer, set a shell variable to a clean Questie checkout:
-
-```sh
-QUESTIE_DIR="<a clean Questie project directory>"
-```
-
-The checkout must have no local changes and must be at the exact commit in `QUESTIE_COMMIT`.
-Verify without changing the checkout:
-
-```sh
-git -C "$QUESTIE_DIR" status --short
-git -C "$QUESTIE_DIR" rev-parse HEAD
-cat QUESTIE_COMMIT
-```
-
-If the checkout is not clean or is used for active Questie development, create a separate clean
-Questie project directory instead of changing it in place.
-
-### 2. Re-run the mechanical drift gates
-
-From the QuestieTDB project directory:
-
-```sh
-lua5.1 generate.lua meta --questie="$QUESTIE_DIR"
-lua5.1 tools/port-corrections.lua "$QUESTIE_DIR"
-lua5.1 generate.lua toc
-```
-
-Review the worktree afterward. These commands should reproduce the already reviewed files. They
-must not restore content-phase functions, old embedded Titan providers, or consumer policy.
-
-Expected permanent output:
-
-- Four files under `src/corrections/Titan/`.
-- Four Titan manifest entries.
-- Eight Titan Dynamic providers.
-- No `LoadTitanReforgedFixes` implementation.
-- No per-function variant gate in the generated manifest.
-- No copied `LoadContentPhaseFixes` bodies.
-- `QuestieTDB.toc` lists all four Titan files.
-
-### 3. Run the complete all-flavor matrix
-
-This is the main remaining task:
-
-```sh
-./questietdb all --questie="$QUESTIE_DIR"
-```
-
-This should cover Generation, unit tests, round-trip verification, Source/Baked equivalence,
-reconstruction, validators, Golden snapshots, and the Questie compiler differential for all
-five base flavors.
-
-Do not treat a failure as a request to refresh a baseline automatically. The pin advance also
-ported unrelated upstream Correction changes, especially in TBC, Wrath, Cata, and Mists.
-Classify every changed entity first.
-
-### 4. Review any non-Wrath changes
-
-The focused pass reviewed Wrath. The complete matrix may expose intentional upstream changes in
-other flavors.
-
-For each failure:
-
-1. Compare the entity and field against the pinned Questie source.
-2. Decide whether it came from the mechanical Correction re-port, schema drift, runtime gating,
-   or an actual QuestieTDB regression.
-3. Confirm Titan-only IDs never appear in plain Wrath or another flavor.
-4. Confirm TBC and MoP content-phase exclusions did not return.
-5. Confirm no Titan tags, blacklists, or calendar policy entered the entity files.
-6. Update an accepted record only after the change is understood.
-
-If a Golden change is intentional:
-
-```sh
-uv run python tools/differential/golden.py refresh <Flavor> --lua=lua5.1
-```
-
-If validator findings intentionally changed:
-
-```sh
-lua5.1 validators/run.lua <Flavor> --update-baseline
-```
-
-If a compiler differential baseline intentionally changed:
-
-```sh
-uv run python tools/differential/compiler_diff.py <Flavor> \
-  --questie="$QUESTIE_DIR" --update-baseline
-```
-
-Review each baseline diff directly, then rerun the failing gate before continuing.
-
-### 5. Re-run the full matrix after accepted-record changes
-
-If any Golden, validator, or compiler baseline changes were needed, run the complete matrix again:
-
-```sh
-./questietdb all --questie="$QUESTIE_DIR"
-```
-
-The final run must pass without unreviewed output changes.
-
-### 6. Final review and issue status
-
-After the full matrix passes:
-
-- [ ] Run `git diff --check` again.
-- [ ] Confirm no generated flavor TOCs or validation scratch files are staged.
-- [ ] Review the complete diff, including unrelated upstream Correction changes from the pin.
-- [ ] Ask for one final focused review if validation changed any accepted records.
-- [ ] Update `docs/questie-handover.md` from “full validation pending” to resolved.
-- [ ] Close GitHub issue #16 with the gate matrix and validation evidence.
-- [ ] Prepare the final commit or pull request. Do not commit before the reviewed matrix is green.
+- [ ] Close GitHub issue #16 with the pin, gate matrix, accepted-record review, and final validation
+  evidence.
+- [ ] Commit this completion record and the matching handover-ledger update.
 
 ## Expected final file groups
 
@@ -340,12 +238,10 @@ Only files actually changed by the selected Questie pin should appear in the fin
 ### Reviewed accepted records
 
 ```text
-tools/differential/golden/Wrath.tsv
-validators/baseline/Wrath.txt
+tools/differential/golden/{Vanilla,TBC,Wrath,Cata,Mists}.tsv
+tools/differential/compiler-baseline/{TBC,Wrath,Cata,Mists}.tsv
+validators/baseline/{Wrath,Cata,Mists}.txt
 ```
-
-Additional flavor baselines belong in the change only when the remaining all-flavor review
-proves they are intentional.
 
 ### Status and historical documentation
 
@@ -369,7 +265,9 @@ This work is fully complete only when:
 - [x] Correction fidelity passes against the pinned Questie commit.
 - [x] The committed Source TOC matches configuration.
 - [x] Focused implementation review has no findings.
-- [ ] The complete all-flavor matrix passes.
-- [ ] Any non-Wrath Golden, validator, or compiler baseline changes are reviewed.
-- [ ] Issue #16 and its status documentation are finalized.
-- [ ] The final diff is reviewed and ready to commit.
+- [x] The complete all-flavor matrix passes.
+- [x] Non-Wrath Golden, validator, and compiler baseline changes are reviewed.
+- [x] Reviewed accepted-record changes are committed.
+- [x] Status documentation records the completed validation.
+- [ ] GitHub issue #16 is closed with the validation evidence.
+- [ ] The status documentation is committed.

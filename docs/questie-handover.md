@@ -21,17 +21,18 @@ uv run python tools/differential/compiler_diff.py Vanilla --self-check       # p
 ```
 
 Current counts use the full `QuestieInit` pre-compile sequence from the Questie commit in
-`QUESTIE_COMMIT`. Totals compared: 397,395 / 659,210 / 980,653 / 1,588,480 / 1,982,795
+`QUESTIE_COMMIT`. Totals compared: 397,394 / 659,215 / 979,421 / 1,587,245 / 1,981,560
 fields.
 
-Remaining divergences: **20,220 / 35,929 / 55,042 / 86,058 / 99,438**. Almost all are
+Remaining divergences: **20,220 / 35,926 / 55,031 / 86,047 / 99,427**. Almost all are
 the approved `minLevelHealth` and `maxLevelHealth` policy: QuestieTDB omits obsolete health
 data and returns constant placeholders, while the migration oracle still reads compiler
 values. Raw coordinate storage removed the former NPC/Object spawn-value classes through the
 tool-only Compiler comparison adapter. Re-porting the pinned Corrections resolved the stale
 `questFlags` and `reputationReward` classes, the temporary compatibility pass removed every
-base-flavor `requiredRaces` divergence, and matching Questie's inherited-Correction creation
-rule removed every phantom entity. Entity-id sets agree exactly across all five flavors.
+base-flavor `requiredRaces` divergence, matching Questie's inherited-Correction creation rule
+removed every phantom entity, and the Titan split removed six season-only NPCs from the base
+flavors. Entity-id sets agree exactly across all five flavors.
 
 The same counts, with a reason per row, are committed under
 `tools/differential/compiler-baseline/`. The gate fails on anything new or grown and prints
@@ -95,10 +96,9 @@ Read cost and memory from the same session are in
 
 | Class | Vanilla | TBC | Wrath | Cata | Mists | Status | Disposition |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| `Npc.minLevelHealth` value | 10,090 | 18,499 | 29,606 | 46,316 | 45,875 | **POLICY** | Deprecated health data is not stored. QuestieTDB returns the documented `0` placeholder for known NPCs; compiler parity is intentionally not required. |
-| `Npc.maxLevelHealth` value | 10,106 | 17,403 | 25,412 | 39,718 | 53,539 | **POLICY** | Same policy, with the documented `1` placeholder. |
+| `Npc.minLevelHealth` value | 10,090 | 18,499 | 29,601 | 46,311 | 45,870 | **POLICY** | Deprecated health data is not stored. QuestieTDB returns the documented `0` placeholder for known NPCs; compiler parity is intentionally not required. |
+| `Npc.maxLevelHealth` value | 10,106 | 17,403 | 25,406 | 39,712 | 53,533 | **POLICY** | Same policy, with the documented `1` placeholder. |
 | `Object.spawns` absent-vs-value | 24 | 24 | 24 | 24 | 24 | **POLICY** | Gathering nodes. QuestieTDB keeps all 17,191 spawn points; Questie suppresses them with a registered Dynamic Correction. Permanent and correct. |
-| TBC prerequisite fields absent-vs-value | – | 3 | – | – | – | **POLICY** | `LoadContentPhaseFixes` supplies `preQuestGroup` for quest 10944 and `preQuestSingle` for quests 10944/11007 inside Questie. Content phases remain consumer policy in QuestieTDB. |
 
 Entity **id sets match exactly** on all five flavours and all four types — zero
 `ID_ONLY_IN_*` rows. Storage, generation and enumeration are not implicated in anything above.
@@ -121,6 +121,7 @@ Entity **id sets match exactly** on all five flavours and all four types — zer
 | `Quest.reputationReward` absent-vs-value | – / – / 1 / 1 / 1 | Resolved by the pinned Correction re-port. |
 | `Quest.requiredRaces` value | 1 / 27 / 339 / 693 / 315 | `src/derived/requiredRaces.lua` temporarily transcribes Questie's exact base-flavor inference and reaches zero divergences. Explicit corrections remain the final fix in [#1](https://github.com/Questie/QuestieTDB/issues/1). SoD-specific Dynamic Corrections are outside this inference; the base Classic pass still runs, and [#13](https://github.com/Questie/QuestieTDB/issues/13) tracks the missing post-composition behavior. |
 | WotLK NPC Static Correction order | – / – / 20 / 20 / 20 | The generated manifest now follows Questie: `LoadAutomatics()` first, then hand-authored `Load()`. This removed 16 wrong-value and four absent-vs-value spawn divergences per affected flavor. A real overlap on NPC 30208 guards the order. |
+| TBC prerequisite fields absent-vs-value | – / 3 / – / – / – | Questie's active TBC content phase advanced from 2 to 3, resolving the three compiler divergences for quests 10944 and 11007. `LoadContentPhaseFixes` remains excluded from QuestieTDB under ADR 0007 because content-phase selection is consumer policy. |
 
 ## Deliberately not reproduced
 
@@ -181,9 +182,9 @@ cutover audit found provider work outside ordinary entity-field parity:
   ([#14](https://github.com/Questie/QuestieTDB/issues/14)).
 - Zone and Drop support data needs synchronizing and a semantic drift gate
   ([#15](https://github.com/Questie/QuestieTDB/issues/15)).
-- Titan corrections now require both the Wrath flavor and active season 109
-  ([#16](https://github.com/Questie/QuestieTDB/issues/16)); final issue closure follows the full
-  validation matrix).
+- Titan corrections require both the Wrath flavor and active season 109
+  ([#16](https://github.com/Questie/QuestieTDB/issues/16)). The complete all-flavor matrix and
+  accepted-record review passed; the GitHub issue is ready to close.
 - `ObjectiveFirst` needs Source/Baked flavor parity and a documented public contract
   ([#17](https://github.com/Questie/QuestieTDB/issues/17)).
 - Differential coverage needs to include side channels and a working SoD oracle
@@ -212,7 +213,7 @@ yet been closed.
 | [#13](https://github.com/Questie/QuestieTDB/issues/13) | Handle SoD `requiredRaces` inference after dynamic composition | Open |
 | [#14](https://github.com/Questie/QuestieTDB/issues/14) | Import lookup overrides and Titan zhCN corrections | Open |
 | [#15](https://github.com/Questie/QuestieTDB/issues/15) | Synchronize support data and add drift validation | Open |
-| [#16](https://github.com/Questie/QuestieTDB/issues/16) | Restrict Titan corrections to Wrath | Implemented; full validation pending |
+| [#16](https://github.com/Questie/QuestieTDB/issues/16) | Restrict Titan corrections to Wrath | Resolved; full all-flavor matrix passed |
 | [#17](https://github.com/Questie/QuestieTDB/issues/17) | Keep `ObjectiveFirst` flavor-scoped in Source mode | Open |
 | [#18](https://github.com/Questie/QuestieTDB/issues/18) | Former parameterized-correction follow-up | Closed — superseded by ADR 0007 |
 | [#19](https://github.com/Questie/QuestieTDB/issues/19) | Cover correction side channels and SoD in differential tests | Open |
