@@ -130,6 +130,74 @@ Entity **id sets match exactly** on all five flavours and all four types — zer
 | `l10n:Initialize` writing translations into the entity tables | Replaced by the l10n overlay, which is what removes the `dbCompiledLang` recompile. Verified inert at enUS, so it does not affect the differential. |
 | `Townsfolk.Initialize()` | Not entity data. |
 
+## Consumer-owned Dynamic Corrections
+
+The TOC dependency/loading work is already complete. The remaining integration starts with
+`LibQuestieDB` loaded and uses its generic Correction registrar; QuestieTDB has no
+consumer-specific entry point or parameterized Correction API.
+
+Ownership follows the information needed to choose or construct a Correction:
+
+- QuestieTDB owns Corrections based only on provider data or generic WoW facts it can determine
+  itself, such as class, race, faction, expansion, and season.
+- Questie owns Corrections based on Questie runtime state or policy, including Darkmoon event
+  state, gathering-node suppression, content phases, settings, projections/caches, and
+  asynchronous Item repair.
+
+Questie keeps the state, tables, and refresh trigger. It registers a function that returns the
+currently selected Correction table:
+
+```lua
+local activeNpcCorrections = {}
+local questieCorrections = LibQuestieDB.GetRegistrar("Questie")
+
+questieCorrections.RegisterRuntimeCorrection(
+    "Npc",
+    "DarkmoonFaire",
+    function()
+        return activeNpcCorrections
+    end,
+    100
+)
+
+-- Questie's event code owns this selection and calls Apply after every change.
+activeNpcCorrections = selectedDarkmoonNpcCorrections or {}
+questieCorrections.Apply()
+```
+
+Registration happens once. Questie's event or policy code updates the captured table and calls
+`Apply()` after the initial selection and every later change. Re-applying rebuilds owner
+`Questie` in place: it replaces the previous result, does not accumulate old locations, and
+does not change owner precedence. Returning an empty Correction table withdraws that registered
+Correction's previous values. `GetRaw` continues to expose unchanged provider data, while normal reads expose
+the composed view and `GetProvenance` reports `"Questie"` for fields Questie currently wins.
+
+For Darkmoon Faire specifically:
+
+- The database coordinates remain valid entity data in QuestieTDB.
+- Questie retains the existing correction tables and chooses among them from `QuestieEvent`
+  state.
+- Questie registers the selected NPC Correction through owner `"Questie"` and reapplies when
+  the event location changes.
+- QuestieTDB does not receive location booleans, know the schedule, select a location, or expose
+  a Darkmoon-specific API.
+
+Questie-side tests should cover the initial location, every supported transition, withdrawal of
+old coordinates, unchanged `GetRaw` data, and `"Questie"` provenance. Darkmoon behavior itself
+belongs in Questie's tests; QuestieTDB tests only the generic registrar lifecycle.
+
+Since the data-shaped slot API landed, the captured-table pattern above is only needed for
+corrections large enough to warrant lazy materialization. A state-driven consumer correction is
+simpler as a write-through slot — no provider function, no explicit apply, and only the written
+datatype recomposes:
+
+```lua
+registrar.Set("Npc", "DarkmoonFaire", selectedDarkmoonNpcCorrections)
+registrar.Set("Npc", "DarkmoonFaire", nil)   -- withdraws when no faire is active
+```
+
+See "Data-shaped corrections: `Set`" in docs/api.md.
+
 ## Questie-side checklist
 
 Execute when Questie switches to QuestieTDB. Each item is a thing that would otherwise be

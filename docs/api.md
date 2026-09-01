@@ -226,6 +226,25 @@ LibQuestieDB.Meta.Quest.fieldCount           --> 36
 Derived from Questie's own key enums, so a field added upstream appears here rather than
 drifting.
 
+### Objective ordering hints
+
+Some Quest Corrections carry consumer hints about which objective type should be rendered first.
+They are not entity fields, so QuestieTDB publishes the five read-only ID sets separately:
+
+```lua
+LibQuestieDB.ObjectiveFirst.killCreditObjectiveFirst
+LibQuestieDB.ObjectiveFirst.objectObjectiveFirst
+LibQuestieDB.ObjectiveFirst.itemObjectiveFirst
+LibQuestieDB.ObjectiveFirst.eventObjectiveFirst
+LibQuestieDB.ObjectiveFirst.spellObjectiveFirst
+```
+
+Each table has the shape `{ [questId] = true }`. These are consumer-must-not-mutate tables;
+QuestieTDB currently publishes the underlying mutable values directly. Their contents are
+intended to match the active flavor and season. Cross-expansion Source-mode leakage and SoD
+hints leaking into plain Vanilla Baked mode are tracked in
+[#17](https://github.com/Questie/QuestieTDB/issues/17).
+
 ---
 
 ## Corrections
@@ -296,9 +315,9 @@ apply, and constants the body reads are resolved at apply time.
 
 Two levels, the later-ranked writer wins:
 
-* outer: the order owners **first** called `ApplyRegisteredCorrections` — an owner's rank is
-  fixed at first apply, and re-applying refreshes that owner's layer **in place**. A state
-  refresh can therefore never hoist a layer above corrections registered later.
+* outer: the order owners **first** applied or first wrote a `Set` slot — an owner's rank is
+  fixed at that first write, and re-applying or re-writing refreshes that owner's layer **in
+  place**. A state refresh can therefore never hoist a layer above corrections registered later.
 * inner: `loadOrder` within one owner
 
 `loadOrder` means "sequence within an owner", not a global sequence. Load order makes the outer
@@ -325,6 +344,46 @@ recomposition always includes every live layer. Registering later stays legal; c
 
 Re-applying is **idempotent**: the composed view is rebuilt from the registry rather than
 accumulated into, which is also what makes a *withdrawn* correction actually disappear.
+
+Re-applying an owner re-runs **that owner's** provider functions; every other owner's layer
+reuses its memoized materialization. Recomposition and cache invalidation are scoped to the
+datatypes the refreshed entries touch — an Item-only apply leaves Quest, Npc, and Object read
+caches, shared ID maps, and Name indexes untouched (ADR 0009).
+
+### Data-shaped corrections: `Set`
+
+For a correction that is a small state-driven table, skip the provider function and the
+explicit apply entirely:
+
+```lua
+local registrar = LibQuestieDB.GetRegistrar("MyAddon")
+
+registrar.Set("Npc", "darkmoon-location", {
+    [14828] = { [npcKeys.spawns] = { [215] = { {37.24, 37.67} } } },
+})   -- visible immediately; no Apply() call
+
+registrar.Set("Npc", "darkmoon-location", nil)   -- removes the slot; the layer underneath shows through
+```
+
+The long form is `LibQuestieDB.Corrections.Set(owner, datatype, name, rows)`, also aliased as
+`LibQuestieDB.SetCorrection`.
+
+* Each `(owner, datatype, name)` is a **slot**. Writing it again replaces the previous rows;
+  `nil` removes the slot; `{}` keeps the slot but contributes nothing.
+* There is no `loadOrder`: within an owner, slots take effect in creation order. Owner
+  precedence is unchanged — the owner's rank is fixed by its first write or apply.
+* Recomposition is scoped to the written datatype: an Item write does not drop Quest, Npc, or
+  Object read caches, shared ID maps, or Name indexes.
+* A name already registered as a function-shaped correction is refused — update that
+  correction's captured state and re-apply instead.
+* Function-shaped registration remains the right form for large tables: held behind a
+  function, a multi-megabyte literal materialises only on apply. Function results are
+  memoized per entry and re-run only by their own owner's apply, so another owner's `Set`
+  never re-materialises them.
+* The provider keeps `rows` **by reference** until the slot is rewritten or removed. Hand over
+  a table you only ever mutate through another `Set`: the accumulate-and-rewrite pattern
+  (mutate your table, `Set` it again) is exactly right, while mutating it without a `Set`
+  leaves the published view stale until some other write to the same datatype flushes.
 
 ### Corrections outrank localization
 
@@ -364,6 +423,11 @@ A field a Correction supplied is never overridden by a translation (see Correcti
 
 Translated fields: quest `name` and `objectivesText`, npc `name` and `subName`, item `name`,
 object `name`.
+
+`extraObjectives` descriptions are different. Correction files author row slot `[3]` as an enUS
+localization key, and QuestieTDB preserves that English string. The entity localization overlay
+does not translate structured `extraObjectives` rows. Consumers must translate that description
+at render time with their own string-keyed localization function.
 
 ---
 
@@ -433,6 +497,6 @@ LibQuestieDB.InvalidateCache()             -- everything
 ```
 
 Applying corrections and changing locale already invalidate what they need to, the Name index
-included. This is for a consumer that mutates state QuestieTDB cannot see. Every form drops the
+included — correction writes scoped to the written datatypes, a locale change across all four. This is for a consumer that mutates state QuestieTDB cannot see. Every form drops the
 Name index — the per-entity one too, since a single entity's name can change — so a consumer
 invalidating in a loop pays one index rebuild on its next `IdsByName`.

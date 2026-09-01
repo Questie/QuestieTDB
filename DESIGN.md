@@ -349,12 +349,17 @@ LibQuestieDB.ApplyRegisteredCorrections("Questie")  -- one owner
 This is required by load order, not a convenience: third-party addons declare
 `## Dependencies: Questie` and therefore register *after* Questie has already applied.
 
+Consumer-state corrections skip the function-and-apply shape entirely: `registrar.Set(datatype,
+name, rows)` writes a data slot through the same registry — replace by rewriting, withdraw with
+`nil`, published immediately, recomposed and invalidated per datatype, no `loadOrder`. Function
+registration remains for QuestieTDB's own ported sets and for large lazy tables (ADR 0009).
+
 The owner parameter selects **which layer is being refreshed**, never which layers are
 visible. Recomposition always includes every live layer.
 
 Precedence is two-level — outer by owner rank, inner by `loadOrder` within an owner. **An
-owner's rank is fixed at its first apply; re-applying refreshes that owner's layer in
-place, never re-ranks it** (the original "last applied wins" let an owner-scoped state refresh
+owner's rank is fixed at its first apply or first `Set`; re-applying or re-writing refreshes
+that owner's layer in place, never re-ranks it** (the original "last applied wins" let an owner-scoped state refresh
 hoist a whole layer above consumer corrections; caught in review, fixed). First-apply order follows load order naturally
 (`QuestieTDB` < `Questie` < third-party), and must be documented, because `loadOrder` changes
 meaning from "global sequence" to "sequence within an owner".
