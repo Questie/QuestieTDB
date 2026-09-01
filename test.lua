@@ -1654,6 +1654,144 @@ suite("overlay", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Data-shaped corrections: Set
+--------------------------------------------------------------------------------------------
+
+suite("set-corrections", function()
+  local tocPath = config.tocPath(config.flavorByName.Vanilla)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP set-corrections: ", tocPath, " not generated\n")
+    return
+  end
+
+  client.reset()
+  client.install({ expansion = "Classic" })
+  emulator.install(config.antiCollision or config.addonName, emulator.parse(tocPath))
+  local Lib = emulator.loadAddon(tocPath, config.addonName)
+  local registry = Lib.Corrections
+  local Quest = Lib.Quest
+  local Item = Lib.Item
+
+  local id = Quest.GetAllIds()[1]
+  local baseName = Quest.GetRaw(id, "name")
+  check(type(baseName) == "string", "picked a quest with a name")
+
+  -- Write-through: visible immediately, no Apply call, GetRaw untouched.
+  local registrar = Lib.GetRegistrar("SetOwnerA")
+  check(registrar.Set("Quest", "rename", { [id] = { [1] = "Set by A" } }) == true, "Set reports a change")
+  equal(Quest.Get(id, "name"), "Set by A", "a Set correction is visible without an explicit apply")
+  equal(Quest.GetRaw(id, "name"), baseName, "GetRaw bypasses a Set correction")
+  equal(registry.GetProvenance("Quest", id, "name"), "SetOwnerA", "provenance names the Set owner")
+
+  -- A slot replaces in place rather than accumulating.
+  registrar.Set("Quest", "rename", { [id] = { [4] = 42 } })
+  equal(Quest.Get(id, "name"), baseName, "rewriting a slot withdraws its previous rows")
+  equal(Quest.Get(id, "requiredLevel"), 42, "the rewritten slot's rows are visible")
+
+  -- {} keeps the slot but contributes nothing; nil removes it.
+  registrar.Set("Quest", "rename", {})
+  equal(Quest.Get(id, "requiredLevel"), Quest.GetRaw(id, "requiredLevel"), "{} rows contribute nothing")
+  check(registrar.Set("Quest", "rename", nil) == true, "removing an existing slot reports a change")
+  check(registrar.Set("Quest", "rename", nil) == false, "removing an absent slot is a no-op")
+
+  -- Withdrawal hands a contested field back to the layer underneath, across owners.
+  registrar.Set("Quest", "rename", { [id] = { [1] = "Set by A" } })
+  local registrarB = Lib.GetRegistrar("SetOwnerB")
+  registrarB.Set("Quest", "rename", { [id] = { [1] = "Set by B" } })
+  equal(Quest.Get(id, "name"), "Set by B", "the later-ranked owner wins the contested field")
+  registrarB.Set("Quest", "rename", nil)
+  equal(Quest.Get(id, "name"), "Set by A", "withdrawing B hands the field back to A")
+  registrar.Set("Quest", "rename", nil)
+  equal(Quest.Get(id, "name"), baseName, "withdrawing every slot falls back to base data")
+
+  -- Owner rank is fixed at the first write: re-Setting an early owner cannot hoist it.
+  registrar.Set("Quest", "rank", { [id] = { [4] = 1 } })
+  registrarB.Set("Quest", "rank", { [id] = { [4] = 2 } })
+  registrar.Set("Quest", "rank", { [id] = { [4] = 3 } })
+  equal(Quest.Get(id, "requiredLevel"), 2, "re-Setting an earlier owner does not hoist it above a later one")
+  registrar.Set("Quest", "rank", nil)
+  registrarB.Set("Quest", "rank", nil)
+
+  -- Per-datatype publish: an Item write must not drop Quest caches, ID maps, or Name index.
+  registrar.Set("Quest", "adds-entity", { [900000001] = { [1] = "Set-added Quest" } })
+  local questMapBefore = Quest.GetAllIds(true)
+  local questBucketBefore = Quest.IdsByName("Set-added Quest")
+  check(questBucketBefore ~= nil, "the Name index sees a Set-added entity")
+  registrar.Set("Item", "unrelated", { [6948] = { [1] = "Hearthstone (set)" } })
+  check(Quest.GetAllIds(true) == questMapBefore, "an Item write keeps the Quest ID map's identity")
+  check(Quest.IdsByName("Set-added Quest") == questBucketBefore, "an Item write keeps the Quest Name index")
+  equal(Item.Get(6948, "name"), "Hearthstone (set)", "the Item write itself is visible")
+  registrar.Set("Item", "unrelated", nil)
+  registrar.Set("Quest", "adds-entity", nil)
+
+  -- Memoization: another owner's function provider is not re-run by a Set, only by its own apply.
+  local providerRuns = 0
+  local fnOwner = Lib.GetRegistrar("SetSuiteFnOwner")
+  fnOwner.RegisterRuntimeCorrection("Quest", "counted", function()
+    providerRuns = providerRuns + 1
+    return { [id] = { [5] = 55 } }
+  end, 10)
+  fnOwner.Apply()
+  equal(providerRuns, 1, "the provider ran on its own apply")
+  registrar.Set("Quest", "poke", { [id] = { [4] = 9 } })
+  equal(providerRuns, 1, "another owner's Set reuses the memoized materialization")
+  equal(Quest.Get(id, "questLevel"), 55, "the memoized layer still composes")
+  fnOwner.Apply()
+  equal(providerRuns, 2, "the owner's own re-apply re-runs its provider")
+  registrar.Set("Quest", "poke", nil)
+  registry.UnregisterCorrection("SetSuiteFnOwner", "Quest", "counted")
+  registry.ApplyRegisteredCorrections("SetSuiteFnOwner")
+
+  -- Write-through owners never linger pending: a no-arg apply finds nothing and drops nothing.
+  local mapBeforeNoArg = Quest.GetAllIds(true)
+  equal(registry.ApplyRegisteredCorrections(), 0, "no owner is left pending after write-through Sets")
+  check(Quest.GetAllIds(true) == mapBeforeNoArg, "a no-arg apply with nothing pending drops no caches")
+
+  -- Apply republishes only the owner's datatypes, and a bare registration republishes nothing.
+  local scopeOwner = Lib.GetRegistrar("SetSuiteScopeOwner")
+  scopeOwner.RegisterRuntimeCorrection("Quest", "scoped", function() return { [id] = { [4] = 11 } } end, 10)
+  local itemMapBefore = Item.GetAllIds(true)
+  scopeOwner.Apply()
+  check(Item.GetAllIds(true) == itemMapBefore, "an owner's apply keeps other datatypes' ID maps")
+  equal(Quest.Get(id, "requiredLevel"), 11, "the applied datatype recomposed")
+
+  local lurker = Lib.GetRegistrar("SetSuiteLurker")
+  lurker.RegisterRuntimeCorrection("Quest", "unapplied", function() return { [id] = { [4] = 77 } } end, 10)
+  local questMapAfterApply = Quest.GetAllIds(true)
+  registrar.Set("Item", "poke-item", { [6948] = { [1] = "Hearthstone (poked)" } })
+  check(Quest.GetAllIds(true) == questMapAfterApply,
+    "an unapplied registration does not make another owner's write republish its datatype")
+  check(Quest.Get(id, "requiredLevel") ~= 77, "an unapplied registration stays uncomposed")
+  registrar.Set("Item", "poke-item", nil)
+  registry.UnregisterCorrection("SetSuiteScopeOwner", "Quest", "scoped")
+  registry.ApplyRegisteredCorrections("SetSuiteScopeOwner")
+
+  -- Guard rails.
+  check(not pcall(function() registrar.Set("Quest", "bad", 5) end), "non-table rows are rejected")
+  check(not pcall(function() registrar.Set("Quest", "", {}) end), "an empty slot name is rejected")
+  fnOwner.RegisterRuntimeCorrection("Quest", "fn-slot", function() return {} end, 11)
+  check(not pcall(function() Lib.Corrections.Set("SetSuiteFnOwner", "Quest", "fn-slot", {}) end),
+    "a data write into a function-shaped slot is refused")
+  registry.UnregisterCorrection("SetSuiteFnOwner", "Quest", "fn-slot")
+  registry.ApplyRegisteredCorrections("SetSuiteFnOwner")
+
+  -- A Static entry sharing a name is refused on write AND on the nil path — Set must never
+  -- delete a Static registration in a data slot's place.
+  registry.RegisterCorrection("SetSuiteStaticOwner", "Quest", "static-slot", function() return {} end, 5)
+  check(not pcall(function() Lib.Corrections.Set("SetSuiteStaticOwner", "Quest", "static-slot", {}) end),
+    "a data write into a Static correction name is refused")
+  check(not pcall(function() Lib.Corrections.Set("SetSuiteStaticOwner", "Quest", "static-slot", nil) end),
+    "Set(nil) refuses a Static entry rather than removing it")
+  equal(#registry.Select({ owner = "SetSuiteStaticOwner", datatype = "Quest", dynamic = false }), 1,
+    "the Static entry survives both refusals")
+  registry.UnregisterCorrection("SetSuiteStaticOwner", "Quest", "static-slot")
+
+  check(Lib.SetCorrection == Lib.Corrections.Set, "LibQuestieDB.SetCorrection aliases Corrections.Set")
+
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
 -- Ported correction files match Questie's
 --------------------------------------------------------------------------------------------
 

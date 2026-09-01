@@ -77,3 +77,9 @@ local objectIdsByName = ObjectDB.IdsByName("Old Lion Statue")
 ---@type QuestieTDBQuestId[]?
 local questIdsByName = QuestDB.IdsByName("Sharptalon's Claw")
 ObjectDB.BuildNameIndex()
+
+-- Data-shaped write-through corrections publish immediately; nil removes the slot.
+---@type boolean
+local setChanged = registrar.Set("Npc", "darkmoon-location", { [14828] = { [1] = "Gelvas Grimegate" } })
+---@type boolean
+local setRemoved = LibQuestieDB.SetCorrection("ConsumerAddon", "Npc", "darkmoon-location", nil)

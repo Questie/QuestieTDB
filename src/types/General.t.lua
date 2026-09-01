@@ -67,7 +67,9 @@
 ---@field owner string
 ---@field datatype QuestieTDBCanonicalDatatype
 ---@field name string
----@field func QuestieTDBCorrectionProvider
+---@field func QuestieTDBCorrectionProvider? Provider of a function-shaped entry; absent on a data slot.
+---@field data QuestieTDBCorrections? Rows of a data slot written through Set; absent on a function entry.
+---@field materialized QuestieTDBCorrections? Memoized provider result; cleared by the owner's own apply.
 ---@field loadOrder number
 ---@field sequence integer Registration order used to break load-order ties.
 ---@field dynamic boolean
@@ -81,6 +83,7 @@
 ---@field RegisterCorrection fun(datatype: QuestieTDBDatatype, name: string, func: QuestieTDBCorrectionProvider, loadOrder?: number): QuestieTDBCorrectionEntry
 ---@field RegisterRuntimeCorrection fun(datatype: QuestieTDBDatatype, name: string, func: QuestieTDBCorrectionProvider, loadOrder?: number): QuestieTDBCorrectionEntry
 ---@field Apply fun(): integer
+---@field Set fun(datatype: QuestieTDBDatatype, name: string, rows: QuestieTDBCorrections?): boolean Write-through data slot; nil rows removes it.
 
 ---@class QuestieTDBCorrectionsAPI
 ---@field OWNER string QuestieTDB's correction owner name.
@@ -91,5 +94,6 @@
 ---@field UnregisterCorrection fun(owner: string, datatype: QuestieTDBDatatype, name: string): boolean
 ---@field GetRegistrar fun(owner: string): QuestieTDBRegistrar
 ---@field ApplyRegisteredCorrections fun(owner?: string): integer
+---@field Set fun(owner: string, datatype: QuestieTDBDatatype, name: string, rows: QuestieTDBCorrections?): boolean Write-through data slot; nil rows removes it.
 ---@field GetProvenance fun(datatype: QuestieTDBDatatype, id: number, key: string|integer): string?
 ---@field GetOwners fun(): string[]

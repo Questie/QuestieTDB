@@ -14,7 +14,7 @@
 --
 -- Ported from Getters/GetterDB/Corrections/Corrections.lua, which already solved load-order
 -- namespacing, collision reporting, and holding corrections behind functions so the data
--- materialises only on apply. Two things changed:
+-- materialises only on apply. Three things changed:
 --
 --   * Registration is owner-scoped. Third-party addons declare `## Dependencies: Questie` and
 --     therefore register *after* Questie has already applied, so applying has to be
@@ -23,6 +23,10 @@
 --     cascaded: the displaced entry could take the slot the next registrant wanted, silently
 --     reordering things. Entries are kept in a list and sorted by (loadOrder, registration
 --     sequence), so a collision is reported and resolved without moving anyone.
+--   * Consumers get a data-shaped write-through form, `Set(owner, datatype, name, rows)`: no
+--     provider function, no explicit apply, no loadOrder. Function entries memoize their
+--     materialization (re-run only on their own owner's apply), and recomposition is scoped
+--     to the written datatype — which is what makes write-through affordable (ADR 0009).
 
 local _, LibQuestieDB = ...
 
@@ -75,6 +79,12 @@ registry.provenance = {}
 
 --- Set true to log when one owner overrides another on the same field.
 registry.debug = false
+
+--- datatype -> true while a Dynamic Correction change awaits recomposition. An owner's apply,
+--- a withdrawal, and `Set` mark it; the next flush consumes it — so only the touched datatypes
+--- rebuild, and only their read caches and Name indexes drop. Registration alone marks
+--- nothing: an unapplied entry must not make another owner's write republish its datatype.
+registry.dirty = {}
 
 local registrationSequence = 0
 
@@ -187,6 +197,7 @@ function registry.UnregisterCorrection(owner, datatype, name)
     if entry.datatype == canonical and entry.name == name then
       table.remove(record.entries, index)
       record.pending = true
+      if entry.dynamic then registry.dirty[canonical] = true end
       return true
     end
   end
@@ -204,6 +215,7 @@ function registry.GetRegistrar(owner)
       return registry.RegisterRuntimeCorrection(owner, datatype, name, func, loadOrder)
     end,
     Apply = function() return registry.ApplyRegisteredCorrections(owner) end,
+    Set = function(datatype, name, rows) return registry.Set(owner, datatype, name, rows) end,
   }
 end
 
@@ -351,27 +363,49 @@ end
 -- Composing the Correction Overlay
 --------------------------------------------------------------------------------------------
 
---- Rebuild the composed view for the given owners.
+--- Rebuild the composed view for the given datatypes.
 ---
---- Recomposition is O(total corrections) but runs only on init and setting changes, and it is
---- **idempotent by construction** — it rebuilds from the registry instead of accumulating into
---- it. That is what makes a withdrawn correction actually disappear, and it composes cleanly
---- with freezing, because each recomposition produces fresh objects.
-local function recompose(flavor)
+--- Recomposition is **idempotent by construction** — it rebuilds from the registry instead of
+--- accumulating into it. That is what makes a withdrawn correction actually disappear, and
+--- what lets a data-shaped `Set` hand a contested field back to whatever layer sits beneath.
+---
+--- Two scopes keep it cheap enough to run write-through:
+---
+---   * only the datatypes passed in rebuild — an Item write leaves the composed Quest, Npc,
+---     and Object views, their read caches, and their shared ID maps untouched;
+---   * a function-shaped entry materializes once and the result is memoized on the entry.
+---     Re-applying an owner clears only that owner's memos, so its providers run again while
+---     every other owner's layer reuses its last materialization. QuestieTDB's own Dynamic
+---     sets are session-constant, which is what makes reuse safe — and what keeps a consumer
+---     write from re-materializing the multi-thousand-row SoD base sets on every change.
+---@param flavor table? Active flavor, from LibQuestieDB.flavor
+---@param datatypes table<string, true> Datatypes to rebuild
+local function recompose(flavor, datatypes)
   local normalize = LibQuestieDB.Meta.normalize
-  local composed, provenance = {}, {}
+
+  for datatype in pairs(datatypes) do
+    registry.composed[datatype] = nil
+    registry.provenance[datatype] = nil
+  end
 
   for _, owner in ipairs(registry.appliedOrder) do
     for _, entry in ipairs(registry.Select({ owner = owner, dynamic = true })) do
-      if registry.EntryApplies(entry, flavor) then
-        local corrections = entry.func()
+      if datatypes[entry.datatype] and registry.EntryApplies(entry, flavor) then
+        local corrections = entry.data
+        if corrections == nil then
+          corrections = entry.materialized
+          if corrections == nil then
+            corrections = entry.func()
+            entry.materialized = corrections
+          end
+        end
         if type(corrections) == "table" then
           local datatype = entry.datatype
           local meta = LibQuestieDB.Meta[datatype]
-          local byType = composed[datatype]
-          if not byType then byType = {}; composed[datatype] = byType end
-          local provByType = provenance[datatype]
-          if not provByType then provByType = {}; provenance[datatype] = provByType end
+          local byType = registry.composed[datatype]
+          if not byType then byType = {}; registry.composed[datatype] = byType end
+          local provByType = registry.provenance[datatype]
+          if not provByType then provByType = {}; registry.provenance[datatype] = provByType end
 
           for id, fields in pairs(corrections) do
             -- Rows are created only when a write survives validation. In particular, a
@@ -431,22 +465,46 @@ local function recompose(flavor)
     end
   end
 
-  registry.composed = composed
-  registry.provenance = provenance
 end
 
 --- Sentinel for "the overlay sets this field to nil", which a plain nil cannot express.
 registry.NIL = setmetatable({}, { __tostring = function() return "<overlay nil>" end })
 
---- Install the composed view onto the Entity globals and drop stale cache entries.
-local function publish()
+--- Install the freshly composed datatypes onto their Entity globals, dropping exactly those
+--- entities' caches, ID maps, and Name indexes. Untouched datatypes keep theirs.
+local function publish(datatypes)
   local config = LibQuestieDB.config
   for _, entityType in ipairs(config.entityTypes) do
-    local entity = LibQuestieDB[entityType.name]
-    if entity then
-      entity.SetOverlay(registry.composed[entityType.name] or {})
+    if datatypes[entityType.name] then
+      local entity = LibQuestieDB[entityType.name]
+      if entity then
+        entity.SetOverlay(registry.composed[entityType.name] or {})
+      end
     end
   end
+end
+
+--- Fix an owner's rank on its first apply or first `Set`. Moving a re-applying owner to the
+--- end would let a consumer state refresh hoist one owner's whole layer above corrections
+--- registered later, inverting the documented QuestieTDB < Questie < third-party order.
+local function rankOwner(owner)
+  for _, applied in ipairs(registry.appliedOrder) do
+    if applied == owner then return end
+  end
+  registry.appliedOrder[#registry.appliedOrder + 1] = owner
+end
+
+--- Recompose and publish every datatype marked dirty since the last flush. A no-op when
+--- nothing is dirty, so an apply that changed nothing drops no caches.
+local function flushDirty()
+  if next(registry.dirty) == nil then return end
+  local datatypes = registry.dirty
+  registry.dirty = {}
+  -- Both read modes publish their flavor as LibQuestieDB.flavor (source.lua, baked.lua), so
+  -- entry-level expansion filters compose identically in both — reading only the Source
+  -- backend here left them inert in Baked mode.
+  recompose(LibQuestieDB.flavor, datatypes)
+  publish(datatypes)
 end
 
 --- Apply pending Corrections.
@@ -455,6 +513,9 @@ end
 --- visible: recomposition always includes every live layer. This is required by load order,
 --- not a convenience — a third-party addon declares `## Dependencies: Questie` and therefore
 --- registers after Questie has already applied.
+---
+--- Refreshing an owner re-runs that owner's provider functions; every other owner's layer
+--- reuses its memoized materialization.
 ---@param owner string? One owner, or every pending owner when omitted
 function registry.ApplyRegisteredCorrections(owner)
   local owners
@@ -469,24 +530,108 @@ function registry.ApplyRegisteredCorrections(owner)
   end
 
   for _, name in ipairs(owners) do
-    -- Owner rank is fixed at first apply; a re-apply refreshes the owner's layer in place.
-    -- Moving a re-applying owner to the end would let a consumer state refresh hoist one
-    -- owner's whole layer above corrections registered later, inverting the documented
-    -- QuestieTDB < Questie < third-party order.
-    local ranked = false
-    for _, applied in ipairs(registry.appliedOrder) do
-      if applied == name then ranked = true; break end
-    end
-    if not ranked then registry.appliedOrder[#registry.appliedOrder + 1] = name end
+    rankOwner(name)
     registry.owners[name].pending = false
+    -- This owner is the layer being refreshed: forget its materializations so its providers
+    -- run again, and mark its datatypes for recomposition.
+    for _, entry in ipairs(registry.owners[name].entries) do
+      if entry.dynamic then
+        entry.materialized = nil
+        registry.dirty[entry.datatype] = true
+      end
+    end
   end
 
-  -- Both read modes publish their flavor as LibQuestieDB.flavor (source.lua, baked.lua), so
-  -- entry-level expansion filters compose identically in both — reading only the Source
-  -- backend here left them inert in Baked mode.
-  recompose(LibQuestieDB.flavor)
-  publish()
+  flushDirty()
   return #owners
+end
+
+--------------------------------------------------------------------------------------------
+-- Data-shaped corrections
+--------------------------------------------------------------------------------------------
+
+--- Write one correction as data and publish it immediately: no provider function, no
+--- separate `Apply()`, no loadOrder — within an owner, slots take effect in creation order.
+---
+--- Each (owner, datatype, name) is a slot. Writing it again replaces the previous rows in
+--- place; `rows = nil` removes the slot, so whatever an earlier layer put underneath shows
+--- through again; `{}` keeps the slot but contributes nothing. Precedence follows the same
+--- rules as the function-shaped API: the owner's rank is fixed by its first write or apply.
+---
+--- Data-shaped because consumer corrections are small state-driven tables — the
+--- multi-megabyte-literal reason the function shape exists does not apply to them. The
+--- function shape remains for exactly that reason.
+---@param owner string
+---@param datatype string "Quest" | "Npc" | "Item" | "Object"
+---@param name string Slot name, unique per owner and datatype
+---@param rows table? id -> fieldIndex -> value; nil removes the slot
+---@return boolean changed False only when removing a slot that does not exist
+function registry.Set(owner, datatype, name, rows)
+  if type(owner) ~= "string" or owner == "" then
+    error("Set: owner must be a non-empty string", 2)
+  end
+  local canonical = canonicalDatatype(datatype)
+  if not canonical then
+    error("Set: datatype must be one of Quest, Npc, Item, Object — got " .. tostring(datatype), 2)
+  end
+  if type(name) ~= "string" or name == "" then
+    error("Set: name must be a non-empty string", 2)
+  end
+  if rows ~= nil and type(rows) ~= "table" then
+    error("Set: rows must be a table of id -> fieldIndex -> value, or nil to remove the slot", 2)
+  end
+
+  local record = registry.owners[owner]
+  local entry
+  if record then
+    -- Match on datatype+name across ALL of the owner's entries: a Static or function-shaped
+    -- Dynamic entry sharing the name must be refused below, never silently shadowed — or,
+    -- worse, removed by the nil path in the data slot's place.
+    for _, existing in ipairs(record.entries) do
+      if existing.datatype == canonical and existing.name == name then
+        entry = existing
+        break
+      end
+    end
+  end
+  if entry and entry.func then
+    error(("Set: '%s' is already a function-shaped %s correction of owner '%s'; update its " ..
+      "captured state and re-apply instead of mixing in a data write"):format(name, canonical, owner), 2)
+  end
+
+  if rows == nil then
+    if not entry then return false end
+    for index, existing in ipairs(record.entries) do
+      if existing == entry then
+        table.remove(record.entries, index)
+        break
+      end
+    end
+    registry.dirty[canonical] = true
+  elseif entry then
+    entry.data = rows
+    registry.dirty[canonical] = true
+  else
+    record = ownerRecord(owner)
+    registrationSequence = registrationSequence + 1
+    record.entries[#record.entries + 1] = {
+      owner = owner,
+      datatype = canonical,
+      name = name,
+      data = rows,
+      loadOrder = registrationSequence * 0.001,
+      sequence = registrationSequence,
+      dynamic = true,
+    }
+    registry.dirty[canonical] = true
+  end
+
+  rankOwner(owner)
+  flushDirty()
+  -- Everything this owner holds — data slots and any function entries — is composed now, so a
+  -- Set-only owner must not linger "pending" and be re-flushed by a no-arg apply.
+  record.pending = false
+  return true
 end
 
 --- Which owner supplied the winning value for a field, for bug reports.
@@ -517,6 +662,7 @@ function registry.Reset()
   registry.appliedOrder = {}
   registry.composed = {}
   registry.provenance = {}
+  registry.dirty = {}
   registrationSequence = 0
 end
 
