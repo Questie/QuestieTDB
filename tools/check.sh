@@ -241,7 +241,7 @@ command_string() {
 
 # `wait -n -p` already requires Bash 5.1, which provides this clock without GNU `date`.
 now_ms() {
-    local epoch_realtime="$EPOCHREALTIME"
+    local epoch_realtime="${EPOCHREALTIME/,/.}"
     local seconds="${epoch_realtime%%.*}"
     local milliseconds="${epoch_realtime#*.}"
     milliseconds="${milliseconds:0:3}"
