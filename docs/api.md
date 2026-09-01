@@ -108,6 +108,39 @@ The hashmap and list answer over the **composed view**: an entity a Dynamic Corr
 is readable, enumerable, and exists — all three or none. Treat both returns as read-only;
 they are shared, not copies.
 
+### `Entity.IdsByName(name) -> list | nil`
+
+The reverse of the `name` getter: every composed id whose **current** name equals `name`
+exactly, ascending, or `nil` when none does. Current means what `Entity.name(id)` returns right
+now — the active locale, a Correction outranking a translation, an overlay-added entity present —
+because the index behind it is built from those reads and from nothing else.
+
+```lua
+ObjectDB.IdsByName("Old Lion Statue")    --> { 31 }
+ObjectDB.IdsByName("Battered Chest")     --> { 2843, 2844, 2849, ... }   ascending
+ObjectDB.IdsByName("No Such Name")       --> nil
+```
+
+The index is built on the first call and dropped whenever the cache is — a Correction apply, a
+locale change, `InvalidateCache` — then rebuilt from scratch on the next call, never patched.
+That is what makes a withdrawn Correction or an old locale unable to leave a stale name behind.
+
+Building is a full pass over every entity's name: **23 ms for Vanilla's 6,666 objects** from a
+cold cache in a live client, 3.5 µs per id, and it warms the name field cache for every id —
+about 2.2 MB of heap for that type, kept for the session
+([`client-metadata-probes.md` §9](./client-metadata-probes.md)). Mists' 20,326 objects are
+unmeasured; expect roughly three times that. `Entity.BuildNameIndex()` does that pass on
+demand — a no-op when the index already exists — so a consumer can pay for it where a stall is
+invisible, its own init or a settings toggle, rather than on a hover path. After an
+invalidation the next `IdsByName` call pays it again, and a per-entity
+`InvalidateCache(datatype, id)` counts: it drops the whole index, because it can change a name.
+
+Like `GetAllIds`, the returned list is shared and read-only.
+
+This exists for the case where the client hands you a name and no id — a hovered world object.
+It is not a substitute for a consumer's own bookkeeping: an addon that already knows which ids
+it registered something for should index those, not scan the database (ADR 0008).
+
 ### `Entity.GetRaw(id, key) -> value`
 
 Base data only, bypassing the Correction Overlay and localization. For tooling and
@@ -399,5 +432,7 @@ LibQuestieDB.InvalidateCache("Quest")      -- one type ("quest" works too)
 LibQuestieDB.InvalidateCache()             -- everything
 ```
 
-Applying corrections and changing locale already invalidate what they need to. This is for a
-consumer that mutates state QuestieTDB cannot see.
+Applying corrections and changing locale already invalidate what they need to, the Name index
+included. This is for a consumer that mutates state QuestieTDB cannot see. Every form drops the
+Name index — the per-entity one too, since a single entity's name can change — so a consumer
+invalidating in a loop pays one index rebuild on its next `IdsByName`.

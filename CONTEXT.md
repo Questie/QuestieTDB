@@ -124,6 +124,12 @@ The optional localization layer wrapping selected Named getters for the active l
 The Correction Overlay outranks it: a corrected field skips its lookup (ADR 0003 D8).
 _Avoid_: Localization DB, translation patch
 
+**Name index**:
+The per-type reverse of the `name` getter — current composed name to ascending entity ids —
+built lazily from reads, dropped with the Decoded field cache and rebuilt rather than patched
+(ADR 0008). Exists for a consumer handed a name and no id, such as a hovered world object.
+_Avoid_: Reverse lookup, name map, objectNameLookup
+
 ### Verification
 
 **Equivalence sweep**:

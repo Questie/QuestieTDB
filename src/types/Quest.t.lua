@@ -43,6 +43,8 @@
 ---@field GetRaw fun(id: QuestieTDBQuestId, key: QuestieTDBQuestField|integer): any Read base data without Corrections or localization.
 ---@field Exists fun(id: QuestieTDBQuestId): boolean Test the composed view.
 ---@field InvalidateCache fun(id?: QuestieTDBQuestId) Drop cached fields for one quest or every quest.
+---@field BuildNameIndex fun() Build the Name index now (a no-op when it exists) instead of on the first IdsByName call; a full pass over every quest name.
+---@field IdsByName fun(name: string): QuestieTDBQuestId[]? Every composed quest ID whose current name equals `name` exactly, ascending, or nil; shared and read-only.
 QuestDB = {}
 
 ---Returns the composed ID list, or a read-only lookup map when `hashmap` is true.

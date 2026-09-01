@@ -18,6 +18,8 @@
 --     and mutating one never reaches the next (ADR 0003 D10).
 --   * Composed enumeration: an entity added by a runtime Dynamic Correction is readable,
 --     enumerable and existing in both modes, and withdrawal removes all three (ADR 0003 D7).
+--   * The Name index: `IdsByName` answers identically for every name either mode reads, so
+--     the reverse of `name` is proven alongside `name` itself (ADR 0008).
 --   * Baked localization shape: every locale's segment of every localized field decodes, and
 --     list-typed fields remain tables (ADR 0003 D3). Source mode deliberately has no l10n
 --     store, so this is a baked-side invariant sweep; the cross-mode comparison itself runs
@@ -200,6 +202,31 @@ local function compareNamedForms(report, Lib, entityName, sourceEntity, bakedEnt
           entityName, id, name, tostring(sourceOwner), tostring(bakedOwner))
       end
     end
+  end
+end
+
+--- The Name index is a public read form too (ADR 0008): both modes must answer name for
+--- name. Every name either mode reads is looked up once — reached through the ids, so a name
+--- only one mode knows still gets its bucket compared — at the cost of one index build per
+--- mode and one lookup per distinct name. Buckets are counted into the report so the summary
+--- line shows the form was exercised rather than silently skipped, and a missing method is a
+--- divergence, not a skip: the form is part of the contract.
+local function compareNameIndex(report, entityName, sourceEntity, bakedEntity, ids)
+  if type(sourceEntity.IdsByName) ~= "function" or type(bakedEntity.IdsByName) ~= "function" then
+    diverge(report, "NAME-INDEX-MISSING", "%s IdsByName is not a function in both modes", entityName)
+    return
+  end
+  local seen = {}
+  local function compareName(name)
+    if name == nil or seen[name] then return end
+    seen[name] = true
+    report.nameBuckets = (report.nameBuckets or 0) + 1
+    compareValues(report, "NAME-INDEX-", sourceEntity.IdsByName(name), bakedEntity.IdsByName(name),
+      "%s IdsByName(%q)", entityName, name)
+  end
+  for _, id in ipairs(ids) do
+    compareName(sourceEntity.name(id))
+    compareName(bakedEntity.name(id))
   end
 end
 
@@ -439,6 +466,7 @@ local function comparePass(report, flavor, tocPath, label, clientOpts, idStride,
 
       compareIdRange(report, entityType.name, sourceEntity, bakedEntity, meta, checkIds)
       compareNamedForms(report, Lib, entityType.name, sourceEntity, bakedEntity, meta, checkIds)
+      compareNameIndex(report, entityType.name, sourceEntity, bakedEntity, sourceIds)
       compareUnknownIds(report, entityType.name, sourceEntity, bakedEntity, meta, sourceIds)
 
       if not idStride then
@@ -497,13 +525,20 @@ local function selfProof(tocPath, sourceLib, bakedMap)
   local report = { errors = 0, fields = 0, entities = 0, byKind = {}, silent = true }
   local meta = bakedLib.Meta.Quest
   compareIdRange(report, "Quest", sourceLib.Quest, bakedLib.Quest, meta, { mutatedId })
+  compareNameIndex(report, "Quest", sourceLib.Quest, bakedLib.Quest, { mutatedId })
   bakedMap[mutatedKey] = originalValue
 
-  -- One mutation, two read forms: the sweep checks every field through Get AND GetRaw, so the
-  -- injected divergence must be detected exactly once per form and nowhere else.
-  if report.errors ~= 2 or (report.byKind.STRING or 0) ~= 1 or (report.byKind["RAW-STRING"] or 0) ~= 1 then
-    io.write(("  SELF-PROOF FAILED: injected one string mutation at %s, detected %d divergences\n")
-      :format(tostring(mutatedKey), report.errors))
+  -- One mutation, three read forms: Get and GetRaw each see it once, and the Name index sees
+  -- it twice — the id leaves the old name's bucket and appears under the new one — so the
+  -- injected divergence must be detected exactly that often and nowhere else.
+  local nameIndexHits = 0
+  for kind, count in pairs(report.byKind) do
+    if kind:find("^NAME%-INDEX%-") then nameIndexHits = nameIndexHits + count end
+  end
+  if report.errors ~= 4 or (report.byKind.STRING or 0) ~= 1 or (report.byKind["RAW-STRING"] or 0) ~= 1
+     or nameIndexHits ~= 2 then
+    io.write(("  SELF-PROOF FAILED: injected one string mutation at %s, detected %d divergences (%d in the Name index)\n")
+      :format(tostring(mutatedKey), report.errors, nameIndexHits))
     return 1
   end
   return 0
@@ -565,9 +600,9 @@ local function compareFlavor(flavor)
   for kind, count in pairs(report.byKind) do kinds[#kinds + 1] = kind .. "=" .. count end
   table.sort(kinds)
 
-  say(("[%s] %s: %d entities, %d fields, %d l10n reads (%d locale-shaped), %d season fields, %d divergences%s%s, %.1fs")
+  say(("[%s] %s: %d entities, %d fields, %d l10n reads (%d locale-shaped), %d name buckets, %d season fields, %d divergences%s%s, %.1fs")
     :format(report.errors == 0 and "PASS" or "FAIL", flavor.name, report.entities, report.fields,
-            report.l10nChecked or 0, report.l10nShapeVaries or 0, seasonChecks, report.errors,
+            report.l10nChecked or 0, report.l10nShapeVaries or 0, report.nameBuckets or 0, seasonChecks, report.errors,
             #kinds > 0 and (" [" .. table.concat(kinds, " ") .. "]") or "",
             opts.selfProof and (proofFailures == 0 and ", self-proof ok" or ", SELF-PROOF FAILED") or "",
             os.clock() - started))

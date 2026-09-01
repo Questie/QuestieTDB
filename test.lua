@@ -2061,6 +2061,144 @@ suite("read-contract", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Name index (ADR 0008)
+--------------------------------------------------------------------------------------------
+
+suite("name-index", function()
+  local tocPath = config.tocPath(config.flavorByName.Vanilla)
+  if not lib.fileExists(tocPath) then
+    io.write("  SKIP name-index: ", tocPath, " not generated\n")
+    return
+  end
+
+  client.reset()
+  client.install({ expansion = "Classic", locale = "enUS" })
+  emulator.install(config.addonName, emulator.parse(tocPath))
+  local Lib = emulator.loadAddon(tocPath, config.addonName)
+  local Object = Lib.Object
+
+  local function contains(list, id)
+    for i = 1, #(list or {}) do if list[i] == id then return true end end
+    return false
+  end
+
+  -- Every entity type has a name field, so every Entity global carries the index.
+  for _, entityType in ipairs(config.entityTypes) do
+    local entity = Lib[entityType.name]
+    check(type(entity.IdsByName) == "function", entityType.name .. ".IdsByName")
+    check(type(entity.BuildNameIndex) == "function", entityType.name .. ".BuildNameIndex")
+  end
+
+  -- A lookup is exact, over the composed view, and never raises.
+  equal(Object.IdsByName("Old Lion Statue"), { 31 }, "a unique name resolves to its one id")
+  equal(Object.IdsByName("old lion statue"), nil, "the match is exact, not case-folded")
+  equal(Object.IdsByName("No Such Object Name"), nil, "an unknown name is nil, never an empty list")
+  equal(Object.IdsByName(nil), nil, "a nil name is nil")
+  equal(Object.IdsByName(31), nil, "a non-string is nil, not coerced")
+  check(pcall(Object.IdsByName, {}), "a bad argument never raises")
+
+  -- The index is exactly the reads: every name the getter returns has a bucket holding
+  -- precisely the ids that read it, ascending, each once. This is the whole contract.
+  local ids = Object.GetAllIds()
+  local expected = {}
+  for i = 1, #ids do
+    local name = Object.name(ids[i])
+    if name then
+      local bucket = expected[name]
+      if bucket then bucket[#bucket + 1] = ids[i] else expected[name] = { ids[i] } end
+    end
+  end
+  local names, mismatches, sharedName = 0, 0, nil
+  for name, bucket in pairs(expected) do
+    names = names + 1
+    if not lib.deepEqual(Object.IdsByName(name), bucket) then mismatches = mismatches + 1 end
+    if #bucket > 1 and (not sharedName or #bucket > #expected[sharedName]) then sharedName = name end
+  end
+  check(names > 2000, "the fixture has a real number of distinct names (" .. names .. ")")
+  equal(mismatches, 0, "every bucket equals the ids that read that name, ascending")
+  check(sharedName ~= nil and #Object.IdsByName(sharedName) == #expected[sharedName],
+    "a name shared by many objects lists all of them: " .. tostring(sharedName))
+
+  -- Composed enumeration through the index (ADR 0003 D7): an entity a Dynamic Correction
+  -- adds is discoverable by name, and withdrawing it removes it. The index is rebuilt from
+  -- scratch after the apply, never patched, so nothing stale can survive.
+  local addedId = 4999999
+  Lib.Corrections.RegisterRuntimeCorrection("AddingAddon", "Object", "add-object",
+    function() return { [addedId] = { [1] = "Dynamically Added Object" } } end, 10)
+  Lib.Corrections.ApplyRegisteredCorrections("AddingAddon")
+  equal(Object.IdsByName("Dynamically Added Object"), { addedId }, "an added entity is discoverable by name")
+  Lib.Corrections.UnregisterCorrection("AddingAddon", "Object", "add-object")
+  Lib.Corrections.ApplyRegisteredCorrections("AddingAddon")
+  equal(Object.IdsByName("Dynamically Added Object"), nil, "a withdrawn entity disappears from the index")
+
+  -- A corrected name is the name the index answers to; the pre-correction name keeps no entry.
+  Lib.Corrections.RegisterRuntimeCorrection("FixingAddon", "Object", "rename",
+    function() return { [31] = { [1] = "Renamed Lion Statue" } } end, 10)
+  Lib.Corrections.ApplyRegisteredCorrections("FixingAddon")
+  equal(Object.IdsByName("Renamed Lion Statue"), { 31 }, "a corrected name resolves")
+  equal(Object.IdsByName("Old Lion Statue"), nil, "the pre-correction name no longer resolves")
+  Lib.Corrections.UnregisterCorrection("FixingAddon", "Object", "rename")
+  Lib.Corrections.ApplyRegisteredCorrections("FixingAddon")
+  equal(Object.IdsByName("Old Lion Statue"), { 31 }, "withdrawing the rename restores the base name")
+
+  -- BuildNameIndex is the explicit warm-up: it does the pass now and is a no-op afterwards —
+  -- the same bucket table comes back, which is also the documented shared-return contract.
+  Lib.InvalidateCache("Object")
+  Object.BuildNameIndex()
+  local built = Object.IdsByName("Old Lion Statue")
+  equal(built, { 31 }, "an explicitly built index answers")
+  Object.BuildNameIndex()
+  check(Object.IdsByName("Old Lion Statue") == built, "a second build is a no-op: the same bucket comes back")
+
+  -- Both InvalidateCache branches drop the index: a rebuilt index hands out a new bucket with
+  -- the same content. The single-id branch is its own code path, so it is proven separately.
+  Lib.InvalidateCache("Object", 31)
+  local rebuilt = Object.IdsByName("Old Lion Statue")
+  check(rebuilt ~= built and lib.deepEqual(rebuilt, { 31 }),
+    "InvalidateCache(datatype, id) drops the index and the next lookup rebuilds it")
+  Lib.InvalidateCache()
+  check(Object.IdsByName("Old Lion Statue") ~= rebuilt, "InvalidateCache() drops the index too")
+
+  -- A Correction that deletes the name (the `{}` idiom, the overlay's NIL sentinel) removes
+  -- the id from the index rather than filing it under a sentinel or an empty string.
+  Lib.Corrections.RegisterRuntimeCorrection("FixingAddon", "Object", "unname",
+    function() return { [31] = { [1] = {} } } end, 10)
+  Lib.Corrections.ApplyRegisteredCorrections("FixingAddon")
+  equal(Object.name(31), nil, "the deleted name reads nil")
+  equal(Object.IdsByName("Old Lion Statue"), nil, "a deleted name has no bucket")
+  Lib.Corrections.UnregisterCorrection("FixingAddon", "Object", "unname")
+  Lib.Corrections.ApplyRegisteredCorrections("FixingAddon")
+  equal(Object.IdsByName("Old Lion Statue"), { 31 }, "withdrawing the deletion restores the name")
+
+  -- The index follows the locale: after SetLocale the translated name resolves and the
+  -- English one does not, and switching back restores it. Corrections outrank translations
+  -- here exactly as they do for the getter, because the index is built from it. The German
+  -- name is read from the getter rather than spelled out, so the check is about the index
+  -- agreeing with the read, not about one fixture string.
+  if not Lib.l10n.IsAvailable() then
+    io.write("  SKIP name-index locale checks: artifact generated with --no-l10n\n")
+  else
+    Lib.l10n.SetLocale("deDE")
+    local german = Object.name(31)
+    check(german ~= nil and german ~= "Old Lion Statue", "deDE: object 31 has a translation to index by")
+    check(contains(Object.IdsByName(german), 31), "deDE: the translated name resolves")
+    check(not contains(Object.IdsByName("Old Lion Statue"), 31), "deDE: the enUS name no longer reaches the id")
+    Lib.Corrections.RegisterRuntimeCorrection("FixingAddon", "Object", "rename",
+      function() return { [31] = { [1] = "Corrected In Every Locale" } } end, 10)
+    Lib.Corrections.ApplyRegisteredCorrections("FixingAddon")
+    equal(Object.IdsByName("Corrected In Every Locale"), { 31 }, "deDE: a corrected name outranks the translation")
+    check(not contains(Object.IdsByName(german), 31), "deDE: the translation keeps no stale entry")
+    Lib.Corrections.UnregisterCorrection("FixingAddon", "Object", "rename")
+    Lib.Corrections.ApplyRegisteredCorrections("FixingAddon")
+    Lib.l10n.SetLocale("enUS")
+    equal(Object.IdsByName("Old Lion Statue"), { 31 }, "enUS: switching back restores the base name")
+    check(not contains(Object.IdsByName(german), 31), "enUS: the deDE name no longer reaches the id")
+  end
+
+  client.reset()
+end)
+
+--------------------------------------------------------------------------------------------
 -- Equivalence negative control
 --------------------------------------------------------------------------------------------
 
@@ -2117,6 +2255,8 @@ suite("lua-types", function()
     GetAllIds = true,
     Exists = true,
     InvalidateCache = true,
+    BuildNameIndex = true,
+    IdsByName = true,
   }
   local typeFiles = {}
   local typeFilePipe = assert(io.popen(
@@ -2159,6 +2299,7 @@ suite("lua-types", function()
     equal(#duplicateFields, 0, entity.name .. " type has no duplicate getter declarations")
     for _, method in ipairs({
       "GetByIndex", "Get", "GetAll", "GetRaw", "GetAllIds", "Exists", "InvalidateCache",
+      "BuildNameIndex", "IdsByName",
     }) do
       check(declared[method] == true,
         entity.name .. " type declares the common method " .. method)

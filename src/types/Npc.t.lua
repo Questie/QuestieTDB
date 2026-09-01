@@ -22,6 +22,8 @@
 ---@field GetRaw fun(id: QuestieTDBNpcId, key: QuestieTDBNpcField|integer): any Read base data without Corrections or localization.
 ---@field Exists fun(id: QuestieTDBNpcId): boolean Test the composed view.
 ---@field InvalidateCache fun(id?: QuestieTDBNpcId) Drop cached fields for one NPC or every NPC.
+---@field BuildNameIndex fun() Build the Name index now (a no-op when it exists) instead of on the first IdsByName call; a full pass over every NPC name.
+---@field IdsByName fun(name: string): QuestieTDBNpcId[]? Every composed NPC ID whose current name equals `name` exactly, ascending, or nil; shared and read-only.
 NpcDB = {}
 
 ---Deprecated compatibility getter. Health is no longer stored.

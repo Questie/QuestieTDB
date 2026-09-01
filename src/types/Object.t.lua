@@ -14,6 +14,8 @@
 ---@field GetRaw fun(id: QuestieTDBObjectId, key: QuestieTDBObjectField|integer): any Read base data without Corrections or localization.
 ---@field Exists fun(id: QuestieTDBObjectId): boolean Test the composed view.
 ---@field InvalidateCache fun(id?: QuestieTDBObjectId) Drop cached fields for one object or every object.
+---@field BuildNameIndex fun() Build the Name index now (a no-op when it exists) instead of on the first IdsByName call; a full pass over every object name.
+---@field IdsByName fun(name: string): QuestieTDBObjectId[]? Every composed object ID whose current name equals `name` exactly, ascending, or nil; shared and read-only.
 ObjectDB = {}
 
 ---Returns the composed ID list, or a read-only lookup map when `hashmap` is true.

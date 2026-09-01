@@ -1,8 +1,8 @@
 -- src/read/shared.lua
 --
 -- Everything the two read modes have in common: named getters, the generic getter, the
--- Decoded field cache, Correction Overlay lookup, field defaults, and the fresh-per-read
--- value contract.
+-- Decoded field cache, Correction Overlay lookup, field defaults, the fresh-per-read
+-- value contract, and the Name index.
 --
 -- The seam between Source mode and Baked mode is `readField` and `getAllIds`, plus one
 -- optional fast path — `tableChunk`, which Baked mode provides because it already holds the
@@ -372,11 +372,65 @@ function shared.CreateEntity(meta, backend)
     return unionMap[id] == true
   end
 
+  ------------------------------------------------------------------------------------------
+  -- Name index (ADR 0008)
+  ------------------------------------------------------------------------------------------
+  --
+  -- The reverse of the `name` getter: current composed name -> ascending ids. Built from the
+  -- same `get` every read goes through, so it answers exactly what `Entity.name(id)` would —
+  -- the active locale, a Correction outranking a translation, an overlay-added entity present.
+  --
+  -- Built lazily on the first lookup, or explicitly through `BuildNameIndex` so a consumer
+  -- chooses when to pay for the full pass. Never patched: any invalidation drops it and the
+  -- next lookup rebuilds from scratch, which is what makes a withdrawn Correction or an old
+  -- locale unable to leave a stale name or a duplicate id behind. Only a type with a `name`
+  -- field carries one — today all four do.
+
+  local nameFieldIndex = keys.name
+  local nameIndex
+
+  if nameFieldIndex then
+    --- Build the index now, or do nothing if it already exists. A full pass over every
+    --- entity's name: one cold read per id — 23 ms for Vanilla's 6,666 objects in a live
+    --- client (docs/client-metadata-probes.md §9) — and it warms the name field cache for
+    --- every id. Call it where a stall is invisible, never on a hover path.
+    function entity.BuildNameIndex()
+      if nameIndex then return end
+      local index = {}
+      local ids = entity.GetAllIds()
+      for i = 1, #ids do
+        local id = ids[i]
+        local name = get(id, nameFieldIndex)
+        if type(name) == "string" then
+          local bucket = index[name]
+          if bucket then
+            bucket[#bucket + 1] = id
+          else
+            index[name] = { id }
+          end
+        end
+      end
+      nameIndex = index
+    end
+
+    --- Every composed id whose current name equals `name` exactly, ascending, or nil when
+    --- none does — an unknown name reads nil like an unknown id, never an empty list, and a
+    --- non-string never raises. The list is shared and read-only, like `GetAllIds`.
+    function entity.IdsByName(name)
+      if type(name) ~= "string" then return nil end
+      if not nameIndex then entity.BuildNameIndex() end
+      return nameIndex[name]
+    end
+  end
+
   --- Drop cached values so the next read recomposes. Called when the overlay changes, and
   --- available to a consumer that registers Corrections late.
   ---
-  --- `get` closes over `cache`, so it is cleared in place rather than rebound.
+  --- `get` closes over `cache`, so it is cleared in place rather than rebound. The Name index
+  --- goes with it either way: a single entity's invalidation can change a name too, and the
+  --- index is rebuilt rather than patched.
   function entity.InvalidateCache(id)
+    nameIndex = nil
     if id == nil then
       for key in pairs(cache) do cache[key] = nil end
       return

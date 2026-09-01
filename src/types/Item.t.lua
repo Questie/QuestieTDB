@@ -23,6 +23,8 @@
 ---@field GetRaw fun(id: QuestieTDBItemId, key: QuestieTDBItemField|integer): any Read base data without Corrections or localization.
 ---@field Exists fun(id: QuestieTDBItemId): boolean Test the composed view.
 ---@field InvalidateCache fun(id?: QuestieTDBItemId) Drop cached fields for one item or every item.
+---@field BuildNameIndex fun() Build the Name index now (a no-op when it exists) instead of on the first IdsByName call; a full pass over every item name.
+---@field IdsByName fun(name: string): QuestieTDBItemId[]? Every composed item ID whose current name equals `name` exactly, ascending, or nil; shared and read-only.
 ItemDB = {}
 
 ---Returns the composed ID list, or a read-only lookup map when `hashmap` is true.

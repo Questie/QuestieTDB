@@ -179,3 +179,31 @@ session; a `/reload` clears it.)
 `Quest.Get(nil, "name")` raises `table index is nil` from the decoded-field cache
 (`src/read/shared.lua:180`) — `Get` validates the field argument but not the id. Public
 getters should reject a nil/non-numeric id cleanly instead of erroring mid-cache.
+
+## 9. Name index — MEASURED (build 69547, Vanilla baked mode, ADR 0008)
+
+`Entity.BuildNameIndex()` from a fully cold cache (`LibQuestieDB.InvalidateCache()` then
+`collectgarbage("collect")` first), one run each, `debugprofilestop()`:
+
+| Type | Composed ids | Cold build | Per id |
+| --- | ---: | ---: | ---: |
+| Object | 6,666 | **23.2 ms** | 3.5 µs |
+| Quest | 4,257 | 19.7 ms | 4.6 µs |
+| Npc | 10,122 | 45.9 ms | 4.5 µs |
+| Item | 14,899 | 91.5 ms | 6.1 µs |
+
+The Object build grew the Lua heap by **2,262 KB** — the index plus the warmed name field
+cache for every object (one cache row per id), which is the cost a consumer keeps for the
+session. A second `BuildNameIndex()` is a no-op at 0.8 µs; `IdsByName` is 0.20 µs per call
+warm. Per-id cost runs above the 2.7 µs cold *read* from §6 because a build also creates the
+cache row and the bucket for each id.
+
+Correctness, live: the index equals a full scan of the reads for all 2,490 distinct object
+names (0 mismatches; largest bucket `Campfire`, 672 ids), and equals Questie's legacy
+`l10n.objectNameLookup` — the compiled-database scan it replaces — name for name and id for id:
+2,490 names, 0 differing, 0 missing on either side. A runtime Correction adding object
+4999999 made it discoverable by name with `Exists` true; renaming object 31 moved it between
+buckets with provenance naming the owner; withdrawing both restored the base name.
+`SetLocale("deDE")` rebuilt to `Alte Löwenstatue` and dropped the English bucket, and
+`enUS` restored it. (The smoke owner `NameIndexSmoke` persists, empty, for the session; a
+`/reload` clears it.)

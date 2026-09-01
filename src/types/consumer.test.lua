@@ -70,3 +70,10 @@ local removed = LibQuestieDB.Corrections.UnregisterCorrection(
 ---@type QuestieTDBCanonicalDatatype?
 local canonical = LibQuestieDB.Corrections.CanonicalDatatype("quest")
 LibQuestieDB.Corrections.debug = true
+
+-- The Name index answers in the entity's own ID alias, or nil when no entity has the name.
+---@type QuestieTDBObjectId[]?
+local objectIdsByName = ObjectDB.IdsByName("Old Lion Statue")
+---@type QuestieTDBQuestId[]?
+local questIdsByName = QuestDB.IdsByName("Sharptalon's Claw")
+ObjectDB.BuildNameIndex()

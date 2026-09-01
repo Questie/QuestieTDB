@@ -140,6 +140,11 @@ lost by deleting the compiler and its neighbours.
       rendering. Shape and measured behaviour in ADR 0004 §5a.
 - [ ] **Delete `l10n:Initialize`'s writes into `questData`/`npcData`/`itemData`/`objectData`**
       — the six localized fields only. UI translations, zone and category lookups stay.
+- [ ] **Delete `l10n:PostBoot`'s object-name scan and `l10n.objectNameLookup`.** Quest lines on
+      a hovered object come from a set `QuestieTooltips` fills at its own `o_` tooltip
+      registrations; the optional Object ID line reads `LibQuestieDB.Object.IdsByName` behind
+      `enableTooltipsObjectID`, warmed at init and on toggle. Step by step in
+      `QUESTIE-OBJECT-NAME-INDEX.md` at the repo root; the decision is ADR 0008.
 - [ ] **Bind `LibQuestieDB.ObjectiveFirst` before deleting the old correction files.** These
       five objective-order tables are consumer hints rather than entity fields, so the compiler
       differential cannot detect losing them. Source/Baked flavor parity is tracked by
