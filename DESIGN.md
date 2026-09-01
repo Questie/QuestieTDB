@@ -63,7 +63,7 @@ truth for the data model.**
 | `QuestieDB.lua` semantic layer — `GetQuest`, `IsDoable`, `IsComplete`, tag info, race/class masks | Game logic, not storage |
 | Support **logic** — `zoneDB.lua`, `QuestieXP.lua`, `dropDB.lua` | `QuestieLoader` modules with runtime behaviour; they read data from the lib |
 | Blacklists — `hiddenQuests`, `questItemBlacklist`, `questNPCBlacklist`, `HardcoreBlacklist` | Hiding is consumer policy, not a database fact |
-| Policy corrections — `QuestieEvent`, `SeasonOfDiscovery`, `ContentPhases`, `IsleOfQuelDanas` | Read `Questie.db`; moving them would invert the dependency |
+| Consumer-selected corrections — display suppression, calendar/location state, phases, settings, projections, caches, asynchronous Item repair | Depend on Questie-owned runtime state or policy; moving them would invert the dependency |
 | `Localization/Translations/*` and `l10n("...")` | UI text |
 | `lookupZones`, `lookupQuestCategories`, `lookupOverrides` | Zone/category names, not entity data |
 | `Constants.lua`, `MeetingStones.lua` | Small, and Questie's own concepts |
@@ -118,10 +118,16 @@ meaningless.
 
 > **QuestieTDB owns what is true about game entities. Questie owns what to do with that truth.**
 
-A Correction fixes what is *true* — a wrong coordinate, a missing prerequisite. Deciding an
-entity should not be shown is consumer policy. Quest 7462 genuinely exists in
-`quest_template`; that Questie hides it as a duplicate is Questie's decision, and another
-consumer may legitimately want it.
+A Correction fixes what is *true* — a wrong coordinate, a missing prerequisite. QuestieTDB
+may select a Dynamic Correction only from provider-owned data or generic character/game facts
+it determines itself: class, race, faction, expansion, and season. A Correction selected or
+constructed from consumer-owned runtime state or policy belongs to that consumer and is
+registered through its owner-scoped registrar.
+
+Display suppression is one example: quest 7462 genuinely exists in `quest_template`; that
+Questie hides it as a duplicate is Questie's decision, and another consumer may legitimately
+want it. Calendar/location representation, Questie phases and settings, projections and
+caches, and asynchronous Item repair follow the same ownership rule.
 
 ## Schema
 
@@ -294,8 +300,10 @@ Two categories, declared by the author. There is no automatic promotion, and the
 nothing that can misfire.
 
 - **Static Correction** — folded in during Generation. Never shipped to end users.
-- **Dynamic Correction** — conditional, or otherwise not knowable before Generation.
-  Applied at query time through the **Correction Overlay**.
+- **Dynamic Correction** — applied at query time through the **Correction Overlay**.
+  QuestieTDB-owned sets may depend only on provider-owned data or generic class, race, faction,
+  expansion, and season facts QuestieTDB determines itself. Consumer-owned state and policy
+  stay in that consumer's owner-scoped layer.
 
 `GetterDB/Corrections/Corrections.lua` is the starting point and most of it survives: the
 registry, per-expansion load-order namespaces, collision handling, corrections held behind
@@ -346,9 +354,8 @@ visible. Recomposition always includes every live layer.
 
 Precedence is two-level — outer by owner rank, inner by `loadOrder` within an owner. **An
 owner's rank is fixed at its first apply; re-applying refreshes that owner's layer in
-place, never re-ranks it** (the original "last applied wins" let any owner-scoped refresh —
-including `ApplyParameterized` — hoist a whole layer above consumer corrections; caught in
-review, fixed). First-apply order follows load order naturally
+place, never re-ranks it** (the original "last applied wins" let an owner-scoped state refresh
+hoist a whole layer above consumer corrections; caught in review, fixed). First-apply order follows load order naturally
 (`QuestieTDB` < `Questie` < third-party), and must be documented, because `loadOrder` changes
 meaning from "global sequence" to "sequence within an owner".
 
@@ -535,18 +542,21 @@ downloaded** so switching test clients needs no re-bootstrap.
 
 ### Measured sizes
 
-Current artifacts, post-ADR-0003 wire changes (quantized-decimal spelling accounts for the
-growth over the pre-ADR build; every flavor remains 4–6% under the sibling `-pi`
-implementation's equivalents):
+Deterministic post-ADR-0006 artifacts, measured after all-flavor regeneration. Byte counts are
+decimal bytes; each flavor ZIP is its standalone package.
 
-| Flavor | Raw bytes |
-| --- | ---: |
-| Vanilla | 25,430,676 |
-| TBC | 42,444,718 |
-| Wrath | 60,482,670 |
-| Cata | 96,049,939 |
-| Mists | 117,410,435 |
-| **All five** | **341,818,438** |
+| Flavor | Raw TOC bytes | Standalone ZIP bytes |
+| --- | ---: | ---: |
+| Vanilla | 21,860,697 | 6,516,908 |
+| TBC | 36,472,056 | 10,358,374 |
+| Wrath | 52,455,587 | 14,418,554 |
+| Cata | 84,071,181 | 22,290,243 |
+| Mists | 102,430,533 | 27,059,866 |
+| **All five** | **297,290,054** | **80,643,945** |
+
+Raw coordinate storage reduced the five TOCs by **44,528,384 bytes (13.03%)** from the
+341,818,438-byte post-ADR-0003 baseline. The combined all-flavor package is **79,909,948
+bytes**; it is a separate ZIP, not the 80,643,945-byte sum of the five standalone packages.
 
 Historical prototype measurements, retained for comparison rather than overwritten:
 
@@ -624,7 +634,9 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
    with two permanent backends it never retires.
 5. **Compiled/TOC differential.** Migration-only, and it has a **deadline**: the compiler is
    the reference implementation, so before removing it, freeze its output as a committable
-   golden snapshot (per-id hashes, not full values).
+   golden snapshot (per-id hashes, not full values). A tool-only adapter projects raw base
+   coordinates onto the compiler grid for this comparison while leaving Dynamic Corrections
+   raw, matching Questie's runtime override path (ADR 0006).
 6. **Fake backend + fixture.** An in-memory implementation of the 12-function seam, seeded
    from a few hundred entities checked into Questie. Default for Questie's 15 DB-touching unit
    tests: hermetic, fast, no network. Affordable only because the seam is 12 functions wide.
@@ -634,7 +646,7 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
 
 ## Open risks and gates
 
-### 1. TOC size in the live client — CLEARED at 85 MB; recheck open at 118 MB
+### 1. TOC size in the live client — CLEARED at 85 MB; recheck open at 102.4 MB
 
 Previously the blocking gate. **Resolved by prior in-client testing**: both `toc-database` and
 `Getters` were tested deeply against real clients at full size and load fast, with no parse or
@@ -642,10 +654,10 @@ memory problem at the 20–85 MB range. The merged Vanilla artifact (25.4 MB) is
 live-validated end-to-end on build 69109
 ([`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md) §7b).
 
-The post-merge Mists artifact is 117.7 MB — above the historically cleared range — so one
-Mists-client acceptance session (load time, metadata reads, memory, one non-enUS locale)
-remains an open item; see `docs/merge-program.md` future work. This is a regression check,
-not a return to an undecided storage architecture.
+The post-ADR-0006 Mists artifact is 102,430,533 bytes (102.4 MB decimal, 97.7 MiB) — still
+above the historically cleared range. Run one Mists-client acceptance session (load time,
+metadata reads, memory, one non-enUS locale); see `docs/merge-program.md` future work. This is
+a regression check, not a return to an undecided storage architecture.
 
 This also settles the l10n-in-TOC decision — keeping all nine locales in the store is
 validated, not assumed. Splitting l10n out remains a known mitigation if the artifact grows
@@ -733,11 +745,11 @@ so hand-writing buys readability at the cost of the only mechanism that catches 
 
 Checks already performed, recorded so they are not repeated.
 
-**Event corrections do not depend on display settings — no boundary violation.** All three
-uses of `Questie.db.profile.showEventQuests` in `Holidays/QuestieEvent.lua` gate only `print`
-statements. The correction data itself (`npcDataOverrides`, `hiddenQuests`) is conditioned on
-calendar date and Darkmoon Faire location — real game state. `QuestieEvent` is already a clean
-Dynamic Correction and needs no untangling.
+**Consumer-owned runtime state stays at the consumer boundary.** Calendar/location
+representation, display suppression, phases and settings, projections and caches, and
+asynchronous Item repair are Questie-owned even when they ultimately construct entity-field
+Corrections. Questie registers those values through its generic owner-scoped registrar; no
+consumer-specific dispatch or state model belongs in QuestieTDB.
 
 **The mutation hazard is aliasing, not copying.** `QuestieDB.GetQuest` assigns
 `QO[stringKey] = rawdata[intKey]`, so the Quest object holds a *reference* to the query

@@ -2,11 +2,11 @@
 --
 -- The module surface Questie's correction files expect.
 --
--- The correction files under `src/corrections/<Expansion>/` are **byte-identical copies** of
--- Questie's. That is deliberate: they are ~10 MB of hand-curated data, and rewriting their
--- preambles would be 10 MB of opportunities to introduce a transcription error, plus a
--- permanent merge conflict with upstream. Re-syncing is a file copy, run by
+-- The correction files under `src/corrections/<Expansion>/` preserve Questie's bytes exactly
+-- outside the provider/consumer ownership exclusions explicitly declared by
 -- `tools/port-corrections.lua`.
+-- That fidelity avoids transcription errors across ~10 MB of hand-curated data and keeps
+-- upstream re-syncs mechanical: copy each file, then apply only the declared exclusions.
 --
 -- The price is this file: scoped stand-ins for `QuestieLoader`, the handful of Questie
 -- modules those files import, and the icon constants their providers read later. The loader is

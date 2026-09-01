@@ -55,13 +55,12 @@ identical runtime API and differ only in key spelling.
 | `string` | raw text, unquoted | `## X-2-1: Sharptalon's Claw` |
 | `table` | **Lua table source**, decoded by `loadstring("return " .. value)` | `## X-2-2: {{12676},nil,{16305}}` |
 
-**Coordinates are stored on Questie's compiler grid** (ADR 0003, Decision 1): every spawn and
-waypoint coordinate is quantized `floor(c * 40.90) / 40.90` by the shared normalizer before
-serialization, with the compiler's sentinel rules — `{-1,-1}` round-trips through the zero
-pair, a pair quantizing to zero collapses to `{-1,-1}`, a spawn's phase survives only beside a
-non-zero pair, and waypoint rows never carry a third element. "Match Questie exactly" means
-matching compiled reads, not source literals; the long decimals this produces are spelling,
-not precision loss.
+**Coordinates preserve their raw authored or Derived Pass values** (ADR 0006). The same
+shortest-exact number serializer handles them, so ordinary source values such as `36.43` remain
+short while calculated coordinates retain only the digits needed to reconstruct the same Lua
+number. Tuple shape stays canonical: explicit `{-1,-1}` instance sentinels have two elements,
+spawn phase `0` is omitted, nonzero phases survive, and waypoint rows never carry a third
+element. `{0,0}` and sub-grid pairs remain real coordinates rather than compiler sentinels.
 
 Table values are Lua source, so the serializer *is* the storage format. Two properties are
 load-bearing rather than cosmetic:
@@ -283,22 +282,17 @@ not the exception, they were the one nested case anyone had checked. Questie's `
 
 String slots are **not** padded: they are written `value or ""` and read back as nil for `""`.
 
-Coordinates remain a separate, deliberate nested normalization (ADR 0003 D1). The compiler's
-remaining nested behaviours — turning a nil objective text into `""` and the like — stay
-unreproduced, and are now *measured* as unreproduced rather than assumed harmless. The
-differential accounts for every remaining divergence; current counts live in
-[`questie-handover.md`](./questie-handover.md). ADR 0003 Decision 1 resolved the
-tension this section used to carry — the consumer contract is what Questie's ~290 call sites
-observe, which is *compiled* reads, so spawn and waypoint coordinates reproduce the
-compiler's 40.90 quantization and its sentinel rules (see Value encoding above). The
-compiler's other nested normalizations — turning a nil objective text into `""` and the like
-— remain unreproduced: no call-site-visible behavior depends on them the way availability
-math depends on coordinates, and there a text store is deliberately more faithful to the
-source.
+Coordinate tuple shape remains a deliberate nested normalization, but `x` and `y` retain raw
+precision (ADR 0006). The compiler's remaining nested behaviours — turning a nil objective text
+into `""` and the like — stay unreproduced and are measured rather than assumed harmless. The
+migration differential accounts for every remaining divergence; current counts live in
+[`questie-handover.md`](./questie-handover.md). The tool-only Compiler comparison adapter
+reproduces the old 40.90 grid where the compiler oracle requires it without imposing that loss
+on production storage or reads.
 
 ## Round-trip requirement
 
 For every entity, every field: decoding the stored value must reproduce the source value under
-the semantics above — for coordinate-bearing structures, the *quantized* source value, since
-quantization is part of normalization. This is verification layer 2 in `DESIGN.md` and is a
-required CI gate, not a smoke test.
+the semantics above. Coordinate-bearing structures reproduce raw authored or Derived Pass
+values exactly; legacy grid projection belongs only to the compiler differential. This is
+verification layer 2 in `DESIGN.md` and is a required CI gate, not a smoke test.

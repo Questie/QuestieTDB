@@ -2173,6 +2173,9 @@ function QuestieNPCFixes:Load()
         [11814] = { -- Kali Remik
             [npcKeys.questStarts] = {6069,8358},
         },
+        [11833] = { -- Rahauro
+            [npcKeys.waypoints] = {},
+        },
         [11836] = { -- Captured Rabid Thistle Bear
             [npcKeys.spawns] = {[zoneIDs.DARKSHORE] = {{49.1,29.89},{49.95,34.58},{39,63.09},{38.62,77},{39.28,68.07}}},
             [npcKeys.zoneID] = zoneIDs.DARKSHORE,
@@ -3710,69 +3713,5 @@ function QuestieNPCFixes:LoadFactionFixes()
         return npcFixesHorde
     else
         return npcFixesAlliance
-    end
-end
-
----Updates the NPC spawns to be either in Elwynn Forest or Mulgore
----@param isInMulgore boolean
----@return table<number, any>
-function QuestieNPCFixes:LoadDarkmoonFixes(isInMulgore)
-    local npcKeys = QuestieDB.npcKeys
-    local zoneIDs = ZoneDB.zoneIDs
-
-    if isInMulgore then
-        return {
-            [14828] = { -- Gelvas Grimegate <Darkmoon Faire Ticket Redemption>
-                [npcKeys.spawns] = {[zoneIDs.MULGORE] = {{37.24,37.67}}},
-                [npcKeys.zoneID] = zoneIDs.MULGORE,
-            },
-            [14829] = { -- Yebb Neblegear
-                [npcKeys.spawns] = {[zoneIDs.MULGORE] = {{37.47,39.56}}},
-                [npcKeys.zoneID] = zoneIDs.MULGORE,
-            },
-            [14832] = { -- Kerri Hicks <The Strongest Woman Alive!>
-                [npcKeys.spawns] = {[zoneIDs.MULGORE] = {{37.82,39.81}}},
-                [npcKeys.zoneID] = zoneIDs.MULGORE,
-            },
-            [14833] = { -- Chronos <He Who Never Forgets!> (might be 37.2,37.7)
-                [npcKeys.spawns] = {[zoneIDs.MULGORE] = {{36.17,35.15}}}, -- might be 37.2,37.7
-                [npcKeys.zoneID] = zoneIDs.MULGORE,
-            },
-            [14841] = { -- Rinling
-                [npcKeys.spawns] = {[zoneIDs.MULGORE] = {{37.09,37.17}}},
-                [npcKeys.zoneID] = zoneIDs.MULGORE,
-            },
-            [14871] = { -- Morja
-                [npcKeys.spawns] = {[zoneIDs.MULGORE] = {{35.92,35.27}}},
-                [npcKeys.zoneID] = zoneIDs.MULGORE,
-            },
-        }
-    else
-        return {
-            [14828] = { -- Gelvas Grimegate <Darkmoon Faire Ticket Redemption>
-                [npcKeys.spawns] = {[zoneIDs.ELWYNN_FOREST] = {{41.5,68.87}}},
-                [npcKeys.zoneID] = zoneIDs.ELWYNN_FOREST,
-            },
-            [14829] = { -- Yebb Neblegear
-                [npcKeys.spawns] = {[zoneIDs.ELWYNN_FOREST] = {{40.17,69.53}}},
-                [npcKeys.zoneID] = zoneIDs.ELWYNN_FOREST,
-            },
-            [14832] = { -- Kerri Hicks <The Strongest Woman Alive!>
-                [npcKeys.spawns] = {[zoneIDs.ELWYNN_FOREST] = {{40.49,69.93}}},
-                [npcKeys.zoneID] = zoneIDs.ELWYNN_FOREST,
-            },
-            [14833] = { -- Chronos <He Who Never Forgets!> (might be 41.5,68.9)
-                [npcKeys.spawns] = {[zoneIDs.ELWYNN_FOREST] = {{43.61,70.84}}}, -- might be 41.5,68.9
-                [npcKeys.zoneID] = zoneIDs.ELWYNN_FOREST,
-            },
-            [14841] = { -- Rinling
-                [npcKeys.spawns] = {[zoneIDs.ELWYNN_FOREST] = {{41.71,70.72}}},
-                [npcKeys.zoneID] = zoneIDs.ELWYNN_FOREST,
-            },
-            [14871] = { -- Morja
-                [npcKeys.spawns] = {[zoneIDs.ELWYNN_FOREST] = {{43.34,70.28}}},
-                [npcKeys.zoneID] = zoneIDs.ELWYNN_FOREST,
-            },
-        }
     end
 end

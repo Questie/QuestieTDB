@@ -25,10 +25,10 @@ never begin or end with client-trimmable bytes — the client strips edge whites
 metadata values (measured; see `docs/client-metadata-probes.md`).
 _Avoid_: Combined parts, split value
 
-**Coordinate grid**:
-The `floor(coord * 40.90) / 40.90` quantization applied to spawn and waypoint coordinates
-during normalization, reproducing what Questie's compiled reads observe (ADR 0003 D1).
-_Avoid_: Rounding, precision trimming
+**Raw coordinate**:
+An authored or Derived Pass spawn/waypoint coordinate preserved without legacy compiler-grid
+quantization in both Source and Baked mode (ADR 0006).
+_Avoid_: Unquantized coordinate, full-precision coordinate
 
 **Generation**:
 The offline process that turns raw entity data plus Static Corrections into a TOC metadata store.
@@ -68,20 +68,16 @@ A Correction folded into the TOC metadata store during Generation. Never shipped
 _Avoid_: Compile-time correction, baked correction
 
 **Dynamic Correction**:
-A Correction whose applicability cannot be known before Generation — because it depends on
-runtime state such as faction, season, expansion, or user settings. Always applied at query time.
+A Correction applied at query time. QuestieTDB-owned Dynamic Corrections may depend only on
+provider-owned data or generic character/game facts QuestieTDB determines itself: class, race,
+faction, expansion, and season. A consumer registers its own Dynamic Corrections for
+consumer-owned runtime state or policy.
 _Avoid_: Runtime correction, conditional fix
 
-**Gated Dynamic function**:
-A correction function that registers only while its named runtime condition holds — the
-SoD and Titan Reforged season gates. An unrecognized gate name stays closed.
+**Gated Dynamic set**:
+A group of Dynamic Correction functions registered only while its runtime condition holds.
+SoD and Titan Reforged use file-level season gates.
 _Avoid_: Conditional registration, feature flag
-
-**Parameterized Correction**:
-A correction function never applied automatically because it needs a runtime fact the
-database does not own (the Darkmoon Faire location). Applied only through
-`Corrections.ApplyParameterized` with the consumer-supplied argument.
-_Avoid_: Manual correction, callback fix
 
 **Correction Overlay**:
 The composed query-time layer of Dynamic Corrections that entity reads resolve through.
@@ -152,6 +148,12 @@ source mode agree with each other while both diverge from upstream — the class
 retired `-pi` sibling's independence caught during the merge program.
 _Avoid_: Baseline (that word belongs to the validators), reference dump
 
+**Compiler comparison adapter**:
+The migration-only projection that converts QuestieTDB base coordinates to Questie's legacy
+12-bit read values immediately before the compiler differential. It never runs in Generation
+or runtime reads and retires with the compiler oracle (ADR 0006).
+_Avoid_: Production quantizer, compatibility mode
+
 **Persona**:
 The emulator's mocked client identity — faction, race, class, season — letting gated and
 faction-differentiated correction branches execute offline.
@@ -161,10 +163,14 @@ _Avoid_: Test profile, mock player
 
 **QuestieTDB owns what is true about game entities. Questie owns what to do with that truth.**
 
-A Correction fixes what is true — a wrong coordinate, a missing prerequisite. Deciding that
-an entity should not be shown is a consumer policy, not a database fact, and belongs to the
-consumer. A quest that is a duplicate or unobtainable still exists, and another consumer may
-legitimately want it.
+A Correction fixes what is true — a wrong coordinate, a missing prerequisite. QuestieTDB may
+select a Dynamic Correction only from provider-owned data or generic character/game facts it
+determines itself: class, race, faction, expansion, and season. A Correction selected or
+constructed from consumer-owned runtime state or policy belongs to that consumer.
+
+Display suppression, consumer phase/settings state, projections and caches, and asynchronous
+repair of consumer data therefore remain consumer-owned. A quest that is duplicate or
+unobtainable still exists, and another consumer may legitimately want it.
 
 Questie is a consumer. Storage vocabulary stops here — Questie has no terms for Metadata
 fields, Chunked metadata values, or Generation.

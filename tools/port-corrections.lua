@@ -1,7 +1,7 @@
 #!/usr/bin/env lua
 -- tools/port-corrections.lua
 --
--- One-shot port of Questie's corrections into QuestieTDB.
+-- Mechanical port of Questie's corrections into QuestieTDB.
 --
 -- Two jobs, both mechanical on purpose:
 --
@@ -10,11 +10,10 @@
 --      under the mocked environment and dumping what they defined. Same discipline as the
 --      schema: derived, not transcribed, so it cannot quietly drift.
 --
---   2. **Copy the correction files verbatim.** They are 10 MB of hand-curated data, and
---      rewriting their preamble by hand would be 10 MB of opportunities to introduce a
---      transcription error. Instead `src/corrections/compat.lua` supplies the module surface
---      they expect, so the copies stay byte-identical to Questie's and re-syncing later is a
---      file copy.
+--   2. **Copy the correction files with declared ownership exclusions.** They are 10 MB of
+--      hand-curated data, so `src/corrections/compat.lua` supplies the module surface they
+--      expect and every non-excluded byte remains identical to Questie's. Exclusions remove
+--      whole functions whose selection belongs to the consumer rather than this provider.
 --
 -- Usage: lua tools/port-corrections.lua [path-to-questie]
 
@@ -243,11 +242,12 @@ end
 --- Which Questie correction files move here, and how each is classified.
 ---
 --- `static` names the functions whose output is data truth — foldable during Generation.
---- `dynamic` names the ones that branch on runtime state (faction, class, race, season,
---- calendar, realm flag) and therefore go through the Correction Overlay.
+--- `dynamic` names functions that depend only on provider-owned data or generic character and
+--- game facts QuestieTDB determines itself, and therefore go through the Correction Overlay.
 ---
---- Blacklists, ContentPhases and Holidays are deliberately absent: hiding an entity is
---- consumer policy, not a database fact. See DESIGN.md, the boundary rule.
+--- Blacklists, ContentPhases, Holidays and Titan quest tags are deliberately absent. Hiding,
+--- phase selection and semantic quest tags are consumer policy, not entity data. See
+--- DESIGN.md, the boundary rule.
 local FILES = {
   -- Era
   --
@@ -264,7 +264,9 @@ local FILES = {
     static = { "Load" }, dynamic = { "LoadFactionFixes" } },
   { src = "classicNPCFixes.lua", dst = "Era/classicNPCFixes.lua", datatype = "Npc",
     sourceExpansionOrder = 1, module = "QuestieNPCFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes" }, parameterized = { "LoadDarkmoonFixes" } },
+    dynamic = { "LoadFactionFixes" },
+    -- Questie owns this selection because it depends on consumer-owned calendar state.
+    ownershipExclusion = { module = "QuestieNPCFixes", functionName = "LoadDarkmoonFixes" } },
   { src = "classicItemFixes.lua", dst = "Era/classicItemFixes.lua", datatype = "Item",
     sourceExpansionOrder = 1, module = "QuestieItemFixes",
     static = { "Load" }, dynamic = { "LoadFactionFixes" } },
@@ -279,10 +281,14 @@ local FILES = {
   -- TBC
   { src = "tbcQuestFixes.lua", dst = "Tbc/tbcQuestFixes.lua", datatype = "Quest", minExpansion = 2,
     module = "QuestieTBCQuestFixes",
-    static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+    static = { "Load" }, dynamic = { "LoadFactionFixes" },
+    -- Questie owns this selection because it depends on consumer-owned content phase state.
+    ownershipExclusion = { module = "QuestieTBCQuestFixes", functionName = "LoadContentPhaseFixes" } },
   { src = "tbcNPCFixes.lua", dst = "Tbc/tbcNPCFixes.lua", datatype = "Npc", minExpansion = 2,
     module = "QuestieTBCNpcFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes" }, parameterized = { "LoadDarkmoonFixes" } },
+    dynamic = { "LoadFactionFixes" },
+    -- Questie owns this selection because it depends on consumer-owned calendar state.
+    ownershipExclusion = { module = "QuestieTBCNpcFixes", functionName = "LoadDarkmoonFixes" } },
   { src = "tbcItemFixes.lua", dst = "Tbc/tbcItemFixes.lua", datatype = "Item", minExpansion = 2,
     module = "QuestieTBCItemFixes",
     static = { "Load" }, dynamic = { "LoadFactionFixes" } },
@@ -291,27 +297,37 @@ local FILES = {
     static = { "Load" }, dynamic = { "LoadFactionFixes" } },
 
   -- Wotlk
-  --
-  -- `LoadTitanReforgedFixes` is Titan Reforged-only: `QuestieCorrections:Initialize` applies
-  -- it under `if Questie.IsTitanReforged` while the sibling `LoadFactionFixes` in the same
-  -- files runs ungated, so the gate must be per-function, not per-file. The runtime predicate
-  -- lives in src/corrections/register.lua (`variantActive`), mirroring upstream's detection
-  -- (`Modules/VersionCheck.lua:89`: a Wrath client with active season 109).
   { src = "wotlkQuestFixes.lua", dst = "Wotlk/wotlkQuestFixes.lua", datatype = "Quest", minExpansion = 3,
-    module = "QuestieWotlkQuestFixes",
-    static = { "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
-    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
+    module = "QuestieWotlkQuestFixes", static = { "Load" },
+    dynamic = { "LoadFactionFixes" } },
   { src = "wotlkNPCFixes.lua", dst = "Wotlk/wotlkNPCFixes.lua", datatype = "Npc", minExpansion = 3,
-    module = "QuestieWotlkNpcFixes",
-    static = { "LoadAutomatics", "Load" }, dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
-    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
+    module = "QuestieWotlkNpcFixes", static = { "LoadAutomatics", "Load" },
+    dynamic = { "LoadFactionFixes" } },
   { src = "wotlkItemFixes.lua", dst = "Wotlk/wotlkItemFixes.lua", datatype = "Item", minExpansion = 3,
     module = "QuestieWotlkItemFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadTitanReforgedFixes" },
-    gatedDynamic = { LoadTitanReforgedFixes = "TitanReforged" } },
+    dynamic = { "LoadFactionFixes" } },
   { src = "wotlkObjectFixes.lua", dst = "Wotlk/wotlkObjectFixes.lua", datatype = "Object", minExpansion = 3,
     module = "QuestieWotlkObjectFixes",
     static = { "Load" }, dynamic = { "LoadFactionFixes" } },
+
+  -- Titan Reforged
+  --
+  -- Questie's split compiler calls the `Load*` providers static because it builds a separate
+  -- Titan cache. QuestieTDB has one Wrath artifact, so every Titan function is Dynamic over
+  -- the Wrath base, exactly like SoD over Era. The Titan/ directory supplies one file-level
+  -- Wrath-plus-season-109 gate, and the declared order preserves base rows before overrides.
+  { src = "titanReforgedQuestFixes.lua", dst = "Titan/titanReforgedQuestFixes.lua",
+    datatype = "Quest", expansions = { Wotlk = true }, module = "TitanReforgedQuestFixes",
+    dynamic = { "LoadQuests", "LoadQuestOverrides" } },
+  { src = "titanReforgedNPCFixes.lua", dst = "Titan/titanReforgedNPCFixes.lua",
+    datatype = "Npc", expansions = { Wotlk = true }, module = "TitanReforgedNpcFixes",
+    dynamic = { "LoadNPCs", "LoadNPCOverrides", "LoadFactionNPCOverrides" } },
+  { src = "titanReforgedItemFixes.lua", dst = "Titan/titanReforgedItemFixes.lua",
+    datatype = "Item", expansions = { Wotlk = true }, module = "TitanReforgedItemFixes",
+    dynamic = { "LoadItems", "LoadItemOverrides" } },
+  { src = "titanReforgedObjectFixes.lua", dst = "Titan/titanReforgedObjectFixes.lua",
+    datatype = "Object", expansions = { Wotlk = true }, module = "TitanReforgedObjectFixes",
+    dynamic = { "LoadObjects" } },
 
   -- Cata
   { src = "cataQuestFixes.lua", dst = "Cata/cataQuestFixes.lua", datatype = "Quest", minExpansion = 4,
@@ -329,16 +345,16 @@ local FILES = {
 
   -- MoP
   { src = "mopQuestFixes.lua", dst = "MoP/mopQuestFixes.lua", datatype = "Quest", minExpansion = 5,
-    module = "QuestieMoPQuestFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadContentPhaseFixes" } },
+    module = "QuestieMoPQuestFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" },
+    ownershipExclusion = { module = "MopQuestFixes", functionName = "LoadContentPhaseFixes" } },
   { src = "mopNPCFixes.lua", dst = "MoP/mopNPCFixes.lua", datatype = "Npc", minExpansion = 5,
-    module = "QuestieMoPNpcFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadContentPhaseFixes" } },
+    module = "QuestieMoPNpcFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" },
+    ownershipExclusion = { module = "MopNpcFixes", functionName = "LoadContentPhaseFixes" } },
   { src = "mopItemFixes.lua", dst = "MoP/mopItemFixes.lua", datatype = "Item", minExpansion = 5,
     module = "QuestieMoPItemFixes", static = { "Load" } },
   { src = "mopObjectFixes.lua", dst = "MoP/mopObjectFixes.lua", datatype = "Object", minExpansion = 5,
-    module = "QuestieMoPObjectFixes", static = { "Load" },
-    dynamic = { "LoadFactionFixes", "LoadContentPhaseFixes" } },
+    module = "QuestieMoPObjectFixes", static = { "Load" }, dynamic = { "LoadFactionFixes" },
+    ownershipExclusion = { module = "MopObjectFixes", functionName = "LoadContentPhaseFixes" } },
 
   -- Season of Discovery: a Dynamic Correction set over the Era database, not a separate
   -- database. This is what lets Questie's parallel compiled SoD database be deleted.
@@ -385,6 +401,65 @@ local function correctionSourcePath(spec)
   return "Database/Corrections/" .. spec.src
 end
 
+---Remove one top-level method together with its immediately attached comment block.
+---The exact shape is intentionally strict so upstream drift cannot broaden an ownership
+---exclusion without an explicit port-tool change.
+---@param source string
+---@param exclusion table { module: string, functionName: string }
+---@param relativeSource string
+---@return string
+local function removeOwnershipExclusion(source, exclusion, relativeSource)
+  local lines = {}
+  for line in (source .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  if lines[#lines] == "" and source:sub(-1) == "\n" then lines[#lines] = nil end
+
+  local headerPattern = "^function%s+" .. exclusion.module .. "%s*:%s*" ..
+    exclusion.functionName .. "%s*%("
+  local headerIndex
+  for index, line in ipairs(lines) do
+    if line:find(headerPattern) then
+      if headerIndex then
+        error(("port: %s defines excluded function %s more than once (lines %d and %d)")
+          :format(relativeSource, exclusion.functionName, headerIndex, index), 0)
+      end
+      headerIndex = index
+    end
+  end
+  if not headerIndex then
+    error(("port: %s does not define excluded function %s exactly as expected")
+      :format(relativeSource, exclusion.functionName), 0)
+  end
+
+  local docStart = headerIndex
+  while docStart > 1 and lines[docStart - 1]:find("^%-%-") do
+    docStart = docStart - 1
+  end
+  if docStart == headerIndex then
+    error(("port: %s excluded function %s has no attached comment block")
+      :format(relativeSource, exclusion.functionName), 0)
+  end
+
+  local endIndex
+  for index = headerIndex + 1, #lines do
+    if lines[index]:find("^end%s*$") then
+      endIndex = index
+      break
+    end
+    if lines[index]:find("^function%s") then
+      error(("port: %s excluded function %s reaches another top-level function before end")
+        :format(relativeSource, exclusion.functionName), 0)
+    end
+  end
+  if not endIndex then
+    error(("port: %s excluded function %s has no column-0 closing end")
+      :format(relativeSource, exclusion.functionName), 0)
+  end
+
+  for index = endIndex, docStart, -1 do table.remove(lines, index) end
+  while lines[#lines] == "" do lines[#lines] = nil end
+  return table.concat(lines, "\n") .. (source:sub(-1) == "\n" and "\n" or "")
+end
+
 ---Copy one declared Questie source with a useful error when the pin no longer provides it.
 local function copyDeclaredSource(relativeSource, destination)
   local source = QUESTIE .. "/" .. relativeSource
@@ -411,8 +486,20 @@ end
 local function copyCorrections()
   local copied = 0
   for _, spec in ipairs(FILES) do
+    local relativeSource = correctionSourcePath(spec)
+    local sourcePath = QUESTIE .. "/" .. relativeSource
+    if not lib.fileExists(sourcePath) then
+      error("port: declared Questie source is missing: " .. relativeSource, 0)
+    end
+
+    local content = lib.readAll(sourcePath)
+    if spec.ownershipExclusion then
+      content = removeOwnershipExclusion(content, spec.ownershipExclusion, relativeSource)
+    end
+
     local dst = "src/corrections/" .. spec.dst
-    copyDeclaredSource(correctionSourcePath(spec), dst)
+    lib.mkdirp(dst:match("^(.*)/[^/]+$"))
+    lib.writeAll(dst, content)
     local derived = moduleNameOf(dst)
     if spec.module and spec.module ~= derived then
       print(("  note: %s registers as %s, not %s"):format(spec.dst, derived, spec.module))
@@ -446,13 +533,11 @@ local function renderManifest()
     }
     if spec.static then parts[#parts + 1] = "static = " .. serialize.value(spec.static) end
     if spec.dynamic then parts[#parts + 1] = "dynamic = " .. serialize.value(spec.dynamic) end
-    if spec.gatedDynamic then parts[#parts + 1] = "gatedDynamic = " .. serialize.value(spec.gatedDynamic) end
     if spec.expansions then parts[#parts + 1] = "expansions = " .. serialize.value(spec.expansions) end
     if spec.minExpansion then parts[#parts + 1] = "minExpansionOrder = " .. spec.minExpansion end
     if spec.sourceExpansionOrder then
       parts[#parts + 1] = "sourceExpansionOrder = " .. spec.sourceExpansionOrder
     end
-    if spec.parameterized then parts[#parts + 1] = "parameterized = " .. serialize.value(spec.parameterized) end
     if spec.options then parts[#parts + 1] = "options = " .. serialize.value(spec.options) end
     if spec.generated then parts[#parts + 1] = "generated = true" end
     out[#out + 1] = "  { " .. table.concat(parts, ", ") .. " },"

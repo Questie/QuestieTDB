@@ -6,6 +6,6 @@
 #
 # Refresh with: compiler_diff.py Wrath --update-baseline
 # entityType	field	class	count	reason
-Npc	spawns	VALUE	25	OPEN
+Npc	maxLevelHealth	VALUE	25406	POLICY
+Npc	minLevelHealth	VALUE	29601	POLICY
 Object	spawns	EMPTY_VS_ABSENT	24	POLICY
-Object	spawns	VALUE	13	OPEN

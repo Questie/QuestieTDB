@@ -19,11 +19,12 @@ stealing, ranked by recommendation.
   (`test/remaining_corrections.lua:146+` — explicit copied-file map, hard-fails on
   drift).
 
-**This repo today:** copies are byte-identical by convention and re-synced by
-`tools/port-corrections.lua`, but nothing *records* the pinned upstream commit or detects
-manual drift between syncs. The differential caught upstream-fidelity bugs this session;
-provenance manifests are the cheap standing version of that check. Recommended follow-up:
-emit a `PROVENANCE.tsv` from `port-corrections.lua` and byte-verify it in CI.
+**This repo today:** `QUESTIE_COMMIT` records the global pinned upstream Questie commit, and
+the `correction-fidelity` test detects byte drift against that pinned checkout outside
+`tools/port-corrections.lua`'s explicitly declared provider/consumer ownership exclusions.
+What remains missing from the retired design is finer-grained, per-file provenance: no manifest
+records each copied source path, byte count, and SHA-256. Recommended follow-up: emit a
+`PROVENANCE.tsv` from `port-corrections.lua` and byte-verify it in CI.
 
 ## 2. Draft-transaction publication
 

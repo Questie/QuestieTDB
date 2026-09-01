@@ -35,13 +35,17 @@ verified and committed:
 | --- | --- |
 | Probes | Client behavior measured: trimming, key case-folding, truncation boundary, `table.freeze` taint ownership, read-path costs |
 | Wire | Trim-safe chunking, case-folded key uniqueness, 40.90 coordinate quantization, shortest round-trip spelling, table-valued l10n segments |
-| Runtime | Fresh-per-read producers, corrections-over-l10n, existence gating, composed enumeration, season gating, `ApplyParameterized`, packed `GetAll`, ranged contract |
+| Runtime | Fresh-per-read producers, corrections-over-l10n, existence gating, composed enumeration, season gating, the parameterized API later retired by ADR 0007, packed `GetAll`, ranged contract |
 | CI | Publication gated on the full quality bar; terminal gates job |
 | Harness | B's verification methodology rebuilt: widened self-proving equivalence, byte-exact reconstruction gate, persona emulator, allocation guards |
 | Differential | Cross-implementation read-value comparison vs B — the acceptance instrument |
 | Correction gating | Era-manifest fix, per-expansion constants, per-function Titan Reforged gate — each exposed by the previous differential collapse |
 | Review + fixes | Fresh-eyes adversarial review; precedence stability, uniform `{}` delete, `GetByIndex` parity, baked-mode recompose flavor |
 | Harvest | A-vs-golden gate replacing the B oracle; `docs/pi/` idea and defect record |
+
+The Wire row records what landed during this historical program. ADR 0006 later superseded
+production coordinate quantization: QuestieTDB now stores raw coordinates, and a tool-only
+Compiler comparison adapter reproduces the old grid while that migration oracle remains.
 
 ## Defects found and fixed in this tree
 
@@ -102,12 +106,12 @@ File with `gh issue create` per `agents/issue-tracker.md`; drafts here so nothin
    (path, bytes, SHA-256, upstream commit) emitted by `tools/port-corrections.lua`, CI
    byte-verify. The adopt-soonest item in `pi/release-and-provenance.md`.
 2. **Fresh LuaLS consumer type stub** for the *current* API (packed `GetAll`,
-   `ApplyParameterized`, ranged `RequireContract`). Written new — never ported from B
+   owner-scoped Corrections, ranged `RequireContract`). Written new — never ported from B
    (`pi/consumer-tooling.md`).
-3. **Mists-scale in-client acceptance.** The largest artifact is now 117.7 MB; the
-   historical size gate was cleared at 85 MB. One session on a Mists client: load time,
-   `GetAddOnMetadata` behavior, memory. Extend the live battery to one non-enUS locale
-   there too.
+3. **Mists-scale in-client acceptance.** Raw-coordinate storage reduced the Mists artifact
+   from 117,410,435 to 102,430,533 bytes (97.7 MiB), still above the 85 MB live-tested range.
+   One session on a Mists client: load time, `GetAddOnMetadata` behavior, memory. Extend the
+   live battery to one non-enUS locale there too.
 4. **`*Pointers` semantics audit** (DESIGN open risk 2): confirm the ~22 Questie sites
    only test existence/iterate, making `GetAllIds(true)` a drop-in.
 5. **Per-validator positive+negative fixtures** (B's pattern, `pi/consumer-tooling.md`)

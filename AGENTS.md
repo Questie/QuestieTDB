@@ -6,14 +6,16 @@ offline generator that produces it.
 This repo is **implemented**: the generator, both runtime modes, corrections,
 localization, validators, CI, and release tooling all exist. `DESIGN.md` describes the
 architecture as designed; where it and the code disagree, read the ADRs in `docs/adr/` —
-`0003-merged-storage-and-read-contract.md` is the most recent contract statement.
+`0003-merged-storage-and-read-contract.md` remains the broad contract statement, with its
+coordinate decision superseded by `0006-raw-coordinate-storage.md`.
 
 ## Read first
 
 - `DESIGN.md` — architecture, locked decisions, rejected alternatives, phasing
 - `CONTEXT.md` — glossary
 - `docs/storage-format.md` — the on-disk TOC contract and nil/empty rules
-- `docs/adr/` — decision records; `0003` is the current contract
+- `docs/adr/` — decision records; `0003` is the broad contract and `0006` supersedes its
+  coordinate decision
 - `docs/merge-program.md` — how the two parallel implementations became one: defects
   fixed, standing guarantees, ready-to-file future work, retirement checklist
 - `docs/client-metadata-probes.md` — measured live-client behavior (trimming, key

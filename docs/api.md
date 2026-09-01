@@ -208,6 +208,13 @@ Two categories, declared by the author:
 | **Static** | Folded in during Generation. Only QuestieTDB can register these usefully — the generator runs offline with nothing else present. |
 | **Dynamic** | Applied at query time through the Correction Overlay. **This is what a third-party addon registers.** |
 
+QuestieTDB-owned Dynamic Corrections may depend only on provider-owned data or generic
+character/game facts QuestieTDB determines itself: class, race, faction, expansion, and season.
+A Correction selected or constructed from consumer-owned runtime state or policy belongs to
+that consumer. Display suppression, consumer phases/settings, projections/caches, and
+asynchronous consumer-side repair are examples; register them through that consumer's
+owner-scoped registrar.
+
 ### Registering
 
 ```lua
@@ -248,18 +255,17 @@ apply, and constants the body reads are resolved at apply time.
 * An id absent from the database is **created**, which is how a correction adds an entity.
   An added entity is fully first-class: readable, enumerable through `GetAllIds`, and
   `Exists(id)` is true, until the correction is withdrawn.
-* **Coordinates in a correction must be authored values.** Quantization is deliberately
-  non-idempotent (exactly like Questie's compiler), so never write back a coordinate you
-  read out of the database — supply the original source coordinate.
+* **Correction coordinates preserve their supplied `x` and `y` values.** No compiler-grid
+  quantization runs in production, so a coordinate read from the database may safely be reused.
+  Ordinary tuple rules still apply: spawn phase `0` and waypoint third elements are omitted.
 
 ### Precedence
 
 Two levels, the later-ranked writer wins:
 
 * outer: the order owners **first** called `ApplyRegisteredCorrections` — an owner's rank is
-  fixed at first apply, and re-applying refreshes that owner's layer **in place**. A refresh
-  (including `ApplyParameterized`, which re-applies the `QuestieTDB` owner) can therefore
-  never hoist a layer above corrections registered later.
+  fixed at first apply, and re-applying refreshes that owner's layer **in place**. A state
+  refresh can therefore never hoist a layer above corrections registered later.
 * inner: `loadOrder` within one owner
 
 `loadOrder` means "sequence within an owner", not a global sequence. Load order makes the outer
@@ -293,19 +299,6 @@ A corrected field is returned as corrected in **every** locale — the lookup tr
 skipped, because a copied lookup must not replace a fix with stale text. `GetProvenance`
 therefore always names the owner whose value you actually received. An *uncorrected*
 localizable field translates normally.
-
-### Parameterized corrections
-
-A few correction sets need a runtime fact only the consumer knows — the Darkmoon Faire's
-current location. These are never applied automatically:
-
-```lua
-LibQuestieDB.Corrections.ApplyParameterized("LoadDarkmoonFixes", faireLocation)
-```
-
-Registers and applies the recorded set as an ordinary QuestieTDB Dynamic layer. Calling it
-again with a new argument **replaces** the previous application rather than accumulating.
-Returns how many recorded sets matched (0 when none are recorded for this flavor).
 
 ### Who won
 

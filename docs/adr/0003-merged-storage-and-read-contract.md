@@ -88,6 +88,9 @@ provenance misreporting.)
 
 ### 9. Seasonal corrections gate on the season
 
+**Partially superseded by [ADR 0007](./0007-dynamic-correction-ownership.md).** The seasonal
+gate remains current; the parameterized-correction interface and ownership conclusion do not.
+
 SoD correction sets register only when the client reports the season active
 (`C_Seasons`), never on expansion alone. Parameterized corrections (Darkmoon Faire) are
 never applied automatically: they are exposed through an explicit

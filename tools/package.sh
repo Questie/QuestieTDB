@@ -86,8 +86,8 @@ for FLAVOR in "${FLAVORS[@]}"; do
 
     # Mixed correction files ship for their Dynamic functions, but their Static bodies are
     # already folded into the metadata store — 94-96% of the bytes (issue #5). Strip the
-    # staged copies; src/corrections/ in the repo stays byte-identical to upstream, which is
-    # what the drift gate and port-corrections compare.
+    # staged copies; src/corrections/ keeps every upstream byte outside the declared ownership
+    # exclusions, which is what the drift gate and port-corrections compare.
     "$LUA" tools/strip-static.lua "$STAGE/QuestieTDB"
 
     ZIP="$DIST/QuestieTDB-${FLAVOR}.zip"

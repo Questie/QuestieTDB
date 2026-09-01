@@ -5,15 +5,18 @@
 -- equivalence.lua), default persona — Alliance / Human / Warrior / no active season — with
 -- this tree's Dynamic Corrections applied exactly as they are at addon load.
 --
--- Usage (cwd must be the QuestieTDB root): lua tools/differential/dump_a.lua Vanilla <outFile>
+-- Usage (cwd must be the QuestieTDB root):
+--   lua tools/differential/dump_a.lua Vanilla <outFile> [--compiler-coordinates]
 
 local flavorName = assert(arg[1], "flavor argument required")
 local outPath = assert(arg[2], "output path argument required")
-
 local config = dofile("src/config.lua")
 local emulator = dofile("emulator/metadata.lua")
 local client = dofile("emulator/client.lua")
 local canon = dofile("tools/differential/canon.lua")
+-- Default/Golden dumps stay raw. Only the explicit compiler view adapts base coordinates;
+-- Dynamic Correction overlays remain raw in both modes.
+local adaptDumpValue = dofile("tools/differential/dump_value.lua").forMode(arg[3])
 
 local flavor
 for _, f in ipairs(config.flavors) do
@@ -42,6 +45,7 @@ for _, entityType in ipairs(config.entityTypes) do
       fields = fields + 1
       local value = entity.Get(id, fieldIndex)
       if value ~= nil then
+        value = adaptDumpValue(meta, fieldIndex, value, entity.overlay[id])
         out:write(entityType.name, "\t", id, "\t", meta.names[fieldIndex], "\t",
           canon(value), "\n")
         lines = lines + 1

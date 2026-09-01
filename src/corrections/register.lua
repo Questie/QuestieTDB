@@ -2,9 +2,10 @@
 --
 -- Turns loaded correction files into registry entries.
 --
--- The correction files themselves are verbatim copies of Questie's and know nothing about
--- QuestieTDB; `src/corrections/manifest.lua` says which functions each one provides and
--- whether each is Static or Dynamic. That classification is **declared, never inferred** —
+-- The correction files preserve Questie's source exactly outside the provider/consumer
+-- ownership exclusions explicitly declared by `tools/port-corrections.lua`;
+-- `src/corrections/manifest.lua` says which functions each one provides and whether each is
+-- Static or Dynamic. That classification is **declared, never inferred** —
 -- folder names are not a reliable signal, as the prototype's `Sod/static/…` file registering
 -- dynamic demonstrates.
 
@@ -49,9 +50,18 @@ local function wrap(module, functionName, datatype)
   end
 end
 
---- Whether this manifest entry is a Season of Discovery correction set.
-function register.IsSeasonal(spec)
+---Whether a manifest entry belongs to the file-gated SoD variant.
+---@param spec table Correction manifest entry.
+---@return boolean
+function register.IsSod(spec)
   return spec.file:find("^Sod/") ~= nil
+end
+
+---Whether a manifest entry belongs to the file-gated Titan Reforged variant.
+---@param spec table Correction manifest entry.
+---@return boolean
+function register.IsTitanReforged(spec)
+  return spec.file:find("^Titan/") ~= nil
 end
 
 --- Whether the running client actually has Season of Discovery active (ADR 0003 D9).
@@ -59,6 +69,7 @@ end
 --- ordinary non-seasonal Era — expansion gating alone let 10,640 SoD ids leak onto plain
 --- Vanilla. Offline and in the emulator, `C_Seasons.GetActiveSeason()` returns 0, so the
 --- default everywhere without a live seasonal client is "not active".
+---@return boolean active
 function register.IsSodActive()
   local seasons = rawget(_G, "C_Seasons")
   if not seasons or type(seasons.GetActiveSeason) ~= "function" then return false end
@@ -67,38 +78,26 @@ function register.IsSodActive()
   return seasons.GetActiveSeason() == sodId
 end
 
---- Whether the running client is Titan Reforged. Upstream detects it as a Wrath client whose
---- active season is 109 — `Modules/VersionCheck.lua:89`, whose own comment notes there is no
---- `Enum.SeasonID` entry for it, hence the literal. Offline and in the emulator the season
---- API reports 0, so the default everywhere is plain Wrath.
-function register.IsTitanReforgedActive()
+--- Whether the running client is Titan Reforged: Wrath plus active season 109.
+---
+--- Checking the season alone is insufficient. Emulator personas proved Cata and Mists would
+--- otherwise accept the Titan set when reporting the same season id. `flavor` is explicit so
+--- offline registration follows the same rule without depending on a global runtime backend.
+---@param flavor table? Active database flavor; nil keeps the variant closed.
+---@return boolean active
+function register.IsTitanReforgedActive(flavor)
+  if not flavor or flavor.expansion ~= "Wotlk" then return false end
   local seasons = rawget(_G, "C_Seasons")
   if not seasons or type(seasons.GetActiveSeason) ~= "function" then return false end
   return seasons.GetActiveSeason() == 109
 end
-
---- Per-function Dynamic gates, named by a manifest entry's `gatedDynamic` map. SoD gating is
---- per-file — the whole `Sod/` tree is that season's set — but these must be per-function:
---- the same upstream file carries gated and ungated Dynamic functions side by side
---- (`wotlkQuestFixes.lua` holds ungated `LoadFactionFixes` beside Titan-only
---- `LoadTitanReforgedFixes`, applied under `if Questie.IsTitanReforged` in
---- `QuestieCorrections:Initialize`). An unrecognized gate name stays closed: a correction
---- set applying where it must not is the defect class this exists to stop.
-register.variantActive = {
-  TitanReforged = register.IsTitanReforgedActive,
-}
-
---- Parameterized correction functions recorded by `FromManifest`, keyed by function name.
---- Each needs a runtime fact QuestieTDB does not own (the Darkmoon Faire's location), so
---- they are never applied automatically — see `ApplyParameterized`.
-register.parameterized = {}
 
 --- Register everything the manifest describes, for one flavor.
 ---
 --- The generator runs offline with only QuestieTDB present, so it can only ever bake
 --- corrections owned by QuestieTDB. Anything registered by Questie or a third party is Dynamic
 --- by definition; the owner recorded here makes that enforceable rather than conventional.
----@param flavor table? An entry from config.flavors; nil registers everything
+---@param flavor table? An entry from config.flavors; nil keeps file-gated variants closed.
 ---@param moduleFor fun(name: string): table? Resolves a module name to its loaded table
 ---@return number registered
 ---@return number skipped
@@ -126,7 +125,11 @@ function register.FromManifest(flavor, moduleFor)
         applies = false
       end
     end
-    if applies and register.IsSeasonal(spec) and not register.IsSodActive() then
+    if applies and register.IsSod(spec) and not register.IsSodActive() then
+      applies = false
+    end
+    if applies and register.IsTitanReforged(spec) and
+       not register.IsTitanReforgedActive(flavor) then
       applies = false
     end
 
@@ -159,10 +162,7 @@ function register.FromManifest(flavor, moduleFor)
       end
 
       for offset, functionName in ipairs(spec.dynamic or {}) do
-        local gate = spec.gatedDynamic and spec.gatedDynamic[functionName]
-        local gateOpen = not gate
-          or (register.variantActive[gate] ~= nil and register.variantActive[gate]())
-        if gateOpen and type(module[functionName]) == "function" then
+        if type(module[functionName]) == "function" then
           local entry = registry.RegisterRuntimeCorrection(registry.OWNER, spec.datatype,
             spec.file .. ":" .. functionName,
             wrap(module, functionName, spec.datatype),
@@ -173,22 +173,6 @@ function register.FromManifest(flavor, moduleFor)
           registered = registered + 1
         end
       end
-
-      -- Parameterized functions are recorded, never registered: each needs an argument only
-      -- the consumer knows. Previously these were silently dropped — the baked artifact kept
-      -- both Darkmoon Faire locations and could expose the wrong one.
-      for offset, functionName in ipairs(spec.parameterized or {}) do
-        if type(module[functionName]) == "function" then
-          local entries = register.parameterized[functionName]
-          if not entries then entries = {}; register.parameterized[functionName] = entries end
-          entries[#entries + 1] = {
-            spec = spec,
-            module = module,
-            functionName = functionName,
-            loadOrder = order[window .. "Dynamic"] + 50 + offset,
-          }
-        end
-      end
     end
     manifest[index].loaded = module ~= nil
   end
@@ -196,75 +180,16 @@ function register.FromManifest(flavor, moduleFor)
   return registered, skipped
 end
 
---- Apply a parameterized correction set with the consumer-supplied runtime fact — e.g.
---- `ApplyParameterized("LoadDarkmoonFixes", "Elwynn")`. Registers (replacing any previous
---- application of the same set, so a changed argument recomposes rather than accumulates)
---- and applies as an ordinary QuestieTDB Dynamic layer.
----
---- Correction coordinates must be authored values: quantization is deliberately
---- non-idempotent, so never feed back a coordinate read out of the database.
----@return number applied How many recorded sets matched and were registered
-function register.ApplyParameterized(functionName, ...)
-  local entries = register.parameterized[functionName]
-  if not entries or #entries == 0 then return 0 end
-
-  local argCount = select("#", ...)
-  local args = { ... }
-  local applied = 0
-
-  for _, recorded in ipairs(entries) do
-    local spec = recorded.spec
-    local name = spec.file .. ":" .. recorded.functionName
-    registry.UnregisterCorrection(registry.OWNER, spec.datatype, name)
-
-    local module = recorded.module
-    local entry = registry.RegisterRuntimeCorrection(registry.OWNER, spec.datatype, name,
-      function()
-        -- Re-invoke through the same capture path, with the consumer's arguments.
-        compat.BeginCapture()
-        local returned = compat.Invoke(
-          module[recorded.functionName], module, unpack(args, 1, argCount))
-        local captured = compat.EndCapture(spec.datatype)
-        local merged = {}
-        for id, fields in pairs(captured) do
-          local row = {}
-          for key, value in pairs(fields) do row[key] = value end
-          merged[id] = row
-        end
-        if type(returned) == "table" then
-          for id, fields in pairs(returned) do
-            local row = merged[id]
-            if not row then row = {}; merged[id] = row end
-            for key, value in pairs(fields) do row[key] = value end
-          end
-        end
-        return merged
-      end,
-      recorded.loadOrder)
-    entry.expansions = spec.expansions
-    entry.minExpansionOrder = spec.minExpansionOrder
-    entry.options = spec.options
-    applied = applied + 1
-  end
-
-  if applied > 0 then
-    registry.ApplyRegisteredCorrections(registry.OWNER)
-  end
-  return applied
-end
-
-registry.ApplyParameterized = register.ApplyParameterized
-
---- Which load-order window a manifest entry belongs to.
----
---- Season of Discovery is the interesting one: it is a Dynamic Correction set over the Era
---- database rather than a separate database, and it must apply *after* Era's own fixes. The
---- SoD window sits above Era's for exactly that reason.
+---Returns the load-order window for one manifest entry.
+---Variant windows follow their base database so SoD wins over Era and Titan wins over WotLK.
+---@param spec table Correction manifest entry.
+---@return string window
 function register.WindowFor(spec)
   if spec.file:find("^Sod/") then return "SoD" end
   if spec.file:find("^Era/") then return "Era" end
   if spec.file:find("^Tbc/") then return "Tbc" end
   if spec.file:find("^Wotlk/") then return "Wotlk" end
+  if spec.file:find("^Titan/") then return "Titan" end
   if spec.file:find("^Cata/") then return "Cata" end
   if spec.file:find("^MoP/") then return "MoP" end
   return "Era" -- Shared/, which applies to every flavor

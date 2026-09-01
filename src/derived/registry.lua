@@ -19,11 +19,11 @@
 --
 -- ## Ordering is load-bearing
 --
---   raw data -> Static Corrections -> Derived Passes -> normalize (40.90 grid) -> encode
+--   raw data -> Static Corrections -> Derived Passes -> normalize tuple shape -> encode
 --
--- Passes see corrected *raw* values, before quantization. Questie transforms raw float
--- coordinates and quantizes afterwards; quantization is deliberately non-idempotent
--- (ADR 0003 D1), so quantize-then-transform cannot be recovered.
+-- Passes see corrected raw values, and production preserves the coordinates they calculate.
+-- The migration-only compiler adapter projects those final raw values onto Questie's old grid
+-- after public reads, preserving the same transform-before-legacy-loss order (ADR 0006).
 
 local _, LibQuestieDB = ...
 

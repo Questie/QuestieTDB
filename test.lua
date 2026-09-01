@@ -16,6 +16,8 @@ local serialize = dofile("generator/serialize.lua")
 local codec = dofile("src/meta/codec.lua")
 local encode = dofile("generator/encode.lua")
 local normalize = dofile("src/meta/normalize.lua")
+local compilerCoordinates = dofile("tools/differential/compiler_coordinates.lua")
+local dumpValue = dofile("tools/differential/dump_value.lua")
 local emulator = dofile("emulator/metadata.lua")
 local client = dofile("emulator/client.lua")
 local config = dofile("src/config.lua")
@@ -960,11 +962,16 @@ suite("negative-controls", function()
   check(truncated ~= original, "corruption fixture did not apply (truncated id list)")
   runVerify(truncated, "truncated id list")
 
-  -- 4. A missing chunk part must raise rather than return a short string.
+  -- 4. A missing chunk part must raise rather than return a short string. Pick the first
+  -- eligible key deterministically so this control fails the same field on every run.
   local map = emulator.parse(sourceToc)
   local chunkKey
   for key, value in pairs(map) do
-    if value:match("^~%d+~$") then chunkKey = key; break end
+    local partCount = tonumber(value:match("^~(%d+)~$"))
+    if partCount and partCount >= 2 and map[key .. "-2"] ~= nil and
+       (not chunkKey or key < chunkKey) then
+      chunkKey = key
+    end
   end
   if chunkKey then
     map[chunkKey .. "-2"] = nil
@@ -977,6 +984,12 @@ suite("negative-controls", function()
   else
     check(false, "no chunked value found to corrupt")
   end
+
+  -- Later suites share the client emulator, so restore valid metadata after the intentional
+  -- corruption instead of relying on their setup order to replace this global accessor.
+  client.reset()
+  client.install({ expansion = "Classic" })
+  emulator.install(config.addonName, emulator.parse(sourceToc))
 
   os.remove(".out/corrupt/" .. sourceToc)
 end)
@@ -1523,8 +1536,8 @@ suite("overlay", function()
   equal(registry.GetProvenance("Quest", id, "name"), "AddonB", "provenance names the winning owner")
 
   -- Applying one owner does not disturb another, and re-applying never changes rank: owner
-  -- precedence is fixed at first apply, so a refresh (this is ApplyParameterized's shape)
-  -- cannot hoist an early layer above corrections registered later.
+  -- precedence is fixed at first apply, so a state refresh cannot hoist an early layer above
+  -- corrections registered later.
   registry.RegisterRuntimeCorrection("AddonA", "Quest", "level",
     function() return { [id] = { [4] = 42 } } end, 12)
   registry.ApplyRegisteredCorrections("AddonA")
@@ -1537,8 +1550,7 @@ suite("overlay", function()
   equal(Quest.Get(id, "name"), "Renamed by B", "B re-applying changes nothing")
   equal(Quest.Get(id, "requiredLevel"), 42, "B's apply did not disturb A's uncontested field")
 
-  -- The blast path the adversarial review confirmed: a QuestieTDB-side refresh (what
-  -- ApplyParameterized runs) must leave every consumer layer's precedence intact.
+  -- A QuestieTDB-side refresh must leave every consumer layer's precedence intact.
   local ownersBefore = table.concat(registry.GetOwners(), "<")
   registry.ApplyRegisteredCorrections(registry.OWNER)
   equal(table.concat(registry.GetOwners(), "<"), ownersBefore,
@@ -1652,10 +1664,69 @@ suite("correction-fidelity", function()
     return
   end
 
-  -- The correction files here are byte-identical copies of Questie's. That is the whole
-  -- argument for the compat shim: no transcription step means no transcription error, and
-  -- re-syncing is a file copy. Asserting it mechanically is what keeps that true.
+  -- Every non-excluded byte must match Questie. Ownership exclusions remove complete,
+  -- documented top-level functions while keeping drift detection exact everywhere else.
   local manifest = dofile("src/corrections/manifest.lua")
+  local ownershipExclusions = {
+    ["Era/classicNPCFixes.lua"] = {
+      module = "QuestieNPCFixes", functionName = "LoadDarkmoonFixes",
+    },
+    ["Tbc/tbcQuestFixes.lua"] = {
+      module = "QuestieTBCQuestFixes", functionName = "LoadContentPhaseFixes",
+    },
+    ["Tbc/tbcNPCFixes.lua"] = {
+      module = "QuestieTBCNpcFixes", functionName = "LoadDarkmoonFixes",
+    },
+    ["MoP/mopQuestFixes.lua"] = {
+      module = "MopQuestFixes", functionName = "LoadContentPhaseFixes",
+    },
+    ["MoP/mopNPCFixes.lua"] = {
+      module = "MopNpcFixes", functionName = "LoadContentPhaseFixes",
+    },
+    ["MoP/mopObjectFixes.lua"] = {
+      module = "MopObjectFixes", functionName = "LoadContentPhaseFixes",
+    },
+  }
+
+  ---Reproduce the port's strict whole-function ownership exclusion for fidelity comparison.
+  ---@param source string
+  ---@param exclusion table { module: string, functionName: string }
+  ---@param label string
+  ---@return string
+  local function withoutOwnershipExclusion(source, exclusion, label)
+    local lines = {}
+    for line in (source .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+    if lines[#lines] == "" and source:sub(-1) == "\n" then lines[#lines] = nil end
+
+    local pattern = "^function%s+" .. exclusion.module .. "%s*:%s*" ..
+      exclusion.functionName .. "%s*%("
+    local headerIndex
+    for index, line in ipairs(lines) do
+      if line:find(pattern) then
+        check(headerIndex == nil, label .. " has only one excluded function definition")
+        headerIndex = index
+      end
+    end
+    check(headerIndex ~= nil, label .. " still provides the declared ownership exclusion")
+    if not headerIndex then return source end
+
+    local docStart = headerIndex
+    while docStart > 1 and lines[docStart - 1]:find("^%-%-") do docStart = docStart - 1 end
+    check(docStart < headerIndex, label .. " excluded function retains an attached comment upstream")
+
+    local endIndex
+    for index = headerIndex + 1, #lines do
+      if lines[index]:find("^end%s*$") then endIndex = index; break end
+      check(not lines[index]:find("^function%s"),
+        label .. " excluded function closes before another top-level function")
+    end
+    check(endIndex ~= nil, label .. " excluded function has a column-0 closing end")
+    if not endIndex then return source end
+
+    for index = endIndex, docStart, -1 do table.remove(lines, index) end
+    while lines[#lines] == "" do lines[#lines] = nil end
+    return table.concat(lines, "\n") .. (source:sub(-1) == "\n" and "\n" or "")
+  end
   local sourceFor = {
     ["Era/classicQuestReputationFixes.lua"] = "Automatic/classicQuestReputationFixes.lua",
     ["Shared/itemStartFixes.lua"] = "Automatic/itemStartFixes.lua",
@@ -1675,8 +1746,12 @@ suite("correction-fidelity", function()
     check(theirsExists, "declared Questie source exists: " .. spec.file)
     if oursExists and theirsExists then
       compared = compared + 1
-      check(lib.readAll(ours) == lib.readAll(theirs),
-        "ported copy diverges from Questie's: " .. spec.file)
+      local expected = lib.readAll(theirs)
+      if ownershipExclusions[spec.file] then
+        expected = withoutOwnershipExclusion(expected, ownershipExclusions[spec.file], spec.file)
+      end
+      check(lib.readAll(ours) == expected,
+        "ported copy diverges from Questie's ownership-filtered source: " .. spec.file)
     end
   end
   equal(compared, #manifest, "every manifest Correction was compared byte-for-byte")
@@ -1913,88 +1988,73 @@ suite("read-contract", function()
 
   client.reset()
 
-  --- ADR D9: SoD manifest entries register only when the season is actually active, and
-  --- parameterized sets are recorded for explicit application, never applied automatically.
+  -- Seasonal variant directories register only for their exact client and active season.
   local runtime = dofile("generator/runtime.lua")
   local savedSeasons, savedEnum = rawget(_G, "C_Seasons"), rawget(_G, "Enum")
 
   local syntheticManifest = {
     { file = "Era/fake.lua", module = "FakeEra", datatype = "Quest",
-      dynamic = { "LoadDynamic" }, expansions = { Classic = true },
-      parameterized = { "LoadParameterized" } },
+      dynamic = { "LoadDynamic" }, expansions = { Classic = true } },
     { file = "Sod/fake.lua", module = "FakeSod", datatype = "Quest",
       dynamic = { "LoadSod" }, expansions = { Classic = true } },
+    { file = "Titan/fake.lua", module = "FakeTitan", datatype = "Quest",
+      dynamic = { "LoadTitan" }, expansions = { Wotlk = true } },
   }
   local fakeModules = {
-    FakeEra = {
-      LoadDynamic = function() return { [2] = { [4] = 42 } } end,
-      LoadParameterized = function(_, location)
-        return { [2] = { [1] = "Faire at " .. tostring(location) } }
-      end,
-    },
+    FakeEra = { LoadDynamic = function() return { [2] = { [4] = 42 } } end },
     FakeSod = { LoadSod = function() return { [2] = { [4] = 60 } } end },
+    FakeTitan = { LoadTitan = function() return { [2] = { [4] = 80 } } end },
   }
-  local function registerSynthetic()
+  ---Registers the synthetic manifest for one client flavor.
+  ---@param flavorName string Key in `config.flavorByName`.
+  ---@return table Lib
+  ---@return number registered
+  ---@return number sodEntries
+  ---@return number titanEntries
+  ---@return number eraEntries
+  local function registerSynthetic(flavorName)
     local Lib = runtime.build()
     Lib.CorrectionManifest = syntheticManifest
     local registered = Lib.CorrectionRegister.FromManifest(
-      Lib.config.flavorByName.Vanilla, function(name) return fakeModules[name] end)
-    local sodEntries, eraEntries = 0, 0
+      Lib.config.flavorByName[flavorName], function(name) return fakeModules[name] end)
+    local sodEntries, titanEntries, eraEntries = 0, 0, 0
     for _, entry in ipairs(Lib.Corrections.Select({ dynamic = true })) do
       if entry.name:find("^Sod/") then sodEntries = sodEntries + 1 end
+      if entry.name:find("^Titan/") then titanEntries = titanEntries + 1 end
       if entry.name:find("^Era/") then eraEntries = eraEntries + 1 end
     end
-    return Lib, registered, sodEntries, eraEntries
+    return Lib, registered, sodEntries, titanEntries, eraEntries
   end
 
   _G.C_Seasons = { GetActiveSeason = function() return 0 end }
   _G.Enum = { SeasonID = { SeasonOfDiscovery = 2 } }
-  local _, _, sodInactive, eraInactive = registerSynthetic()
+  local _, _, sodInactive, _, eraInactive = registerSynthetic("Vanilla")
   equal(sodInactive, 0, "no season active: SoD sets do not register")
   equal(eraInactive, 1, "no season active: Era sets register normally")
 
   _G.C_Seasons = { GetActiveSeason = function() return 2 end }
-  local activeLib, _, sodActive = registerSynthetic()
+  local _, _, sodActive = registerSynthetic("Vanilla")
   equal(sodActive, 1, "SoD active: SoD sets register")
+  local _, _, _, titanWrongSeason = registerSynthetic("Wrath")
+  equal(titanWrongSeason, 0, "SoD season on Wrath: Titan sets do not register")
+
+  _G.C_Seasons = { GetActiveSeason = function() return 109 end }
+  local _, _, _, titanWrath = registerSynthetic("Wrath")
+  equal(titanWrath, 1, "Titan active on Wrath: Titan sets register")
+  local _, _, _, titanVanilla = registerSynthetic("Vanilla")
+  equal(titanVanilla, 0, "season 109 on Vanilla: Titan sets do not register")
+  local _, _, _, titanTbc = registerSynthetic("TBC")
+  equal(titanTbc, 0, "season 109 on TBC: Titan sets do not register")
+  local _, _, _, titanCata = registerSynthetic("Cata")
+  equal(titanCata, 0, "season 109 on Cata: Titan sets do not register")
+  local _, _, _, titanMists = registerSynthetic("Mists")
+  equal(titanMists, 0, "season 109 on Mists: Titan sets do not register")
 
   _G.C_Seasons = nil
-  local _, _, sodAbsent = registerSynthetic()
+  local _, _, sodAbsent = registerSynthetic("Vanilla")
+  local _, _, _, titanAbsent = registerSynthetic("Wrath")
   equal(sodAbsent, 0, "no C_Seasons API at all: SoD sets do not register")
-
-  -- Parameterized sets: recorded but never auto-registered; explicit application carries the
-  -- consumer's argument; re-application with a new argument replaces, never accumulates.
-  local function countByName(Lib, pattern)
-    local n = 0
-    for _, entry in ipairs(Lib.Corrections.Select({ dynamic = true })) do
-      if entry.name:find(pattern, 1, true) then n = n + 1 end
-    end
-    return n
-  end
-  equal(countByName(activeLib, "LoadParameterized"), 0,
-    "a parameterized set is never registered automatically")
-  check(activeLib.CorrectionRegister.parameterized.LoadParameterized ~= nil,
-    "the parameterized set is recorded for explicit application")
-
-  local applied = activeLib.Corrections.ApplyParameterized("LoadParameterized", "Elwynn")
-  equal(applied, 1, "ApplyParameterized registers the recorded set")
-  equal(countByName(activeLib, "LoadParameterized"), 1, "exactly one entry after application")
-  local entries = activeLib.Corrections.Select({ dynamic = true })
-  local materialized
-  for _, entry in ipairs(entries) do
-    if entry.name:find("LoadParameterized", 1, true) then materialized = entry.func() end
-  end
-  equal(materialized[2][1], "Faire at Elwynn", "the consumer's argument reaches the correction")
-
-  activeLib.Corrections.ApplyParameterized("LoadParameterized", "Mulgore")
-  equal(countByName(activeLib, "LoadParameterized"), 1,
-    "re-application with a new argument replaces rather than accumulates")
-  for _, entry in ipairs(activeLib.Corrections.Select({ dynamic = true })) do
-    if entry.name:find("LoadParameterized", 1, true) then materialized = entry.func() end
-  end
-  equal(materialized[2][1], "Faire at Mulgore", "the new argument wins")
-
-  equal(activeLib.Corrections.ApplyParameterized("NoSuchFunction", 1), 0,
-    "an unknown parameterized name applies nothing")
+  equal(titanAbsent, 0, "no C_Seasons API at all: Titan sets do not register")
 
   _G.C_Seasons = savedSeasons
   _G.Enum = savedEnum
@@ -2159,6 +2219,17 @@ suite("toc", function()
   check(config.correctionManifest ~= nil and #config.correctionManifest > 0,
     "the correction manifest loaded")
 
+  -- The base TOC is committed, so changing the manifest is not enough: Source mode can only
+  -- load a new Correction file after `generate.lua toc` refreshes this exact list.
+  local committedSourceFiles = {}
+  for line in lib.readAll("QuestieTDB.toc"):gmatch("[^\r\n]+") do
+    if line ~= "" and line:sub(1, 1) ~= "#" then
+      committedSourceFiles[#committedSourceFiles + 1] = line:gsub("\\", "/")
+    end
+  end
+  equal(committedSourceFiles, config.sourceFileList(),
+    "QuestieTDB.toc exactly matches the computed Source-mode file list")
+
   -- The client rejects a file listed twice with `Duplicate File Load Detected`, and it is
   -- right to: the file re-executes, rebuilding whatever it defines while earlier files still
   -- hold references to the first copy. Blocks declare their own prerequisites — the support
@@ -2234,6 +2305,70 @@ suite("toc", function()
       "api applies QuestieTDB's own corrections, so they must be registered first")
     before("src/support/_begin.lua", "src/support/_end.lua", "brackets are ordered")
     before("src/corrections/_begin.lua", "src/corrections/_end.lua", "brackets are ordered")
+  end
+
+  -- Titan's four provider files ship in Source mode and the Wrath artifact, never in another
+  -- baked flavor. Registration gates decide whether the loaded Wrath files apply.
+  local expectedTitanSpecs = {
+    {
+      file = "Titan/titanReforgedQuestFixes.lua", datatype = "Quest",
+      dynamic = { "LoadQuests", "LoadQuestOverrides" }, expansions = { Wotlk = true },
+    },
+    {
+      file = "Titan/titanReforgedNPCFixes.lua", datatype = "Npc",
+      dynamic = { "LoadNPCs", "LoadNPCOverrides", "LoadFactionNPCOverrides" },
+      expansions = { Wotlk = true },
+    },
+    {
+      file = "Titan/titanReforgedItemFixes.lua", datatype = "Item",
+      dynamic = { "LoadItems", "LoadItemOverrides" }, expansions = { Wotlk = true },
+    },
+    {
+      file = "Titan/titanReforgedObjectFixes.lua", datatype = "Object",
+      dynamic = { "LoadObjects" }, expansions = { Wotlk = true },
+    },
+  }
+  local titanFiles, titanSpecs, titanProviders = {}, {}, 0
+  for _, spec in ipairs(config.correctionManifest) do
+    check(spec.gatedDynamic == nil, spec.file .. " has no retired per-function variant gate")
+    if spec.file:find("^Titan/") then
+      titanFiles[#titanFiles + 1] = "src/corrections/" .. spec.file
+      titanSpecs[#titanSpecs + 1] = {
+        file = spec.file,
+        datatype = spec.datatype,
+        dynamic = spec.dynamic,
+        expansions = spec.expansions,
+      }
+      titanProviders = titanProviders + #(spec.dynamic or {})
+    end
+    if spec.file:find("^Wotlk/") then
+      equal(spec.dynamic, { "LoadFactionFixes" },
+        spec.file .. " declares only its ordinary faction provider")
+    end
+  end
+  equal(titanSpecs, expectedTitanSpecs,
+    "manifest fixes Titan file names, datatypes, provider order, and exact expansion gate")
+  equal(titanProviders, 8, "manifest declares all eight Titan providers")
+  ---@param files string[]
+  ---@return table<string, boolean> set
+  local function fileSet(files)
+    local set = {}
+    for _, file in ipairs(files) do set[file] = true end
+    return set
+  end
+  local sourceSet = fileSet(config.sourceFileList())
+  local wrathSet = fileSet(config.bakedFileList(config.flavorByName.Wrath))
+  for _, file in ipairs(titanFiles) do
+    check(sourceSet[file] == true, "Source mode lists Titan provider " .. file)
+    check(wrathSet[file] == true, "Wrath Baked mode lists Titan provider " .. file)
+  end
+  for _, flavor in ipairs(config.flavors) do
+    if flavor.name ~= "Wrath" then
+      local otherSet = fileSet(config.bakedFileList(flavor))
+      for _, file in ipairs(titanFiles) do
+        check(otherSet[file] ~= true, flavor.name .. " excludes Titan provider " .. file)
+      end
+    end
   end
 
   -- Source mode only: the reader installs the loader shim, so it has to precede the data it
@@ -2401,6 +2536,42 @@ suite("api", function()
   local owners = Lib.GetOwners()
   check(#owners >= 2, "GetOwners exposes applied order")
   equal(owners[#owners], "ThirdPartyAddon", "the last applied owner is last")
+
+  -- A consumer-owned correction can reuse one mutable table as its runtime policy changes.
+  local npcKeys = Lib.Meta.NpcMeta.npcKeys
+  local baseNpcName = Lib.Npc.GetRaw(123, "name")
+  local activeNpcCorrections = {
+    [123] = { [npcKeys.name] = "Runtime policy: first state" },
+  }
+  local questieRegistrar = Lib.GetRegistrar("Questie")
+  questieRegistrar.RegisterRuntimeCorrection("Npc", "RuntimeDisplayPolicy",
+    ---@return table
+    function()
+      return activeNpcCorrections
+    end, 10)
+  questieRegistrar.Apply()
+  equal(Lib.Npc.Get(123, "name"), "Runtime policy: first state",
+    "a Questie-owned runtime policy composes through the public registrar")
+  equal(Lib.GetProvenance("Npc", 123, "name"), "Questie",
+    "the consumer-owned value records Questie provenance")
+  equal(Lib.Npc.GetRaw(123, "name"), baseNpcName,
+    "the consumer-owned policy leaves the raw NPC unchanged")
+
+  activeNpcCorrections[123] = { [npcKeys.name] = "Runtime policy: changed state" }
+  questieRegistrar.Apply()
+  equal(Lib.Npc.Get(123, "name"), "Runtime policy: changed state",
+    "re-applying reads the changed consumer-owned table")
+  equal(Lib.Npc.GetRaw(123, "name"), baseNpcName,
+    "changed policy state still leaves the raw NPC unchanged")
+
+  activeNpcCorrections[123] = nil
+  questieRegistrar.Apply()
+  equal(Lib.Npc.Get(123, "name"), baseNpcName,
+    "clearing the mutable policy table removes its old overlay value")
+  equal(Lib.GetProvenance("Npc", 123, "name"), Lib.Corrections.OWNER,
+    "clearing the policy restores database provenance")
+  equal(Lib.Npc.GetRaw(123, "name"), baseNpcName,
+    "clearing the policy does not alter the raw NPC")
 
   -- Cache lifecycle is public, and the datatype argument is case-insensitive like the
   -- corrections API — `InvalidateCache("quest", 2)` silently no-oping was a live-probed bug.
@@ -2738,13 +2909,10 @@ suite("wire-safety", function()
 end)
 
 --------------------------------------------------------------------------------------------
--- Coordinate quantization (ADR 0003 D1)
+-- Raw production coordinates (ADR 0006)
 --------------------------------------------------------------------------------------------
 
-suite("quantization", function()
-  local floor = math.floor
-  local function grid(c) return floor(c * 40.90) / 40.90 end
-
+suite("raw-coordinates", function()
   local meta = {
     entity = "Test",
     fieldCount = 4,
@@ -2757,65 +2925,155 @@ suite("quantization", function()
     keys = { spawns = 1, waypoints = 2, triggerEnd = 3, extraObjectives = 4 },
   }
 
-  -- Spawnlist: the compiler grid, the {-1,-1} sentinel, and phase survival rules — all from
-  -- Database/compiler.lua's readers/writers verbatim.
   equal(normalize.field(meta, 1, { [1440] = { { 36.43, 55.89 } } }),
-    { [1440] = { { grid(36.43), grid(55.89) } } }, "spawn coordinates land on the 40.90 grid")
+    { [1440] = { { 36.43, 55.89 } } }, "spawn coordinates retain authored precision")
   equal(normalize.field(meta, 1, { [1440] = { { -1, -1 } } }),
-    { [1440] = { { -1, -1 } } }, "instance sentinel survives")
+    { [1440] = { { -1, -1 } } }, "explicit instance sentinel survives")
+  equal(normalize.field(meta, 1, { [1440] = { { 0, 0 } } }),
+    { [1440] = { { 0, 0 } } }, "zero coordinates remain real coordinates")
   equal(normalize.field(meta, 1, { [1440] = { { 0.001, 0.002 } } }),
-    { [1440] = { { -1, -1 } } }, "sub-quantum coordinates collapse to the sentinel")
+    { [1440] = { { 0.001, 0.002 } } }, "sub-grid coordinates retain their precision")
   equal(normalize.field(meta, 1, { [1440] = { { 10, 20, 3 } } }),
-    { [1440] = { { grid(10), grid(20), 3 } } }, "non-zero phase survives beside a non-zero pair")
+    { [1440] = { { 10, 20, 3 } } }, "nonzero spawn phase survives")
   equal(normalize.field(meta, 1, { [1440] = { { 10, 20, 0 } } }),
-    { [1440] = { { grid(10), grid(20) } } }, "phase 0 is dropped — the compiler's reader emits 2 elements")
-  equal(normalize.field(meta, 1, { [1440] = { { 0.001, 0.002, 7 } } }),
-    { [1440] = { { -1, -1 } } }, "a sentinel-collapsed spawn loses its phase")
+    { [1440] = { { 10, 20 } } }, "spawn phase zero remains omitted")
 
-  -- Waypointlist nests one level deeper and never carries a third element.
   equal(normalize.field(meta, 2, { [85] = { { { 52.5, 47.25 }, { -1, -1 } } } }),
-    { [85] = { { { grid(52.5), grid(47.25) }, { -1, -1 } } } },
-    "waypoints quantize through the extra nesting level")
+    { [85] = { { { 52.5, 47.25 }, { -1, -1 } } } },
+    "waypoints retain raw coordinates through their extra nesting level")
   equal(normalize.field(meta, 2, { [85] = { { { 52.5, 47.25, 9 } } } }),
-    { [85] = { { { grid(52.5), grid(47.25) } } } },
-    "waypoint third element is dropped — the compiler's reader never returns one")
+    { [85] = { { { 52.5, 47.25 } } } },
+    "waypoint third element remains omitted")
 
-  -- Trigger: only the nested spawnlist quantizes; the text is untouched.
   equal(normalize.field(meta, 3, { "Scout the tower", { [85] = { { 52.5, 47.25 } } } }),
-    { "Scout the tower", { [85] = { { grid(52.5), grid(47.25) } } } },
-    "trigger text is verbatim, trigger coordinates quantize")
+    { "Scout the tower", { [85] = { { 52.5, 47.25 } } } },
+    "trigger text and nested raw coordinates survive")
+  equal(normalize.field(meta, 4, {
+    { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } },
+  }), {
+    { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } },
+  }, "extraObjectives preserves its nested raw coordinates and other slots")
 
-  -- extraObjectives: row[1] is a spawnlist; the rest of the row is verbatim.
-  equal(normalize.field(meta, 4, { { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } } }),
-    { { { [85] = { { grid(52.5), grid(47.25) } } }, 42, "Use the thing", 1, { { "monster", 5 } } } },
-    "extraObjectives quantizes only the nested spawnlist")
+  local input = { [1440] = { { 36.43, 55.89, 2 } } }
+  normalize.field(meta, 1, input)
+  equal(input, { [1440] = { { 36.43, 55.89, 2 } } },
+    "coordinate normalization does not mutate source data")
 
-  -- Quantized values must round-trip the wire exactly: shortest-round-trip spelling is
-  -- spelling, never precision loss.
-  for _, c in ipairs({ 36.43, 55.89, 52.5, 0.03, 99.97, 47.25, 63.7 }) do
-    local q = grid(c)
-    local spelled = serialize.number(q)
-    equal(tonumber(spelled), q, "spelling round-trips " .. tostring(c))
-    check(#spelled <= #string.format("%.17g", q),
-      "spelling of " .. tostring(c) .. " is never longer than %.17g")
+  local encoded = encode.field(meta, 1, { [1440] = { { 36.43, 55.89 } } })
+  equal(encoded, "{[1440]={{36.43,55.89}}}", "Generation stores short authored coordinates")
+  equal(codec.decodeTable(encoded), { [1440] = { { 36.43, 55.89 } } },
+    "Baked decoding returns the same raw coordinates")
+
+  local computed = 1 / 3
+  local computedEncoded = encode.field(meta, 1, { [1440] = { { computed, computed * 2 } } })
+  equal(codec.decodeTable(computedEncoded), { [1440] = { { computed, computed * 2 } } },
+    "computed coordinates retain every significant digit needed to round-trip")
+end)
+
+--------------------------------------------------------------------------------------------
+-- Legacy compiler coordinate adapter
+--------------------------------------------------------------------------------------------
+
+suite("compiler-coordinates", function()
+  local floor = math.floor
+
+  ---Legacy compiler read value for one raw coordinate.
+  ---@param coordinate number
+  ---@return number quantized
+  local function grid(coordinate)
+    return floor(coordinate * 40.90) / 40.90
   end
 
-  -- Quantization is deliberately NOT idempotent — `floor(q * 40.90)` on a grid value can
-  -- land one step lower through double rounding (measured: 738 of 10,000 2dp coordinates),
-  -- exactly as Questie's own compiler behaves. Every pipeline path quantizes raw source
-  -- values exactly once: generation before serializing, source mode before caching, the
-  -- overlay on authored correction values. What must never happen is re-normalizing a value
-  -- that was read back from the store; this check documents that both consumers agree when
-  -- each applies the grid once to the same raw input.
-  local viaGeneration = codec.decodeTable(encode.field(meta, 1, { [1440] = { { 8.2, 8.4 } } }))
-  local viaSourceRead = normalize.field(meta, 1, { [1440] = { { 8.2, 8.4 } } })
-  equal(viaGeneration, viaSourceRead,
-    "generation and a source-mode read quantize the same raw value identically")
+  local meta = {
+    entity = "Test",
+    fieldCount = 5,
+    names = { "spawns", "waypoints", "triggerEnd", "extraObjectives", "related" },
+    types = { "table", "table", "table", "table", "table" },
+    structures = { "spawnlist", "waypointlist", "trigger", "extraobjectives", "idarray" },
+    emptyIsNil = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true },
+    zeroPairIsNil = {},
+    normalize = {},
+    keys = { spawns = 1, waypoints = 2, triggerEnd = 3, extraObjectives = 4, related = 5 },
+  }
 
-  -- And the encoder stores exactly the normalized form.
-  local encoded = encode.field(meta, 1, { [1440] = { { 36.43, 55.89 } } })
-  equal(codec.decodeTable(encoded), { [1440] = { { grid(36.43), grid(55.89) } } },
-    "encoded spawnlist decodes to the quantized value")
+  equal(compilerCoordinates.adaptField(meta, 1,
+      { [1440] = { { 36.43, 55.89 } } }, false),
+    { [1440] = { { grid(36.43), grid(55.89) } } },
+    "base spawn coordinates project onto the legacy grid")
+  equal(compilerCoordinates.adaptField(meta, 1,
+      { [1440] = { { -1, -1 } } }, false),
+    { [1440] = { { -1, -1 } } }, "legacy explicit sentinel survives")
+  equal(compilerCoordinates.adaptField(meta, 1,
+      { [1440] = { { 0, 0 }, { 0.001, 0.002, 7 } } }, false),
+    { [1440] = { { -1, -1 }, { -1, -1 } } },
+    "legacy zero and sub-grid pairs collapse to sentinels and lose phase")
+  equal(compilerCoordinates.adaptField(meta, 1,
+      { [1440] = { { 10, 20, 3 }, { 10, 20, 0 } } }, false),
+    { [1440] = { { grid(10), grid(20), 3 }, { grid(10), grid(20) } } },
+    "legacy spawn phase shape is reproduced")
+
+  equal(compilerCoordinates.adaptField(meta, 2,
+      { [85] = { { { 52.5, 47.25, 9 }, { -1, -1 } } } }, false),
+    { [85] = { { { grid(52.5), grid(47.25) }, { -1, -1 } } } },
+    "legacy waypoints quantize and omit their third element")
+  equal(compilerCoordinates.adaptField(meta, 3,
+      { "Scout the tower", { [85] = { { 52.5, 47.25 } } } }, false),
+    { "Scout the tower", { [85] = { { grid(52.5), grid(47.25) } } } },
+    "legacy trigger adapts only its nested spawnlist")
+  equal(compilerCoordinates.adaptField(meta, 4, {
+      { { [85] = { { 52.5, 47.25 } } }, 42, "Use the thing", 1, { { "monster", 5 } } },
+    }, false), {
+      { { [85] = { { grid(52.5), grid(47.25) } } }, 42, "Use the thing", 1, { { "monster", 5 } } },
+    }, "legacy extraObjectives adapts only nested spawnlists")
+
+  local overlayValue = { [1440] = { { 36.43, 55.89, 2 } } }
+  equal(compilerCoordinates.adaptField(meta, 1, overlayValue, true), overlayValue,
+    "Dynamic Correction coordinates bypass legacy compilation")
+  equal(compilerCoordinates.adaptField(meta, 5, { 2, 5, 7 }, false), { 2, 5, 7 },
+    "non-coordinate structures pass through unchanged")
+
+  local input = { [1440] = { { 8.2, 8.4 } } }
+  local once = compilerCoordinates.adaptField(meta, 1, input, false)
+  equal(input, { [1440] = { { 8.2, 8.4 } } }, "legacy adaptation does not mutate raw input")
+  equal(once, { [1440] = { { grid(8.2), grid(8.4) } } },
+    "the differential applies one legacy quantization")
+  check(not lib.deepEqual(compilerCoordinates.adaptField(meta, 1, once, false), once),
+    "the non-idempotent adapter exposes accidental double quantization")
+end)
+
+--------------------------------------------------------------------------------------------
+-- Differential coordinate-mode wiring
+--------------------------------------------------------------------------------------------
+
+suite("differential-coordinate-mode", function()
+  local meta = {
+    structures = { "spawnlist", "idarray" },
+  }
+  local baseCoordinates = { [1440] = { { 8.2, 8.4 } } }
+  local expectedCompilerCoordinates = {
+    [1440] = { { math.floor(8.2 * 40.90) / 40.90, math.floor(8.4 * 40.90) / 40.90 } },
+  }
+
+  local rawDumpValue = dumpValue.forMode(nil)
+  equal(rawDumpValue(meta, 1, baseCoordinates, nil), baseCoordinates,
+    "default and Golden dumps preserve raw base coordinates")
+
+  local compilerDumpValue = dumpValue.forMode("--compiler-coordinates")
+  local adapted = compilerDumpValue(meta, 1, baseCoordinates, nil)
+  equal(adapted, expectedCompilerCoordinates,
+    "compiler comparison applies one legacy adaptation to base coordinates")
+  check(not lib.deepEqual(
+      compilerCoordinates.adaptField(meta, 1, adapted, false), adapted),
+    "compiler comparison does not accidentally apply the non-idempotent adapter twice")
+
+  local overlayRow = { [1] = baseCoordinates }
+  equal(compilerDumpValue(meta, 1, baseCoordinates, overlayRow), baseCoordinates,
+    "Dynamic Correction coordinates remain raw in compiler comparison")
+  equal(compilerDumpValue(meta, 2, { 2, 5, 7 }, nil), { 2, 5, 7 },
+    "compiler comparison leaves non-coordinate fields unchanged")
+
+  local ok = pcall(dumpValue.forMode, "--unknown-mode")
+  check(not ok, "unknown dump comparison modes fail before reading entities")
 end)
 
 --------------------------------------------------------------------------------------------
@@ -2881,16 +3139,15 @@ suite("personas", function()
   end
   check(sodSets > 0, "SoD persona: Sod/ correction sets registered")
 
-  -- Titan Reforged gate. Upstream applies `LoadTitanReforgedFixes` only under
-  -- `Questie.IsTitanReforged` (QuestieCorrections:Initialize), detected as a Wrath client
-  -- with active season 109 (Modules/VersionCheck.lua:89). The gate is per-function: the same
-  -- manifest entries carry `LoadFactionFixes`, which must apply either way. Probe: quest 6823
-  -- "Agent of Hydraxis" — the Titan set raises questLevel/requiredLevel to 80
-  -- (src/corrections/Wotlk/wotlkQuestFixes.lua:8816-8819).
+  -- Titan Reforged is a Dynamic variant over Wrath, selected by Wrath plus season 109.
+  -- Probe: quest 6823 "Agent of Hydraxis" gains level 80.
+  ---Counts the dedicated Titan providers.
+  ---@param loaded table Loaded QuestieTDB namespace.
+  ---@return integer count
   local function titanSets(loaded)
     local count = 0
     for _, entry in ipairs(loaded.Corrections.Select({ dynamic = true })) do
-      if entry.name:find("LoadTitanReforgedFixes", 1, true) then count = count + 1 end
+      if entry.name:find("^Titan/") then count = count + 1 end
     end
     return count
   end
@@ -2903,9 +3160,78 @@ suite("personas", function()
 
   local titanWrath = loadMode(config.addonName .. ".toc",
     { expansion = "Wotlk", faction = "Horde", season = "TitanReforged" })
-  equal(titanSets(titanWrath), 3, "Titan persona: all three gated sets register")
+  equal(titanSets(titanWrath), 8, "Titan persona: every declared Titan provider registers")
+  local titanOrder = {}
+  for _, entry in ipairs(titanWrath.Corrections.Select({ dynamic = true })) do
+    if entry.name:find("^Titan/") then
+      titanOrder[#titanOrder + 1] = { entry.name, entry.loadOrder }
+    end
+  end
+  equal(titanOrder, {
+    { "Titan/titanReforgedQuestFixes.lua:LoadQuests", 911 },
+    { "Titan/titanReforgedNPCFixes.lua:LoadNPCs", 911 },
+    { "Titan/titanReforgedItemFixes.lua:LoadItems", 911 },
+    { "Titan/titanReforgedObjectFixes.lua:LoadObjects", 911 },
+    { "Titan/titanReforgedQuestFixes.lua:LoadQuestOverrides", 912 },
+    { "Titan/titanReforgedNPCFixes.lua:LoadNPCOverrides", 912 },
+    { "Titan/titanReforgedItemFixes.lua:LoadItemOverrides", 912 },
+    { "Titan/titanReforgedNPCFixes.lua:LoadFactionNPCOverrides", 913 },
+  }, "Titan persona: provider application order stays base, overrides, then faction overrides")
   equal(titanWrath.Quest.Get(6823, "questLevel"), 80, "Titan persona: quest 6823 questLevel 80")
   equal(titanWrath.Quest.Get(6823, "requiredLevel"), 80, "Titan persona: quest 6823 requiredLevel 80")
+
+  -- Dedicated providers restore Titan-only rows over plain Wrath. These literal probes catch
+  -- an empty, misordered, or misclassified provider even when all eight functions registered.
+  ---Checks every Titan provider through representative public reads.
+  ---@param plainView table Plain Wrath namespace.
+  ---@param titanView table Titan Reforged namespace.
+  ---@param label string Assertion prefix identifying the read mode.
+  ---@return nil
+  local function checkTitanView(plainView, titanView, label)
+    local addedEntities = {
+      { entity = titanView.Quest, id = 93950, name = "quest" },
+      { entity = titanView.Npc, id = 257012, name = "NPC" },
+      { entity = titanView.Item, id = 264272, name = "Item" },
+      { entity = titanView.Object, id = 420002, name = "Object" },
+    }
+    for _, probe in ipairs(addedEntities) do
+      equal(probe.entity.Exists(probe.id), true,
+        label .. ": Titan-only " .. probe.name .. " exists")
+      equal(probe.entity.GetAllIds(true)[probe.id], true,
+        label .. ": Titan-only " .. probe.name .. " is enumerable")
+    end
+
+    equal(plainView.Quest.Exists(93950), false,
+      label .. ": Titan-only quest is absent from plain Wrath")
+    equal(titanView.Quest.Get(93950, "name"), "A Message From The Stars",
+      label .. ": LoadQuests adds Titan quest templates")
+    equal(titanView.Quest.Get(6823, "questLevel"), 80,
+      label .. ": LoadQuestOverrides changes inherited quests")
+
+    equal(plainView.Npc.Exists(257012), false,
+      label .. ": Titan-only NPC is absent from plain Wrath")
+    equal(titanView.Npc.Get(257012, "name"), "Algalon the Observer",
+      label .. ": LoadNPCs adds Titan NPCs")
+    equal(titanView.Npc.Get(14834, "minLevel"), 83,
+      label .. ": LoadNPCOverrides changes inherited NPCs")
+    local zoneIDs = titanView.Support.Get("ZoneDB").zoneIDs
+    equal(titanView.Npc.Get(257012, "zoneID"), zoneIDs.DUROTAR,
+      label .. ": LoadFactionNPCOverrides selects the Horde capital")
+
+    equal(plainView.Item.Exists(264272), false,
+      label .. ": Titan-only Item is absent from plain Wrath")
+    equal(titanView.Item.Get(264272, "name"), "Celestial Missive",
+      label .. ": LoadItems adds Titan Items")
+    equal(titanView.Item.Get(22734, "npcDrops"), { 15172 },
+      label .. ": LoadItemOverrides changes inherited Items")
+
+    equal(plainView.Object.Exists(420002), false,
+      label .. ": Titan-only Object is absent from plain Wrath")
+    equal(titanView.Object.Get(420002, "name"), "Blood Ritual Altar",
+      label .. ": LoadObjects adds Titan Objects")
+  end
+
+  checkTitanView(plainWrath, titanWrath, "source Titan")
 
   -- The ungated sibling function still applies with the gate closed AND open: Horde elder
   -- quest 13012 gains reputationReward {{HORDE, 75}} from LoadFactionFixes
@@ -2931,6 +3257,7 @@ suite("personas", function()
     equal(bakedTitan.Quest.Get(6823, "questLevel"), 80, "baked Titan: gate composes over the artifact")
     local bakedPlain = loadMode(wrathToc, { expansion = "Wotlk", faction = "Horde" })
     check(bakedPlain.Quest.Get(6823, "questLevel") ~= 80, "baked plain Wrath: gate stays closed")
+    checkTitanView(bakedPlain, bakedTitan, "baked Titan")
   end
 
   client.reset()
