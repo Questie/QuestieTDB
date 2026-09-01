@@ -126,6 +126,7 @@ LibQuestieDB.RegisterRuntimeCorrection = LibQuestieDB.Corrections.RegisterRuntim
 LibQuestieDB.GetRegistrar = LibQuestieDB.Corrections.GetRegistrar
 LibQuestieDB.GetProvenance = LibQuestieDB.Corrections.GetProvenance
 LibQuestieDB.GetOwners = LibQuestieDB.Corrections.GetOwners
+LibQuestieDB.SetCorrection = LibQuestieDB.Corrections.Set
 
 LibQuestieDB.Corrections.ApplyRegisteredCorrections(LibQuestieDB.Corrections.OWNER)
 

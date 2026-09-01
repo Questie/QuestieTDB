@@ -3,7 +3,9 @@
 `-pi` built substantially more lifecycle machinery around corrections than this repo
 carries. None of it was ported — this repo's simpler registry, hardened by the merge
 program's fixes (position-stable owner rank, uniform `{}` delete, composed enumeration),
-covers today's single-consumer reality. Recorded here because the mechanisms become
+covers today's single-consumer reality — since ADR 0009 with data-shaped slots, per-datatype
+recomposition scope, and memoized materialization, still far short of `-pi`'s transactional
+machinery. Recorded here because the mechanisms become
 relevant the day third-party correction authors exist at scale.
 
 ## Two-phase transactional Dynamic apply

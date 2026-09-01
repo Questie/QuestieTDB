@@ -44,7 +44,10 @@ LibQuestieDB.l10n.SetLocale("deDE")
 QuestDB.name(2)                                  --> "Klaue von Scharfkralle"
 
 LibQuestieDB.GetRegistrar("MyAddon")
-    .RegisterRuntimeCorrection("Quest", "fixes", function() ... end, 10)
+    .Set("Quest", "my-fix", { [2] = { [1] = "A better name" } })  -- data slot; publishes immediately
+
+LibQuestieDB.GetRegistrar("MyAddon")
+    .RegisterRuntimeCorrection("Quest", "fixes", function() ... end, 10)  -- function form, for large sets
 ```
 
 Two behaviours to internalise before writing anything:
