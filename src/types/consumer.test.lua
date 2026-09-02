@@ -1,43 +1,30 @@
 ---@diagnostic disable: unused-local
 
--- These names mirror common Questie declarations. QuestieTDB's helper types must coexist
--- without relying on file-local duplicate-diagnostic suppression.
----@alias QuestId number
----@alias NpcId number
----@alias ItemId number
----@alias ObjectId number
----@alias ZoneId number
----@alias FactionId number
----@alias SkillId number
----@alias StartedBy {[1]: NpcId[]?, [2]: ObjectId[]?, [3]: ItemId[]?}
----@alias SkillPair {[1]: SkillId, [2]: number}
----@alias ReputationPair {[1]: FactionId, [2]: number}
-
 -- Literal arguments must select one concrete GetAllIds result shape.
----@type QuestieTDBQuestId
+---@type QuestId
 local questId = QuestDB.GetAllIds()[1]
----@type QuestieTDBQuestId
+---@type QuestId
 local questIdFromFalse = QuestDB.GetAllIds(false)[1]
 ---@type true
 local questPresent = QuestDB.GetAllIds(true)[1]
 
----@type QuestieTDBNpcId
+---@type NpcId
 local npcId = NpcDB.GetAllIds()[1]
----@type QuestieTDBNpcId
+---@type NpcId
 local npcIdFromFalse = NpcDB.GetAllIds(false)[1]
 ---@type true
 local npcPresent = NpcDB.GetAllIds(true)[1]
 
----@type QuestieTDBItemId
+---@type ItemId
 local itemId = ItemDB.GetAllIds()[1]
----@type QuestieTDBItemId
+---@type ItemId
 local itemIdFromFalse = ItemDB.GetAllIds(false)[1]
 ---@type true
 local itemPresent = ItemDB.GetAllIds(true)[1]
 
----@type QuestieTDBObjectId
+---@type ObjectId
 local objectId = ObjectDB.GetAllIds()[1]
----@type QuestieTDBObjectId
+---@type ObjectId
 local objectIdFromFalse = ObjectDB.GetAllIds(false)[1]
 ---@type true
 local objectPresent = ObjectDB.GetAllIds(true)[1]
@@ -72,9 +59,9 @@ local canonical = LibQuestieDB.Corrections.CanonicalDatatype("quest")
 LibQuestieDB.Corrections.debug = true
 
 -- The Name index answers in the entity's own ID alias, or nil when no entity has the name.
----@type QuestieTDBObjectId[]?
+---@type ObjectId[]?
 local objectIdsByName = ObjectDB.IdsByName("Old Lion Statue")
----@type QuestieTDBQuestId[]?
+---@type QuestId[]?
 local questIdsByName = QuestDB.IdsByName("Sharptalon's Claw")
 ObjectDB.BuildNameIndex()
 

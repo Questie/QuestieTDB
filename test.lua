@@ -2456,9 +2456,18 @@ suite("lua-types", function()
   end
 
   local generalTypes = lib.readAll("src/types/General.t.lua")
+  local sharedQuestieIdAliases = {
+    QuestId = true,
+    NpcId = true,
+    ItemId = true,
+    ObjectId = true,
+    AreaId = true,
+    FactionId = true,
+    SkillId = true,
+  }
   for alias in generalTypes:gmatch("%-%-%-@alias%s+([%a_][%w_]*)") do
-    check(alias:find("^QuestieTDB") ~= nil,
-      "analysis-only helper alias is namespaced for consumer compatibility: " .. alias)
+    check(sharedQuestieIdAliases[alias] or alias:find("^QuestieTDB") ~= nil,
+      "helper alias is shared with Questie or namespaced for consumer compatibility: " .. alias)
   end
 
   local entities = {

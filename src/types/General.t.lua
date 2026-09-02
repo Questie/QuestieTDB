@@ -4,13 +4,14 @@
 -- Public primitives
 --------------------------------------------------------------------------------
 
----@alias QuestieTDBQuestId number
----@alias QuestieTDBNpcId number
----@alias QuestieTDBItemId number
----@alias QuestieTDBObjectId number
----@alias QuestieTDBZoneId number
----@alias QuestieTDBFactionId number
----@alias QuestieTDBSkillId number
+-- Shared with Questie's declarations; keep definitions here so QuestieTDB also type-checks alone.
+---@alias QuestId number
+---@alias NpcId number
+---@alias ItemId number
+---@alias ObjectId number
+---@alias AreaId number
+---@alias FactionId number
+---@alias SkillId number
 
 ---@alias QuestieTDBCanonicalDatatype "Quest"|"Npc"|"Item"|"Object"
 ---@alias QuestieTDBDatatype QuestieTDBCanonicalDatatype|"quest"|"npc"|"item"|"object"
@@ -27,37 +28,37 @@
 
 ---@alias QuestieTDBCoordinate {[1]: number, [2]: number, [3]: number?} Coordinates plus an optional phase.
 ---@alias QuestieTDBWaypoint {[1]: number, [2]: number} A waypoint never carries a phase.
----@alias QuestieTDBSpawnList table<QuestieTDBZoneId, QuestieTDBCoordinate[]>
----@alias QuestieTDBWaypointList table<QuestieTDBZoneId, QuestieTDBWaypoint[][]>
+---@alias QuestieTDBSpawnList table<AreaId, QuestieTDBCoordinate[]>
+---@alias QuestieTDBWaypointList table<AreaId, QuestieTDBWaypoint[][]>
 
----@alias QuestieTDBStartedBy {[1]: QuestieTDBNpcId[]?, [2]: QuestieTDBObjectId[]?, [3]: QuestieTDBItemId[]?}
----@alias QuestieTDBFinishedBy {[1]: QuestieTDBNpcId[]?, [2]: QuestieTDBObjectId[]?}
+---@alias QuestieTDBStartedBy {[1]: NpcId[]?, [2]: ObjectId[]?, [3]: ItemId[]?}
+---@alias QuestieTDBFinishedBy {[1]: NpcId[]?, [2]: ObjectId[]?}
 
----@alias QuestieTDBSkillPair {[1]: QuestieTDBSkillId, [2]: number}
----@alias QuestieTDBSkillRankPair {[1]: QuestieTDBSkillId, [2]: number}
----@alias QuestieTDBReputationPair {[1]: QuestieTDBFactionId, [2]: number}
+---@alias QuestieTDBSkillPair {[1]: SkillId, [2]: number}
+---@alias QuestieTDBSkillRankPair {[1]: SkillId, [2]: number}
+---@alias QuestieTDBReputationPair {[1]: FactionId, [2]: number}
 
----@alias QuestieTDBCreatureObjective {[1]: QuestieTDBNpcId, [2]: string?, [3]: number}
----@alias QuestieTDBObjectObjective {[1]: QuestieTDBObjectId, [2]: string?, [3]: number}
----@alias QuestieTDBItemObjective {[1]: QuestieTDBItemId, [2]: string?, [3]: number}
----@alias QuestieTDBKillCreditObjective {[1]: QuestieTDBNpcId[], [2]: QuestieTDBNpcId, [3]: string?, [4]: number}
----@alias QuestieTDBSpellObjective {[1]: number, [2]: string?, [3]: QuestieTDBItemId}
+---@alias QuestieTDBCreatureObjective {[1]: NpcId, [2]: string?, [3]: number}
+---@alias QuestieTDBObjectObjective {[1]: ObjectId, [2]: string?, [3]: number}
+---@alias QuestieTDBItemObjective {[1]: ItemId, [2]: string?, [3]: number}
+---@alias QuestieTDBKillCreditObjective {[1]: NpcId[], [2]: NpcId, [3]: string?, [4]: number}
+---@alias QuestieTDBSpellObjective {[1]: number, [2]: string?, [3]: ItemId}
 ---@alias QuestieTDBObjectives {[1]: QuestieTDBCreatureObjective[]?, [2]: QuestieTDBObjectObjective[]?, [3]: QuestieTDBItemObjective[]?, [4]: QuestieTDBReputationPair?, [5]: QuestieTDBKillCreditObjective[]?, [6]: QuestieTDBSpellObjective[]?}
 
 ---Objective-ordering hints are the mutable sets populated while Corrections load.
 ---Consumers receive those same tables as read-only data and must not mutate them.
 ---@class QuestieTDBObjectiveFirst
----@field killCreditObjectiveFirst table<QuestieTDBQuestId, true>
----@field objectObjectiveFirst table<QuestieTDBQuestId, true>
----@field itemObjectiveFirst table<QuestieTDBQuestId, true>
----@field eventObjectiveFirst table<QuestieTDBQuestId, true>
----@field spellObjectiveFirst table<QuestieTDBQuestId, true>
+---@field killCreditObjectiveFirst table<QuestId, true>
+---@field objectObjectiveFirst table<QuestId, true>
+---@field itemObjectiveFirst table<QuestId, true>
+---@field eventObjectiveFirst table<QuestId, true>
+---@field spellObjectiveFirst table<QuestId, true>
 
 ---@alias QuestieTDBTrigger {[1]: string, [2]: QuestieTDBSpawnList}
 ---@alias QuestieTDBReference
----| {[1]: "monster", [2]: QuestieTDBNpcId}
----| {[1]: "item", [2]: QuestieTDBItemId}
----| {[1]: "object", [2]: QuestieTDBObjectId}
+---| {[1]: "monster", [2]: NpcId}
+---| {[1]: "item", [2]: ItemId}
+---| {[1]: "object", [2]: ObjectId}
 ---@alias QuestieTDBExtraObjective {[1]: QuestieTDBSpawnList?, [2]: number, [3]: string?, [4]: number, [5]: QuestieTDBReference[]?}
 
 ---@class QuestieTDBPackedValues
