@@ -43,17 +43,33 @@ local DATA_FIELD_TO_TYPE = {
   questData = "Quest", npcData = "Npc", itemData = "Item", objectData = "Object",
 }
 
---- The enum's flat tables hold Classic values; expansion-varying constants (race masks,
---- npc flags, ALL_CLASSES — see the generated header) also appear per expansion under
---- `constants.byExpansion`. Serving the flavor's own set here is what keeps Era correction
---- files, which apply on every expansion, from baking Era-valued masks into TBC+ flavors.
+---Selects a shared invariant or an explicitly expansion-scoped constant table.
+---Expansion-varying tables have no flat Classic copy: a missing expansion or name is a
+---contract error rather than permission to bake an Era value into another flavor.
+---@param name string Constant table name.
+---@param expansionName string Explicit supported expansion name.
+---@return table value
 local function pick(name, expansionName)
-  local per = constants.byExpansion and constants.byExpansion[expansionName]
-  local value = per and per[name]
-  if value ~= nil then return value end
-  return constants[name]
+  local shared = constants[name]
+  if shared ~= nil then return shared end
+
+  local byExpansion = constants.byExpansion
+  local expansionConstants = byExpansion and byExpansion[expansionName]
+  if type(expansionConstants) ~= "table" then
+    error("correction compat: constants are missing expansion data for " .. expansionName, 0)
+  end
+
+  local value = expansionConstants[name]
+  if value == nil then
+    error(("correction compat: unknown constant `%s` for expansion `%s`")
+      :format(name, expansionName), 0)
+  end
+  return value
 end
 
+---Builds the QuestieDB stand-in with constants selected for one explicit expansion.
+---@param expansionName string Supported expansion name.
+---@return table QuestieDB
 local function buildQuestieDB(expansionName)
   local QuestieDB = {
     questKeys = pick("questKeys", expansionName),
@@ -90,6 +106,9 @@ local function buildQuestieDB(expansionName)
   return QuestieDB
 end
 
+---Builds all copied-provider module stand-ins for one explicit expansion.
+---@param expansionName string Supported expansion name.
+---@return table modules
 local function buildModules(expansionName)
   local modules = {}
 
@@ -128,17 +147,32 @@ local saved
 local correctionQuestie = {}
 for name, value in pairs(constants.iconTypes) do correctionQuestie[name] = value end
 
---- Installs the loader shim while the copied correction files define their modules.
----@param flavor table? Active database flavor.
+---Installs the loader shim while the copied correction files define their modules.
+---@param flavor table Active supported database flavor.
 ---@return fun(): nil remove Restores the previous `QuestieLoader`.
 function compat.Install(flavor)
+  if type(flavor) ~= "table" then
+    error("correction compat: Install requires an explicit flavor table", 2)
+  end
+
+  local expansionName = flavor.expansion
+  local configuredFlavor = LibQuestieDB.config.flavorByName[flavor.name]
   local expansionOrder = LibQuestieDB.Corrections.expansionOrder
-  local order = (flavor and expansionOrder[flavor.expansion]) or 1
+  local order = expansionOrder[expansionName]
+  if not configuredFlavor or configuredFlavor.expansion ~= expansionName or not order then
+    error(("correction compat: unsupported flavor `%s` / expansion `%s`")
+      :format(tostring(flavor.name), tostring(expansionName)), 2)
+  end
+  if type(constants.byExpansion) ~= "table" or
+     type(constants.byExpansion[expansionName]) ~= "table" then
+    error("correction compat: constants are missing expansion data for " .. expansionName, 2)
+  end
+
+  -- Build before changing globals so malformed generated constants fail without side effects.
+  local modules = buildModules(expansionName)
+  modules.Expansions.Current = order
 
   saved = { QuestieLoader = rawget(_G, "QuestieLoader") }
-
-  local modules = buildModules((flavor and flavor.expansion) or "Classic")
-  modules.Expansions.Current = order
   compat.modules = modules
 
   _G.QuestieLoader = {

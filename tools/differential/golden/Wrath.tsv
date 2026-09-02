@@ -1,6 +1,6 @@
 # QuestieTDB golden composed-read hashes - Wrath
 # One line per entity: type, id, sha256/16 over its sorted canonical field lines.
-# Produced from worktree at 6d8637fb71f38718c31cbe782e8b68a388a6a836+dirty
+# Produced from worktree at eaea07d80a4da1cdfb95297e98fc64456a15e6e2+dirty
 # Refresh (after an INTENTIONAL data change, with review):
 #   python3 tools/differential/golden.py refresh Wrath
 Quest	1	ed1f04a831089a05
@@ -2918,10 +2918,10 @@ Quest	7081	dc226cb7c2239486
 Quest	7082	1e68ef25ec6773d3
 Quest	7101	4a9a4b21444f1ee8
 Quest	7102	ace52554533d53a7
-Quest	7121	7eabf4628fe8df9a
-Quest	7122	e2d7394876faea99
-Quest	7123	9399eb9c9017e962
-Quest	7124	24a2f737f0eb11f7
+Quest	7121	097d574aab4037fb
+Quest	7122	afdee30c5d6bf0a6
+Quest	7123	0952254f327bd94a
+Quest	7124	939fb84a72967670
 Quest	7141	c17be5cfe93f616f
 Quest	7142	1844b68ab63280f9
 Quest	7161	28c58b1e74eb2efb
@@ -38873,7 +38873,7 @@ Item	725	c458c755ac7702c2
 Item	727	97cfed73ea96f2fb
 Item	728	447a3fb89b42e6d7
 Item	729	e7d9187037c0cb61
-Item	730	e977c7687745c483
+Item	730	876856c3bf6739c7
 Item	731	feb79f9e13c7c2e9
 Item	732	fde83ac684f03937
 Item	733	96ad3d42e7805f1f
@@ -54433,7 +54433,7 @@ Item	23977	881927e895a12d71
 Item	23978	d9255f280e23f350
 Item	23979	3d6923dd8d7b1472
 Item	23981	250fb54865e1aed8
-Item	23984	0a2eb1670abf0d4a
+Item	23984	02f856d63faa0778
 Item	23985	fc4ecb6088cd3728
 Item	23986	5e2116a97742109d
 Item	23987	dfb028faf8de7ffe

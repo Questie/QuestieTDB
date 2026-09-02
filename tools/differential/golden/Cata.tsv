@@ -1,6 +1,6 @@
 # QuestieTDB golden composed-read hashes - Cata
 # One line per entity: type, id, sha256/16 over its sorted canonical field lines.
-# Produced from worktree at fcbd2a49eb497efb7152b49606d265f259bd5c92+dirty
+# Produced from worktree at eaea07d80a4da1cdfb95297e98fc64456a15e6e2+dirty
 # Refresh (after an INTENTIONAL data change, with review):
 #   python3 tools/differential/golden.py refresh Cata
 Quest	1	69a9eb529f63c5d2
@@ -3107,10 +3107,10 @@ Quest	7081	18dd3ef824f0ff12
 Quest	7082	afe2fa34afc81d31
 Quest	7101	6197ef38531758c0
 Quest	7102	76f06b554338fcae
-Quest	7121	63f9d0ea66781b1e
-Quest	7122	5bc7da719d57e6a2
-Quest	7123	13cc3b50b834a375
-Quest	7124	e95b31c1560747ba
+Quest	7121	4e8ca9f379c10d75
+Quest	7122	4532d3382ff965f2
+Quest	7123	f179c61b22441008
+Quest	7124	9dc1f6fca2cbbf43
 Quest	7141	2f6dc710432cd1fb
 Quest	7142	89da5263d8831ed6
 Quest	7161	a4b3de8b3787c6c6
@@ -61668,7 +61668,7 @@ Item	725	f6a4687394f06be2
 Item	727	71442663357bfc3a
 Item	728	bed73118bfa63ede
 Item	729	e7d9187037c0cb61
-Item	730	e977c7687745c483
+Item	730	876856c3bf6739c7
 Item	731	feb79f9e13c7c2e9
 Item	732	3a214ef18bc817b9
 Item	733	96ad3d42e7805f1f
@@ -80274,7 +80274,7 @@ Item	23980	3882265dfb410d6e
 Item	23981	250fb54865e1aed8
 Item	23982	fcca0f7900a4adec
 Item	23983	575375142ba97f21
-Item	23984	0a2eb1670abf0d4a
+Item	23984	24d3dd7e354367c8
 Item	23985	fc4ecb6088cd3728
 Item	23986	5e2116a97742109d
 Item	23987	dfb028faf8de7ffe

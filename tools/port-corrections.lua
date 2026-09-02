@@ -122,11 +122,8 @@ local function extractConstantsFor(expansion)
   end
   extracted.zoneIDs = ZoneDB.zoneIDs
 
-  -- The slices evaluate under the same expansion globals the loop installed: `Questie.Is*`
-  -- reaches them through the chunk environment's `__index = _G`. `playerFaction` is a local
-  -- in QuestieDB.lua that the slice cannot see, so `ALL_CLASSES` on Classic evaluates its
-  -- Horde arm (1501) — the historical extraction value, kept for artifact stability; the
-  -- faction-conditional class masks are the Dynamic faction layer's job at runtime.
+  -- The slices evaluate under the expansion globals installed above: `Questie.Is*`
+  -- reaches them through the chunk environment's `__index = _G`.
   for _, spec in ipairs(SLICES) do
     local source = lib.readAll(QUESTIE .. "/" .. spec.file)
     if spec.pattern then
@@ -165,12 +162,15 @@ local function renderConstants(perExpansion)
 
   -- A constant varies when any expansion's serialization differs from Classic's. The
   -- serializer is deterministic (sorted keys), so string equality is table equality.
-  local varying = {}
+  -- Only invariant tables are safe without flavor context and therefore emitted flat;
+  -- varying tables require explicit expansion selection through `byExpansion`.
+  local varying, varyingSet = {}, {}
   for _, name in ipairs(names) do
     local classicForm = serialize.value(classic[name])
     for _, expansion in ipairs(EXPANSIONS) do
       if serialize.value(perExpansion[expansion.name][name]) ~= classicForm then
         varying[#varying + 1] = name
+        varyingSet[name] = true
         break
       end
     end
@@ -185,9 +185,9 @@ local function renderConstants(perExpansion)
   out[#out + 1] = "-- than transcribed — the same discipline as the schema, for the same reason: a"
   out[#out + 1] = "-- hand-maintained copy of someone else's table drifts."
   out[#out + 1] = "--"
-  out[#out + 1] = "-- Flat tables hold the Classic values. Constants whose upstream definition branches on"
-  out[#out + 1] = "-- the expansion (race masks, npc flags, ALL_CLASSES) additionally appear per expansion"
-  out[#out + 1] = "-- under `constants.byExpansion`; the compat shim serves the flavor's own set."
+  out[#out + 1] = "-- Top-level tables are expansion-invariant and safe to use without flavor context."
+  out[#out + 1] = "-- Tables whose values vary by expansion exist only under `constants.byExpansion`; callers"
+  out[#out + 1] = "-- must select an explicit expansion rather than inheriting an ambiguous Classic baseline."
   out[#out + 1] = ""
   out[#out + 1] = "local _, LibQuestieDB = ..."
   out[#out + 1] = ""
@@ -195,8 +195,10 @@ local function renderConstants(perExpansion)
   out[#out + 1] = ""
 
   for _, name in ipairs(names) do
-    out[#out + 1] = "constants." .. name .. " = " .. serialize.value(classic[name])
-    out[#out + 1] = ""
+    if not varyingSet[name] then
+      out[#out + 1] = "constants." .. name .. " = " .. serialize.value(classic[name])
+      out[#out + 1] = ""
+    end
   end
 
   if #varying > 0 then

@@ -1,6 +1,6 @@
 # QuestieTDB golden composed-read hashes - Vanilla
 # One line per entity: type, id, sha256/16 over its sorted canonical field lines.
-# Produced from worktree at fcbd2a49eb497efb7152b49606d265f259bd5c92+dirty
+# Produced from worktree at eaea07d80a4da1cdfb95297e98fc64456a15e6e2+dirty
 # Refresh (after an INTENTIONAL data change, with review):
 #   python3 tools/differential/golden.py refresh Vanilla
 Quest	2	14e69b09da774d6b
@@ -2886,10 +2886,10 @@ Quest	7081	76a692b87bda5661
 Quest	7082	91e8cfde8fb33052
 Quest	7101	5da76d34c56ae0a1
 Quest	7102	40155069762e3149
-Quest	7121	20f939bf173a7329
-Quest	7122	8304cfda0376a0e0
-Quest	7123	5dd2e1f93f30b95e
-Quest	7124	47682747a0ef78db
+Quest	7121	17d7c8bd6c847890
+Quest	7122	2553643fd902614e
+Quest	7123	df2939f1376d891b
+Quest	7124	8be961fa3bbb7786
 Quest	7141	7cec17a55cfa3f98
 Quest	7142	7eaf0a938cbf155a
 Quest	7161	ee32a4a251829fd5
@@ -14456,7 +14456,7 @@ Item	725	88c183fb9727f23e
 Item	727	95b24f0ebd1a1ab9
 Item	728	447a3fb89b42e6d7
 Item	729	a87900a8cd248517
-Item	730	837ca6cb8ea29bbb
+Item	730	c79750feca25a0a8
 Item	731	79bb012cd02fba40
 Item	732	ce2aab417c69f3fa
 Item	733	a7a88966ad0ba482

@@ -1188,33 +1188,79 @@ suite("corrections", function()
   equal(shipped, 0, "no static-only correction file is listed in a baked artifact")
 
   -- Expansion-varying constants. Upstream evaluates these under the client's expansion flags
-  -- (QuestieDB.lua:122-150 raceKeys, :178-191 classKeys; npcDB.lua:63-75 npcFlags), so the
-  -- enum carries them per expansion and the compat shim serves the flavor's own set — Era
-  -- correction files apply on every expansion, and a frozen Era mask would bake wrong values
-  -- into TBC+ artifacts (440 TBC divergences before this, per the differential).
+  -- (QuestieDB.lua:122-150 raceKeys, :178-191 classKeys; npcDB.lua:63-75 npcFlags). They exist
+  -- only under byExpansion so no caller can silently mistake Classic for a shared baseline.
   local enum = Lib.Enum
   check(enum.byExpansion ~= nil, "the enum carries per-expansion constants")
-  equal(enum.raceKeys.ALL_ALLIANCE, 77, "flat race mask stays the Era value")
-  equal(enum.npcFlags.REPAIR, 16384, "flat REPAIR stays the Era value")
+  equal(enum.classKeys, nil, "expansion-varying classKeys has no ambiguous flat value")
+  equal(enum.raceKeys, nil, "expansion-varying raceKeys has no ambiguous flat value")
+  equal(enum.npcFlags, nil, "expansion-varying npcFlags has no ambiguous flat value")
+
+  local classic = enum.byExpansion.Classic
+  equal(classic.raceKeys.ALL_ALLIANCE, 77, "Classic ALL_ALLIANCE per QuestieDB.lua")
+  equal(classic.raceKeys.ALL_HORDE, 178, "Classic ALL_HORDE per QuestieDB.lua")
   equal(enum.byExpansion.TBC.raceKeys.ALL_ALLIANCE, 1101, "TBC ALL_ALLIANCE per QuestieDB.lua")
   equal(enum.byExpansion.TBC.raceKeys.ALL_HORDE, 690, "TBC ALL_HORDE per QuestieDB.lua")
   equal(enum.byExpansion.Cata.raceKeys.ALL_ALLIANCE, 2098253, "Cata ALL_ALLIANCE adds Worgen")
+  equal(classic.npcFlags.REPAIR, 16384, "Classic REPAIR keeps the Era value")
   equal(enum.byExpansion.TBC.npcFlags.REPAIR, 4096, "TBC REPAIR per npcDB.lua IsClassic branch")
   equal(enum.byExpansion.Wotlk.npcFlags.BARBER, 33554432, "BARBER exists from Wotlk")
-  equal(enum.npcFlags.BARBER, nil, "BARBER absent on Era, as upstream nils it")
-  equal(enum.byExpansion.TBC.classKeys.ALL_CLASSES, 1503, "TBC ALL_CLASSES per QuestieDB.lua")
-  equal(enum.byExpansion.MoP.classKeys.ALL_CLASSES, 2047, "MoP ALL_CLASSES per QuestieDB.lua")
+  equal(classic.npcFlags.BARBER, nil, "BARBER is absent on Classic")
 
-  -- And the shim actually serves them: a TBC prepare must hand correction files TBC masks,
-  -- while the Vanilla prepare above keeps Era masks.
+  -- Upstream's Classic branch now returns faction-neutral 1503. The generator mechanically
+  -- extracts that branch unchanged; there is no local faction normalization.
+  local classicClassKeys = classic.classKeys
+  local classicAllClasses = classicClassKeys.ALL_CLASSES
+  equal(classicAllClasses, 1503, "Classic ALL_CLASSES is mechanically extracted upstream")
+  check(math.floor(classicAllClasses / classicClassKeys.PALADIN) % 2 == 1,
+    "Classic ALL_CLASSES includes Paladin")
+  check(math.floor(classicAllClasses / classicClassKeys.SHAMAN) % 2 == 1,
+    "Classic ALL_CLASSES includes Shaman")
+  check(math.floor(classicAllClasses / classicClassKeys.DEATH_KNIGHT) % 2 == 0,
+    "Classic ALL_CLASSES excludes Death Knight")
+  check(math.floor(classicAllClasses / classicClassKeys.MONK) % 2 == 0,
+    "Classic ALL_CLASSES excludes Monk")
+  equal(enum.byExpansion.TBC.classKeys.ALL_CLASSES, 1503, "TBC ALL_CLASSES remains 1503")
+  equal(enum.byExpansion.Wotlk.classKeys.ALL_CLASSES, 1535, "WotLK ALL_CLASSES remains 1535")
+  equal(enum.byExpansion.Cata.classKeys.ALL_CLASSES, 1535, "Cata ALL_CLASSES remains 1535")
+  equal(enum.byExpansion.MoP.classKeys.ALL_CLASSES, 2047, "MoP ALL_CLASSES remains 2047")
+
+  -- Exercise compat directly for every supported flavor. Literal expectations keep expansion
+  -- selection independent from the generated table being tested.
+  local compatCases = {
+    { flavor = config.flavorByName.Vanilla, allClasses = 1503, alliance = 77, repair = 16384 },
+    { flavor = config.flavorByName.TBC, allClasses = 1503, alliance = 1101, repair = 4096 },
+    { flavor = config.flavorByName.Wrath, allClasses = 1535, alliance = 1101, repair = 4096 },
+    { flavor = config.flavorByName.Cata, allClasses = 1535, alliance = 2098253, repair = 4096 },
+    { flavor = config.flavorByName.Mists, allClasses = 2047, alliance = 18875469, repair = 4096 },
+  }
+  local questieLoaderBeforeCompat = rawget(_G, "QuestieLoader")
+  for _, case in ipairs(compatCases) do
+    local remove = Lib.CorrectionCompat.Install(case.flavor)
+    local selected = Lib.CorrectionCompat.modules.QuestieDB
+    equal(selected.classKeys.ALL_CLASSES, case.allClasses,
+      "compat serves " .. case.flavor.name .. " ALL_CLASSES")
+    equal(selected.raceKeys.ALL_ALLIANCE, case.alliance,
+      "compat serves " .. case.flavor.name .. " race masks")
+    equal(selected.npcFlags.REPAIR, case.repair,
+      "compat serves " .. case.flavor.name .. " npc flags")
+    check(Lib.CorrectionCompat.modules.ZoneDB.zoneIDs == enum.zoneIDs,
+      "compat serves shared invariant constants from the top level for " .. case.flavor.name)
+    remove()
+  end
+  check(rawget(_G, "QuestieLoader") == questieLoaderBeforeCompat,
+    "direct compat selection restores the previous loader")
+
+  -- Installation requires an explicit supported flavor rather than silently inheriting Classic.
+  local nilFlavorOk, nilFlavorError = pcall(Lib.CorrectionCompat.Install, nil)
+  check(not nilFlavorOk and tostring(nilFlavorError):find("explicit flavor", 1, true) ~= nil,
+    "compat refuses a missing flavor rather than defaulting to Classic")
+  local unsupportedOk, unsupportedError = pcall(
+    Lib.CorrectionCompat.Install, { name = "Future", expansion = "Future" })
+  check(not unsupportedOk and tostring(unsupportedError):find("unsupported flavor", 1, true) ~= nil,
+    "compat refuses an unsupported flavor rather than defaulting to Classic")
+
   local corrections = dofile("generator/corrections.lua")
-  local tbcContext = corrections.prepare(config.flavorByName.TBC)
-  local tbcDB = tbcContext.lib.CorrectionCompat.modules.QuestieDB
-  equal(tbcDB.raceKeys.ALL_ALLIANCE, 1101, "compat serves TBC race masks to a TBC flavor")
-  equal(tbcDB.npcFlags.REPAIR, 4096, "compat serves TBC npc flags to a TBC flavor")
-  local eraContext = corrections.prepare(flavor)
-  equal(eraContext.lib.CorrectionCompat.modules.QuestieDB.raceKeys.ALL_ALLIANCE, 77,
-    "compat serves Era race masks to the Vanilla flavor")
 
   -- Pinned Questie applies WotLK's automatic NPC rows first and the hand-authored Load()
   -- second. NPC 30208 exists in both: the automatic set adds a spawn, then Load() deletes it.

@@ -313,6 +313,11 @@ local function validateFlavor(flavor)
   local started = os.clock()
   local loaded = flavorLoader.load(flavor, nil, not opts.raw)
   local constants = dofile("src/corrections/enum/constants.lua")
+  local expansionConstants = constants.byExpansion and constants.byExpansion[flavor.expansion]
+  if not expansionConstants or not expansionConstants.raceKeys then
+    error("validators: missing generated race constants for expansion " ..
+      tostring(flavor.expansion), 0)
+  end
 
   -- Checks needing zone lookups resolve them from support data owned here, not from a
   -- consumer's ZoneDB module.
@@ -323,7 +328,7 @@ local function validateFlavor(flavor)
     npc = loaded.Npc.entities, npcKeys = loaded.Npc.meta.keys,
     item = loaded.Item.entities, itemKeys = loaded.Item.meta.keys,
     object = loaded.Object.entities, objectKeys = loaded.Object.meta.keys,
-    raceKeys = constants.raceKeys,
+    raceKeys = expansionConstants.raceKeys,
     getUiMapIdByAreaId = lookup,
   }
 
