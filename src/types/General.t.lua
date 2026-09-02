@@ -44,6 +44,15 @@
 ---@alias QuestieTDBSpellObjective {[1]: number, [2]: string?, [3]: QuestieTDBItemId}
 ---@alias QuestieTDBObjectives {[1]: QuestieTDBCreatureObjective[]?, [2]: QuestieTDBObjectObjective[]?, [3]: QuestieTDBItemObjective[]?, [4]: QuestieTDBReputationPair?, [5]: QuestieTDBKillCreditObjective[]?, [6]: QuestieTDBSpellObjective[]?}
 
+---Objective-ordering hints are the mutable sets populated while Corrections load.
+---Consumers receive those same tables as read-only data and must not mutate them.
+---@class QuestieTDBObjectiveFirst
+---@field killCreditObjectiveFirst table<QuestieTDBQuestId, true>
+---@field objectObjectiveFirst table<QuestieTDBQuestId, true>
+---@field itemObjectiveFirst table<QuestieTDBQuestId, true>
+---@field eventObjectiveFirst table<QuestieTDBQuestId, true>
+---@field spellObjectiveFirst table<QuestieTDBQuestId, true>
+
 ---@alias QuestieTDBTrigger {[1]: string, [2]: QuestieTDBSpawnList}
 ---@alias QuestieTDBReference
 ---| {[1]: "monster", [2]: QuestieTDBNpcId}
@@ -54,6 +63,34 @@
 ---@class QuestieTDBPackedValues
 ---@field n integer Number of requested fields, including nil slots.
 ---@field [integer] any
+
+--------------------------------------------------------------------------------
+-- Localization
+--------------------------------------------------------------------------------
+
+---@alias QuestieTDBLocalizedValue string|string[]
+---@alias QuestieTDBL10nProvider fun(id: number, entityFieldIndex: integer): QuestieTDBLocalizedValue?
+---@alias QuestieTDBLocaleChangedCallback fun(locale: string)
+---@alias QuestieTDBL10nFieldName "name"|"objectivesText"|"subName"
+
+---@class QuestieTDBL10nField
+---@field name QuestieTDBL10nFieldName Canonical entity field carrying translations.
+---@field list? true The localized segment decodes to a string list instead of a scalar string.
+
+---Localization state and dot-called controls. Missing translations fall back to base entity data.
+---@class QuestieTDBL10n
+---@field locales string[] Configured non-English locale order used by Baked metadata segments.
+---@field separator string Separator between locale segments in a Metadata field.
+---@field localeIndex table<string, integer> Stored locale to one-based segment index; enUS is absent.
+---@field currentLocale string Active locale; enUS selects base entity data.
+---@field currentIndex? integer Stored segment index for the active locale; nil for enUS or an unstored locale.
+---@field onLocaleChanged QuestieTDBLocaleChangedCallback[] Callbacks invoked after cache invalidation with the selected locale.
+---@field fields table<QuestieTDBCanonicalDatatype, QuestieTDBL10nField[]> Localized field coverage by entity type.
+---@field CreateProvider fun(meta: QuestieTDBEntitySchema): QuestieTDBL10nProvider? Build a translation provider from a generated schema, or nil when that entity type has no localization data.
+---@field Initialize fun() Attach available providers and select the client locale.
+---@field DetectLocale fun(): string Return the client locale, or enUS outside the client.
+---@field SetLocale fun(locale?: string): string Select a locale, defaulting nil to enUS, and invalidate entity caches.
+---@field IsAvailable fun(): boolean Test whether any entity has localization data.
 
 --------------------------------------------------------------------------------
 -- Corrections

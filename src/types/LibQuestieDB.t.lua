@@ -18,8 +18,9 @@
 ---@field GetProvenance fun(datatype: QuestieTDBDatatype, id: number, key: string|integer): string? Return the winning correction owner.
 ---@field GetOwners fun(): string[] Return owners in applied precedence order.
 ---@field Corrections QuestieTDBCorrectionsAPI Correction registration, application, and provenance API.
----@field Meta table Schema names, indices, storage types, and structures.
----@field l10n table Localization controls and state.
+---@field Meta QuestieTDBMeta Schema names, indices, storage types, and structures.
+---@field ObjectiveFirst QuestieTDBObjectiveFirst Shared objective-ordering hints; read-only for consumers.
+---@field l10n QuestieTDBL10n Localization controls and state.
 ---@field Support table Whole-table support data.
 ---@field ModeIndicator table Source-mode indicator API.
 LibQuestieDB = {}

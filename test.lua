@@ -2837,6 +2837,33 @@ suite("api", function()
   equal(Lib.Meta.Quest.types[1], "string", "Meta.Quest.types")
   equal(Lib.Meta.Quest.fieldCount, 36, "Meta.Quest.fieldCount")
 
+  -- Keep LuaLS key-class fields in runtime positional order so declaration drift fails here.
+  local metaTypeSource = lib.readAll("src/types/Meta.t.lua")
+  local declaredKeyFields, runtimeKeyFields = {}, {}
+  for _, entityType in ipairs(config.entityTypes) do
+    local classMarker = "---@class QuestieTDB" .. entityType.name .. "Keys\n"
+    local classStart = metaTypeSource:find(classMarker, 1, true)
+    assert(classStart, ("missing exact metadata key class marker %q"):format(classMarker))
+
+    local fieldsStart = classStart + #classMarker
+    local nextClass = metaTypeSource:find("\n---@class ", fieldsStart, true)
+    local classBlock = metaTypeSource:sub(fieldsStart, nextClass and nextClass - 1 or #metaTypeSource)
+    local declared = {}
+    for field in classBlock:gmatch("%-%-%-@field ([%w_]+)") do
+      declared[#declared + 1] = field
+    end
+    declaredKeyFields[entityType.name] = declared
+
+    local lower = entityType.name:sub(1, 1):lower() .. entityType.name:sub(2)
+    local runtime = {}
+    for field, index in pairs(Lib.Meta[entityType.name .. "Meta"][lower .. "Keys"]) do
+      runtime[index] = field
+    end
+    runtimeKeyFields[entityType.name] = runtime
+  end
+  equal(declaredKeyFields, runtimeKeyFields,
+    "all metadata key declarations match runtime names and indices in order")
+
   -- A contract version is published, and the check is a range, not an equality (ADR D12):
   -- additive releases must not break consumers built against an older contract.
   equal(Lib.contractVersion, config.contractVersion, "contractVersion published")

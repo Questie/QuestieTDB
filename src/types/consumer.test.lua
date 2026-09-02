@@ -83,3 +83,13 @@ ObjectDB.BuildNameIndex()
 local setChanged = registrar.Set("Npc", "darkmoon-location", { [14828] = { [1] = "Gelvas Grimegate" } })
 ---@type boolean
 local setRemoved = LibQuestieDB.SetCorrection("ConsumerAddon", "Npc", "darkmoon-location", nil)
+
+-- Schema and objective-hint reads stay typed, and localization controls stay dot-called.
+---@type integer
+local npcNameField = LibQuestieDB.Meta.NpcMeta.npcKeys.name
+---@type true?
+local spellObjectiveFirst = LibQuestieDB.ObjectiveFirst.spellObjectiveFirst[2]
+---@type string
+local currentLocale = LibQuestieDB.l10n.currentLocale
+---@type string
+local selectedLocale = LibQuestieDB.l10n.SetLocale("deDE")
