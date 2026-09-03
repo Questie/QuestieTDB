@@ -381,20 +381,25 @@ local function verifyFlavor(flavor, opts)
             for columnIndex, fieldConfig in ipairs(l10nGen.types[typeName].fields) do
               local fieldIndex = entity.meta.keys[fieldConfig.name]
               local mismatchReported = false
+              local compared = 0
               for position, expected in pairs(block[columnIndex]) do
-                local id = sourceIds[position]
-                local layer = entity.overlay[id]
-                if not layer or layer[fieldIndex] == nil then
-                  local actual = entity.Get(id, fieldIndex)
-                  if not lib.deepEqual(actual, expected) and not mismatchReported then
-                    io.write(("  L10N %s/%s column %d position %d: expected %s, got %s\n")
-                      :format(typeName, locale, columnIndex, position,
-                        lib.show(expected):sub(1, 100), lib.show(actual):sub(1, 100)))
-                    report.errors = report.errors + 1
-                    mismatchReported = true
+                if not opts.sample or compared < opts.sample then
+                  local id = sourceIds[position]
+                  local layer = entity.overlay[id]
+                  if not layer or layer[fieldIndex] == nil then
+                    local actual = entity.Get(id, fieldIndex)
+                    if not lib.deepEqual(actual, expected) and not mismatchReported then
+                      io.write(("  L10N %s/%s column %d position %d: expected %s, got %s\n")
+                        :format(typeName, locale, columnIndex, position,
+                          lib.show(expected):sub(1, 100), lib.show(actual):sub(1, 100)))
+                      report.errors = report.errors + 1
+                      mismatchReported = true
+                    end
                   end
+                  compared = compared + 1
+                  l10nResolved = l10nResolved + 1
                 end
-                l10nResolved = l10nResolved + 1
+                if opts.sample and compared >= opts.sample then break end
               end
             end
           end

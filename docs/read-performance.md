@@ -974,7 +974,7 @@ Columns won because they remove the outer ID hash and the inner Quest/NPC row ta
 every locale in the probe, Vanilla retained 3.2 to 4.1 MiB and decoded in 14 to 18 ms; Mists
 retained 14.2 to 18.4 MiB and decoded in 71 to 128 ms.
 
-The production contract-3 reader measured deDE at **16.36 ms and 3.26 MiB** of Lua heap on
+The production contract-2 reader measured deDE at **16.36 ms and 3.26 MiB** of Lua heap on
 Vanilla. Returning to enUS released 3.44 MiB attributed to QuestieTDB. The generated Mists
 artifact, loaded through the Era-selected TOC with only its `Interface` changed, measured
 **81.41 ms and 15.09 MiB** of Lua heap for deDE.
@@ -997,7 +997,7 @@ ascending sweeps, which match Questie's initialization work, live cold reads mea
 | Item `name` | 8.13 µs | 5.27 µs | 35% faster |
 | Object `name` | 6.69 µs | 4.12 µs | 38% faster |
 
-These are production contract-3 measurements. Warm scalar reads stayed near 0.4 µs and warm
+These are production contract-2 measurements. Warm scalar reads stayed near 0.4 µs and warm
 translated objectives measured 1.84 µs, effectively unchanged. Translated objectives still
 return a fresh mutable list; the retained block value feeds the existing deep-copy producer
 rather than escaping directly.

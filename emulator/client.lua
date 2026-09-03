@@ -13,68 +13,7 @@ local LibDeflate = dofile("generator/vendor/LibDeflate.lua")
 
 local client = {}
 
-local floor, byte, char = math.floor, string.byte, string.char
-
 local function noop() end
-
----@param left integer
----@param right integer
----@return integer result
-local function xor32(left, right)
-  local result, bitValue = 0, 1
-  for _ = 1, 32 do
-    if left % 2 ~= right % 2 then result = result + bitValue end
-    left = floor(left / 2)
-    right = floor(right / 2)
-    bitValue = bitValue * 2
-  end
-  return result
-end
-
-local crcTable = {}
-for value = 0, 255 do
-  local crc = value
-  for _ = 1, 8 do
-    if crc % 2 == 1 then
-      crc = xor32(floor(crc / 2), 0xEDB88320)
-    else
-      crc = floor(crc / 2)
-    end
-  end
-  crcTable[value] = crc
-end
-
----@param value string
----@return integer checksum
-local function crc32(value)
-  local crc = 0xFFFFFFFF
-  for index = 1, #value do
-    local lookup = xor32(crc % 256, byte(value, index))
-    crc = xor32(floor(crc / 256), crcTable[lookup])
-  end
-  return xor32(crc, 0xFFFFFFFF)
-end
-
----@param value integer
----@return string bytes
-local function littleEndian32(value)
-  local first = value % 256
-  value = floor(value / 256)
-  local second = value % 256
-  value = floor(value / 256)
-  local third = value % 256
-  value = floor(value / 256)
-  return char(first, second, third, value % 256)
-end
-
----@param value string
----@param index integer
----@return integer? decoded
-local function readLittleEndian32(value, index)
-  local first, second, third, fourth = byte(value, index, index + 3)
-  if not fourth then return nil end
-  return first + second * 256 + third * 65536 + fourth * 16777216
-end
 
 -- C_EncodingUtil levels 1 and 2 select speed and size respectively; LibDeflate takes a
 -- numeric compression level instead.
@@ -86,7 +25,7 @@ local function compressionConfig(level)
   return { level = 6 }
 end
 
----Stand-in for C_EncodingUtil methods 0 (DEFLATE), 1 (zlib), and 2 (gzip).
+---Stand in for the DEFLATE and zlib methods used by supported runtime paths.
 ---@param value string
 ---@param method integer
 ---@param level integer?
@@ -96,59 +35,15 @@ local function compressString(value, method, level)
     return LibDeflate:CompressDeflate(value, compressionConfig(level))
   elseif method == 1 then
     return LibDeflate:CompressZlib(value, compressionConfig(level))
-  elseif method == 2 then
-    local compressed = LibDeflate:CompressDeflate(value, compressionConfig(level))
-    local header = "\31\139\8\0\0\0\0\0\0\255"
-    return header .. compressed .. littleEndian32(crc32(value)) .. littleEndian32(#value % 4294967296)
   end
   error("C_EncodingUtil.CompressString: unsupported compression method " .. tostring(method), 2)
 end
 
----Decode gzip framing and validate the trailer so corrupt data fails as it does in-client.
----@param value string
----@return string decompressed
-local function decompressGzip(value)
-  if #value < 18 or value:sub(1, 3) ~= "\31\139\8" then
-    error("C_EncodingUtil.DecompressString: invalid gzip header", 3)
-  end
-
-  local flags = byte(value, 4)
-  if flags >= 32 then error("C_EncodingUtil.DecompressString: invalid gzip flags", 3) end
-  local position = 11
-  if flags % 8 >= 4 then
-    local extraLength = readLittleEndian32(value:sub(position, position + 1) .. "\0\0", 1)
-    position = position + 2 + extraLength
-  end
-  if flags % 16 >= 8 then
-    local terminator = value:find("\0", position, true)
-    if not terminator then error("C_EncodingUtil.DecompressString: invalid gzip name", 3) end
-    position = terminator + 1
-  end
-  if flags % 32 >= 16 then
-    local terminator = value:find("\0", position, true)
-    if not terminator then error("C_EncodingUtil.DecompressString: invalid gzip comment", 3) end
-    position = terminator + 1
-  end
-  if flags % 4 >= 2 then position = position + 2 end
-  if position > #value - 7 then error("C_EncodingUtil.DecompressString: truncated gzip data", 3) end
-
-  local output, leftover = LibDeflate:DecompressDeflate(value:sub(position, -9))
-  local expectedCrc = readLittleEndian32(value, #value - 7)
-  local expectedSize = readLittleEndian32(value, #value - 3)
-  if output == nil or leftover ~= 0 or expectedCrc ~= crc32(output) or
-     expectedSize ~= #output % 4294967296 then
-    error("C_EncodingUtil.DecompressString: gzip checksum failed", 3)
-  end
-  return output
-end
-
----Stand-in for C_EncodingUtil decompression, including trailing-data rejection.
+---Stand in for C_EncodingUtil decompression, including trailing-data rejection.
 ---@param value string
 ---@param method integer
 ---@return string decompressed
 local function decompressString(value, method)
-  if method == 2 then return decompressGzip(value) end
-
   local output, leftover
   if method == 0 then
     output, leftover = LibDeflate:DecompressDeflate(value)

@@ -259,7 +259,7 @@ per table — belongs in `read-performance.md`.
 
 ## 11. Locale suffixes on custom metadata keys — MEASURED (build 69547)
 
-The first contract-3 localization artifact used `X-l10n-Quest-deDE` as a block key. On an enUS
+The first localization-block artifact used `X-l10n-Quest-deDE` as a block key. On an enUS
 client its chunk marker returned nil, while `X-l10n-Quest-deDE-1` returned the first chunk.
 The client interpreted the final `-deDE` as the standard localized-TOC-directive suffix rather
 than as an ordinary part of a custom key. The metadata emulator, which indexes exact strings,

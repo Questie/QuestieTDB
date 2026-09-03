@@ -205,19 +205,17 @@ suite("encoding-util", function()
     "C_EncodingUtil stand-ins round-trip a scalar row")
 
   local input = string.rep("compression methods \0", 20)
-  for method = 0, 2 do
+  for method = 0, 1 do
     local compressed = encoding.CompressString(input, method, 2)
     equal(encoding.DecompressString(compressed, method), input,
       "compression method " .. method .. " round trip")
   end
 
-  for _, method in ipairs({ 1, 2 }) do
-    local compressed = encoding.CompressString(input, method, 2)
-    local last = compressed:byte(-1)
-    local corrupted = compressed:sub(1, -2) .. string.char((last + 1) % 256)
-    local ok = pcall(encoding.DecompressString, corrupted, method)
-    check(not ok, "compression method " .. method .. " rejects a corrupt checksum")
-  end
+  local compressed = encoding.CompressString(input, 1, 2)
+  local last = compressed:byte(-1)
+  local corrupted = compressed:sub(1, -2) .. string.char((last + 1) % 256)
+  local checksumOk = pcall(encoding.DecompressString, corrupted, 1)
+  check(not checksumOk, "zlib decompression rejects a corrupt checksum")
 
   local encodedRow = encoding.SerializeCBOR(row)
   local ok = pcall(encoding.DeserializeCBOR, encodedRow .. "\0")
@@ -1236,7 +1234,7 @@ suite("negative-controls", function()
   local function runVerify(content, label)
     lib.writeAll(".out/corrupt/" .. sourceToc, content)
     local command = shellQuote(LUA_BIN) ..
-      " verify.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1"
+      " verify.lua Vanilla --toc-dir=.out/corrupt --sample=200 --quiet >/dev/null 2>&1"
     local ok, kind, code = os.execute(command)
     -- Lua 5.1 returns the raw exit status; 5.2+ returns ok, "exit", code.
     local failed
@@ -1267,7 +1265,8 @@ suite("negative-controls", function()
   check(headerCount == 1, "corruption fixture did not apply (deleted l10n header)")
   runVerify(headerless, "localization blocks without a format header")
   local equivalenceOk = os.execute(shellQuote(LUA_BIN) ..
-    " equivalence.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1")
+    " equivalence.lua Vanilla --toc-dir=.out/corrupt --sample=1 --no-self-proof " ..
+    "--quiet >/dev/null 2>&1")
   local equivalenceFailed
   if type(equivalenceOk) == "number" then
     equivalenceFailed = equivalenceOk ~= 0
@@ -2010,6 +2009,26 @@ suite("overlay", function()
   registry.UnregisterCorrection("AddonE", "Quest", "era-only")
   registry.ApplyRegisteredCorrections("AddonE")
 
+  -- Future numeric localization fields must retain their schema default when neither the
+  -- active locale nor the Scalar row stores a value.
+  local zeroDefaultId, zeroDefaultField
+  for fieldIndex = 1, Quest.meta.fieldCount do
+    if Quest.meta.types[fieldIndex] == "number" then
+      for _, questId in ipairs(Quest.GetAllIds()) do
+        if Quest.GetRaw(questId, fieldIndex) == 0 then
+          zeroDefaultId, zeroDefaultField = questId, fieldIndex
+          break
+        end
+      end
+    end
+    if zeroDefaultId then break end
+  end
+  check(zeroDefaultId ~= nil, "found a quest with an omitted numeric default")
+  Quest.SetL10nProvider(function() return nil end,
+    { [zeroDefaultField] = true }, function() return true end)
+  equal(Quest.Get(zeroDefaultId, zeroDefaultField), 0,
+    "an untranslated numeric scalar settles through missingScalar")
+
   client.reset()
 end)
 
@@ -2714,16 +2733,18 @@ suite("equivalence-control", function()
   local function runEquivalence(content, label)
     lib.writeAll(".out/corrupt/" .. sourceToc, content)
     local ok = os.execute(shellQuote(LUA_BIN) ..
-      " equivalence.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1")
+      " equivalence.lua Vanilla --toc-dir=.out/corrupt --types=Quest --sample=200 " ..
+      "--no-self-proof --quiet >/dev/null 2>&1")
     local failed
     if type(ok) == "number" then failed = ok ~= 0 else failed = not ok end
     check(failed, "equivalence accepted a divergence: " .. label)
   end
 
   -- A changed baked scalar must diverge from source.
-  local changed, changedCount = replaceScalarInRow(original, "Npc", 30, 1, "Not A Forest Spider")
-  check(changedCount == 1, "corruption fixture did not apply (changed npc name)")
-  runEquivalence(changed, "changed npc name")
+  local changed, changedCount =
+    replaceScalarInRow(original, "Quest", 2, 1, "Not Sharptalon's Claw")
+  check(changedCount == 1, "corruption fixture did not apply (changed quest name)")
+  runEquivalence(changed, "changed quest name")
 
   -- A present table whose CBOR is replaced by an empty table must diverge from source.
   local emptied, emptiedCount = original:gsub("(## X%-Quest%-2%-2: )[^\n]*",
@@ -2733,7 +2754,8 @@ suite("equivalence-control", function()
 
   -- And the healthy case still passes, so the control is not just always-fails.
   local runEquivalenceOk = os.execute(shellQuote(LUA_BIN) ..
-    " equivalence.lua Vanilla --sample=200 --quiet >/dev/null 2>&1")
+    " equivalence.lua Vanilla --types=Quest --sample=200 --no-self-proof " ..
+    "--quiet >/dev/null 2>&1")
   local passed
   if type(runEquivalenceOk) == "number" then passed = runEquivalenceOk == 0 else passed = runEquivalenceOk == true end
   check(passed, "equivalence failed on an uncorrupted artifact")

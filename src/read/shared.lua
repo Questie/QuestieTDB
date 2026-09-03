@@ -268,7 +268,7 @@ function shared.CreateEntity(meta, backend)
           if translated ~= nil then
             row[scalarIndex] = translated
           elseif row[scalarIndex] == nil then
-            row[scalarIndex] = NIL
+            missingScalar(row, scalarIndex)
           end
         end
       end

@@ -4,8 +4,8 @@ Date: 2026-09-03. Status: accepted 2026-09-03.
 
 ## Context
 
-Contract 2 stored one raw metadata value per translated entity field, joining all nine locales
-with a separator. Vanilla localization occupied 11.99 MiB across 44,859 directives; Mists
+The first CBOR storage revision retained one raw metadata value per translated entity field,
+joining all nine locales with a separator. Vanilla localization occupied 11.99 MiB across 44,859 directives; Mists
 occupied 57.48 MiB across 198,947. A non-enUS read fetched the whole joined value, scanned to
 one segment, and compiled translated `objectivesText` as a Lua literal. enUS decoded nothing,
 but every client still retained the uncompressed metadata.
@@ -44,10 +44,10 @@ Corrections outrank localization. Missing translations fall back to base values.
 translated objective lists with their final type, and shared.lua's copy producer still returns
 a fresh mutable table on every read.
 
-### 4. Contract version 3
+### 4. Localization ships in contract version 2
 
-The raw localization metadata format changes, so `X-Contract-Version` becomes 3. The public
-read interface is unchanged and `minSupportedContract` remains 1.
+The entity and localization storage changes are unreleased and ship together as contract 2.
+The public read interface is unchanged and `minSupportedContract` remains 1.
 
 ## Consequences
 

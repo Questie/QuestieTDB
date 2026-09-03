@@ -532,7 +532,7 @@ downloaded** so switching test clients needs no re-bootstrap.
 
 ### Measured sizes
 
-Deterministic contract-3 artifacts after ADR 0011, in decimal bytes:
+Deterministic contract-2 artifacts after ADRs 0010 and 0011, in decimal bytes:
 
 | Flavor | Raw TOC bytes |
 | --- | ---: |
@@ -561,7 +561,7 @@ Historical measurements remain useful for comparison:
 
 ### Generation cost
 
-| Contract-3 generation | Time |
+| Contract-2 generation | Time |
 | --- | ---: |
 | Vanilla, including l10n | 34 s |
 | Mists, including l10n | 168 s |

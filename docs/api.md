@@ -482,10 +482,10 @@ if not ok then
 end
 ```
 
-`LibQuestieDB.contractVersion` is also readable directly. Contract 2 introduced CBOR scalar
-rows, CBOR table values and compressed CBOR ID headers. Contract 3 replaced per-entity joined
-localization strings with compressed locale-and-type column blocks. Neither changed the public
-read API, so `minSupportedContract` remains 1.
+`LibQuestieDB.contractVersion` is also readable directly. Contract 2 introduces CBOR scalar
+rows, CBOR table values, compressed CBOR ID headers, and compressed locale-and-type
+localization columns. These storage changes ship together and do not change the public read
+API, so `minSupportedContract` remains 1.
 
 The check is a **range**: `RequireContract(v)` passes for any
 `minSupportedContract <= v <= contractVersion`, so a consumer built against an older
