@@ -1,14 +1,12 @@
 -- generator/encode.lua
 --
--- Encoding side of the on-disk contract. Entity rows and tables use CBOR; localization keeps
--- the literal-safe string encoding shared with src/meta/codec.lua.
+-- Encoding side of the on-disk contract. Entity rows, table fields, ID headers and
+-- localization blocks use deterministic CBOR.
 --
 -- Entity fields run through src/meta/normalize.lua first, so the generator never invents a
--- second opinion about nil and empty semantics: it stores exactly what a read must return and
+-- second opinion about nil and empty semantics. It stores exactly what a read must return and
 -- omits values whose read-time result is already the schema default.
 
-local serialize = dofile("generator/serialize.lua")
-local codec = dofile("src/meta/codec.lua")
 local normalize = dofile("src/meta/normalize.lua")
 local base64 = dofile("generator/base64.lua")
 local cbor = dofile("generator/cbor.lua")
@@ -17,37 +15,6 @@ local LibDeflate = dofile("generator/vendor/LibDeflate.lua")
 local encode = {}
 
 local type, next = type, next
-local find = string.find
-
---------------------------------------------------------------------------------------------
--- Localization strings
---------------------------------------------------------------------------------------------
-
--- Entity strings live inside CBOR scalar rows. This literal-safe encoding remains only for
--- the unchanged localization store.
-
---- True when a raw string would be mistaken for one of the tilde markers.
-local function collidesWithMarker(value)
-  if value == codec.EMPTY_STRING then return true end
-  if value:sub(1, 3) == codec.QUOTED_PREFIX then return true end
-  if codec.chunkCount[value] then return true end
-  return false
-end
-
---- Store a string raw where possible, because that is what makes a generated TOC legible and
---- keeps the artifact small. Fall back to a Lua literal for anything a line-oriented format
---- cannot carry — control characters, marker lookalikes, and strings the client's own parser
---- would alter: it trims leading and trailing whitespace from every metadata value (measured,
---- docs/client-metadata-probes.md §1), so an edge-whitespace string survives only in quoted
---- form, where the quote characters become the value's edges.
-function encode.string(value)
-  if value == "" then return codec.EMPTY_STRING end
-  if find(value, "[%z\1-\31\127]") or collidesWithMarker(value)
-     or find(value, "^ ") or find(value, " $") then
-    return codec.QUOTED_PREFIX .. serialize.quote(value)
-  end
-  return value
-end
 
 --------------------------------------------------------------------------------------------
 -- Fields
@@ -84,8 +51,8 @@ end
 
 encode.hasStoredValue = hasStoredValue
 
---- Encode one stored table field as base64 CBOR, or nil when its normalized value is absent.
---- Scalar fields are collected by generator/rows.lua and encoded together through `row`.
+---Encode one stored table field as base64 CBOR, or nil when its normalized value is absent.
+---Scalar fields are collected by generator/rows.lua and encoded together through `row`.
 ---@param meta table
 ---@param fieldIndex number
 ---@param value any Raw source value
@@ -107,20 +74,23 @@ function encode.row(scalarRow)
 end
 
 --------------------------------------------------------------------------------------------
--- ID header
+-- Compressed blocks
 --------------------------------------------------------------------------------------------
 
----Encode an ascending ID list as zlib-compressed, base64 CBOR.
----Chunking applies to the encoded text.
----@param ids number[]
+---Encode one value as deterministic CBOR, zlib level 9, then base64.
+---@param value any
 ---@return string encoded
-function encode.idList(ids)
-  local compressed = LibDeflate:CompressZlib(cbor.encode(ids), { level = 9 })
-  if not compressed then error("encode.idList: zlib compression failed", 2) end
+function encode.compressedCbor(value)
+  local compressed = LibDeflate:CompressZlib(cbor.encode(value), { level = 9 })
+  if not compressed then error("encode.compressedCbor: zlib compression failed", 2) end
   return base64.encode(compressed)
 end
 
-encode.EMPTY_STRING = codec.EMPTY_STRING
-encode.QUOTED_PREFIX = codec.QUOTED_PREFIX
+---Encode an ascending ID list as compressed CBOR.
+---@param ids number[]
+---@return string encoded
+function encode.idList(ids)
+  return encode.compressedCbor(ids)
+end
 
 return encode

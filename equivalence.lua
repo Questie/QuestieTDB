@@ -20,9 +20,9 @@
 --     enumerable and existing in both modes, and withdrawal removes all three (ADR 0003 D7).
 --   * The Name index: `IdsByName` answers identically for every name either mode reads, so
 --     the reverse of `name` is proven alongside `name` itself (ADR 0008).
---   * Baked localization shape: every locale's segment of every localized field decodes, and
---     list-typed fields remain tables (ADR 0003 D3). Source mode deliberately has no l10n
---     store, so this is a baked-side invariant sweep; the cross-mode comparison itself runs
+--   * Baked localization shape: every locale block preserves each localized field's type,
+--     including list-valued fields (ADR 0003 D3). Source mode deliberately has no l10n store,
+--     so this is a baked-side invariant sweep; the cross-mode comparison itself runs
 --     under enUS, where both modes read base data.
 --   * A season pass for Classic: with Season of Discovery active in both modes, the SoD
 --     Dynamic sets must register and compose identically (ADR 0003 D9).
@@ -343,49 +343,68 @@ local function compareComposedAdd(report, Lib, entityName, sourceEntity, bakedEn
   end
 end
 
---- Baked l10n shape (ADR D3): every locale's segment decodes and keeps the field's type.
---- Source mode has no l10n store by design, so this is a baked-side invariant rather than a
---- cross-mode comparison. Legitimate locale-specific element counts are reported separately.
-local function checkBakedL10nShape(report, bakedLib, entityName, bakedEntity, meta, ids)
+---Baked l10n shape (ADR D3): every locale block preserves each field's public type.
+---Source mode has no l10n store, so this is a baked-side invariant rather than a cross-mode
+---comparison. Locale-outer iteration decodes each available block set exactly once.
+---@param report table
+---@param bakedLib table
+---@param entityChecks table[] `{ entityName, entity, meta, ids }` records.
+---@return integer checked
+local function checkBakedL10nShape(report, bakedLib, entityChecks)
   local l10n = bakedLib.l10n
-  local typeFields = l10n.fields[entityName]
-  if not typeFields or not bakedEntity.HasL10nProvider() then return 0 end
+  if not l10n or not l10n.IsAvailable() then return 0 end
 
-  local checked = 0
-  local baseCounts, baseKinds = {}, {}
-  for _, fieldCfg in ipairs(typeFields) do
-    local fieldIndex = meta.keys[fieldCfg.name]
-    baseCounts[fieldCfg.name], baseKinds[fieldCfg.name] = {}, {}
-    for _, id in ipairs(ids) do
-      local base = bakedEntity.Get(id, fieldIndex)
-      baseKinds[fieldCfg.name][id] = type(base)
-      if fieldCfg.list and type(base) == "table" then
-        baseCounts[fieldCfg.name][id] = #base
+  local checks = {}
+  for _, entityCheck in ipairs(entityChecks) do
+    local typeFields = l10n.fields[entityCheck.entityName]
+    if typeFields and entityCheck.entity.HasL10nProvider() then
+      local check = {
+        entityName = entityCheck.entityName,
+        entity = entityCheck.entity,
+        meta = entityCheck.meta,
+        ids = entityCheck.ids,
+        fields = typeFields,
+        baseCounts = {},
+        baseKinds = {},
+      }
+      for _, fieldConfig in ipairs(typeFields) do
+        local fieldIndex = check.meta.keys[fieldConfig.name]
+        check.baseCounts[fieldConfig.name], check.baseKinds[fieldConfig.name] = {}, {}
+        for _, id in ipairs(check.ids) do
+          local base = check.entity.Get(id, fieldIndex)
+          check.baseKinds[fieldConfig.name][id] = type(base)
+          if fieldConfig.list and type(base) == "table" then
+            check.baseCounts[fieldConfig.name][id] = #base
+          end
+        end
       end
+      checks[#checks + 1] = check
     end
   end
 
+  local checked = 0
   for _, locale in ipairs(l10n.locales) do
     l10n.SetLocale(locale)
-    for _, fieldCfg in ipairs(typeFields) do
-      local fieldIndex = meta.keys[fieldCfg.name]
-      for _, id in ipairs(ids) do
-        checked = checked + 1
-        local ok, value = pcall(bakedEntity.Get, id, fieldIndex)
-        if not ok then
-          diverge(report, "L10N-DECODE", "%s %d %s under %s raised: %s",
-            entityName, id, fieldCfg.name, locale, tostring(value):sub(1, 120))
-        elseif value ~= nil and type(value) ~= baseKinds[fieldCfg.name][id] and
-               baseKinds[fieldCfg.name][id] ~= "nil" then
-          diverge(report, "L10N-TYPE", "%s %d %s under %s is a %s, base is a %s",
-            entityName, id, fieldCfg.name, locale, type(value), baseKinds[fieldCfg.name][id])
-        elseif fieldCfg.list and type(value) == "table" and
-               baseCounts[fieldCfg.name][id] and #value ~= baseCounts[fieldCfg.name][id] then
-          -- Not a divergence: upstream lookups legitimately carry a different element count
-          -- (zhCN/zhTW combine objectives into one string), and preserving the lookup's own
-          -- shape is what Questie ships today. Counted so the summary shows the scale; byte
-          -- fidelity against the extraction is reconstruct.lua's job.
-          report.l10nShapeVaries = (report.l10nShapeVaries or 0) + 1
+    for _, check in ipairs(checks) do
+      for _, fieldConfig in ipairs(check.fields) do
+        local fieldIndex = check.meta.keys[fieldConfig.name]
+        for _, id in ipairs(check.ids) do
+          checked = checked + 1
+          local ok, value = pcall(check.entity.Get, id, fieldIndex)
+          local baseKind = check.baseKinds[fieldConfig.name][id]
+          if not ok then
+            diverge(report, "L10N-DECODE", "%s %d %s under %s raised: %s",
+              check.entityName, id, fieldConfig.name, locale, tostring(value):sub(1, 120))
+          elseif value ~= nil and type(value) ~= baseKind and baseKind ~= "nil" then
+            diverge(report, "L10N-TYPE", "%s %d %s under %s is a %s, base is a %s",
+              check.entityName, id, fieldConfig.name, locale, type(value), baseKind)
+          elseif fieldConfig.list and type(value) == "table" and
+                 check.baseCounts[fieldConfig.name][id] and
+                 #value ~= check.baseCounts[fieldConfig.name][id] then
+            -- Upstream lookups can legitimately combine objectives in zhCN or zhTW. Count the
+            -- locale-specific shape without treating it as a divergence.
+            report.l10nShapeVaries = (report.l10nShapeVaries or 0) + 1
+          end
         end
       end
     end
@@ -442,6 +461,7 @@ local function comparePass(report, flavor, tocPath, label, clientOpts, idStride,
   end
 
   local Lib = { source = sourceLib, baked = bakedLib }
+  local l10nChecks = {}
 
   for _, entityType in ipairs(config.entityTypes) do
     if not opts.types or opts.types[entityType.name] then
@@ -474,10 +494,16 @@ local function comparePass(report, flavor, tocPath, label, clientOpts, idStride,
         compareOwnership(report, entityType.name,
           { source = sourceEntity, baked = bakedEntity }, meta, checkIds)
         compareComposedAdd(report, Lib, entityType.name, sourceEntity, bakedEntity, sourceIds)
-        report.l10nChecked = (report.l10nChecked or 0) +
-          checkBakedL10nShape(report, bakedLib, entityType.name, bakedEntity, meta, checkIds)
+        l10nChecks[#l10nChecks + 1] = {
+          entityName = entityType.name, entity = bakedEntity, meta = meta, ids = checkIds,
+        }
       end
     end
+  end
+
+  if not idStride then
+    report.l10nChecked = (report.l10nChecked or 0) +
+      checkBakedL10nShape(report, bakedLib, l10nChecks)
   end
 
   if opts.freeze then
@@ -562,6 +588,18 @@ local function compareFlavor(flavor)
   -- Parse once for the base pass, self-proof, and seasonal pass. The self-proof restores its
   -- one changed value before the map reaches the seasonal pass.
   local bakedMap = emulator.parse(tocPath)
+  local hasLocalizationBlocks = false
+  for key in pairs(bakedMap) do
+    if key:match("^X%-l10n%-%a+%-%a+$") then
+      hasLocalizationBlocks = true
+      break
+    end
+  end
+  if hasLocalizationBlocks and
+     bakedMap[config.l10nHeaderKey] ~= tostring(config.l10nVersion) then
+    diverge(report, "L10N-HEADER", "%s has localization blocks without format version %d",
+      flavor.name, config.l10nVersion)
+  end
 
   local sourceLib = comparePass(report, flavor, tocPath, flavor.name, nil, nil, bakedMap)
 

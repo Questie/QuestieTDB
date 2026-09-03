@@ -27,8 +27,8 @@ local function getStored(key)
   local value = GetAddOnMetadata(ADDON_NAME, key)
   if not value then return nil end
 
-  -- Entity CBOR values never start with `~`. Localization still uses tilde markers, so only
-  -- consult the chunk parser when the first byte can actually be a marker.
+  -- Base64 payloads never start with `~`; only a chunk header can. Avoid the pattern lookup
+  -- on the ordinary entity and localization read paths.
   if value:byte(1) ~= 126 then return value end
   local parts = codec.chunkCount[value]
   if not parts then return value end

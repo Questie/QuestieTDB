@@ -415,10 +415,15 @@ LibQuestieDB.l10n.onLocaleChanged[#… + 1] = function(locale) … end
 ```
 
 Nine locales — `deDE esES esMX frFR koKR ptBR ruRU zhCN zhTW`. `enUS` means "no overlay",
-because base data is already English. Missing translations fall back to English. Changing
-locale needs no regeneration and no rebuild. A translated `objectivesText` remains a table;
-element counts follow the upstream lookup and may differ where a locale combines objectives.
-A field a Correction supplied is never overridden by a translation (see Corrections above).
+because base data is already English. Missing translations fall back to English. A non-enUS
+locale eagerly loads its four compressed localization blocks; changing locale replaces those
+blocks and invalidates cached entity values without regenerating the database. Selecting the
+already-active locale is a no-op and preserves existing caches. An unsupported locale records
+the requested name in `currentLocale` but behaves like enUS because it has no blocks.
+
+A translated `objectivesText` remains a table; element counts follow the upstream lookup and
+may differ where a locale combines objectives. Every read returns a fresh mutable copy. A field
+a Correction supplied is never overridden by a translation (see Corrections above).
 
 Translated fields: quest `name` and `objectivesText`, npc `name` and `subName`, item `name`,
 object `name`.
@@ -478,8 +483,9 @@ end
 ```
 
 `LibQuestieDB.contractVersion` is also readable directly. Contract 2 introduced CBOR scalar
-rows, CBOR table values and compressed CBOR ID headers. The public read API did not change,
-so `minSupportedContract` remains 1.
+rows, CBOR table values and compressed CBOR ID headers. Contract 3 replaced per-entity joined
+localization strings with compressed locale-and-type column blocks. Neither changed the public
+read API, so `minSupportedContract` remains 1.
 
 The check is a **range**: `RequireContract(v)` passes for any
 `minSupportedContract <= v <= contractVersion`, so a consumer built against an older

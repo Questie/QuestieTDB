@@ -303,23 +303,27 @@ function generate.flavor(flavor, opts)
 
   out:close()
 
-  -- Localization, appended after entity data. It is ~72% of the artifact, and it lives in the
-  -- same store rather than a separate addon because TOC metadata is client-side storage, not
-  -- Lua heap: a German user never touches the other eight locales' strings.
+  -- Localization follows entity data as compressed CBOR columns. A non-enUS client eagerly
+  -- decodes its available type blocks; enUS keeps localization out of the Lua heap.
   if not opts.noL10n then
     local questiePath = opts.questie or DEFAULT_QUESTIE_PATH
     out = assert(io.open(tocPath, "ab"), "Cannot append to " .. tocPath)
+    totals.lines = totals.lines + l10nGen.writeHeader(out)
     for _, entityType in ipairs(config.entityTypes) do
       local entry = loaded[entityType.name]
       if entry then
+        local ids = lib.sortedIds(entry.entities)
         local knownIds = {}
-        for id in pairs(entry.entities) do knownIds[id] = true end
-        local values, stats = l10nGen.extract(questiePath, flavor, entityType.name, knownIds)
-        local entries, fields = l10nGen.writeMetadata(out, entityType.name, values)
-        totals.l10nEntries = (totals.l10nEntries or 0) + entries
-        totals.l10nFields = (totals.l10nFields or 0) + fields
-        say(string.format("  l10n %-7s %6d entities  %8d fields  (%d locales, %d filtered)",
-          entityType.name, entries, fields, stats.locales, stats.filtered))
+        for _, id in ipairs(ids) do knownIds[id] = true end
+        local values, extractStats = l10nGen.extract(
+          questiePath, flavor, entityType.name, knownIds)
+        local blockStats = l10nGen.writeMetadata(out, entityType.name, values, ids)
+        totals.lines = totals.lines + blockStats.lines
+        totals.l10nBytes = (totals.l10nBytes or 0) + blockStats.bytes
+        say(string.format(
+          "  l10n %-7s %6d entities  %2d blocks  %7.1f KB  (%d locales, %d filtered)",
+          entityType.name, extractStats.entries, blockStats.blocks,
+          blockStats.bytes / 1024, extractStats.locales, extractStats.filtered))
         values = nil
         collectgarbage()
       end

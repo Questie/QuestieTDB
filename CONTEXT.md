@@ -29,6 +29,11 @@ _Avoid_: Metadata row, object, scalar column
 The bitmask in a Scalar row that records which table fields have stored values.
 _Avoid_: Table index, field map
 
+**Localization block**:
+The compressed field columns for one locale and entity type, aligned with that type's base ID
+list. A non-English client retains its active Localization blocks for the session.
+_Avoid_: Translation blob, locale row, l10n page
+
 **Chunked metadata value**:
 A long Metadata field split into numbered parts and reassembled before decoding. Parts
 never begin or end with client-trimmable bytes — the client strips edge whitespace from
@@ -130,8 +135,8 @@ Correction Overlay adds — an added entity is readable, enumerable, and exists,
 _Avoid_: Merged id list, extended pointers
 
 **l10n overlay**:
-The optional localization layer wrapping selected Named getters for the active locale.
-The Correction Overlay outranks it: a corrected field skips its lookup (ADR 0003 D8).
+The optional localization layer that resolves selected fields from the active Localization
+blocks. The Correction Overlay outranks it: a corrected field skips its lookup (ADR 0003 D8).
 _Avoid_: Localization DB, translation patch
 
 **Name index**:

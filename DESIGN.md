@@ -99,7 +99,7 @@ Take accordingly.
 
 | Take | From | Why |
 | --- | --- | --- |
-| `Meta/DumpFunctions.lua` | GetterDB | The Lua serializer, retained for localization list literals. ADR 0010 replaced entity literals with deterministic CBOR rows and tables. |
+| `Meta/DumpFunctions.lua` | GetterDB | The Lua serializer remains offline tooling only. ADRs 0010 and 0011 replaced entity and localization literals with deterministic CBOR. |
 | `dumpCoordinatesV2`, `dumpTriggerEndV2`, `dumpExtraObjectivesV2` | GetterDB | Domain-specific compaction for the fields that dominate artifact size. |
 | `Corrections/Corrections.lua`, `Enum/`, `Icons.lua` | GetterDB | The registry, load-order namespaces, and the constants corrections reference. |
 | Config-driven pipeline shape, TOC emission, chunking, `verify.lua` | toc-database | Explicit type/version enumeration instead of directory scanning. |
@@ -478,35 +478,26 @@ Questie today bakes locale into the compiled binary: `l10n:Initialize()` writes 
 strings into `questData` *before* compile, and `dbCompiledLang` forces a full recompile when
 the UI locale changes.
 
-Replace with the l10n overlay: locale-joined values, `SetLocale()` at runtime, getters
-wrapped with enUS fallback. **This deletes the recompile-on-locale-change entirely.**
+Replace with the l10n overlay and `SetLocale()` at runtime. **This deletes the
+recompile-on-locale-change entirely.** ADR 0011 stores one compressed CBOR column block per
+locale and entity type. The columns align with the entity backend's ascending ID list, so they
+repeat no IDs. enUS decodes no localization. A non-enUS client decodes four blocks during addon
+load and keeps that locale's translations in memory.
 
-Two contracts ADR 0003 added after the buildout: **corrections outrank translations** — when
-Correction Overlay provenance supplied a localizable field, the lookup translation is skipped,
-so corrected text is never replaced by a stale copied lookup and provenance never names an
-owner for a value it did not supply (D8); and **table-typed fields keep their table shape per
-locale segment** — `objectivesText` segments are serialized table literals, so a translated
-list is always a table, never a joined string; element counts follow the upstream lookup's
-own shape, which zhCN/zhTW legitimately vary (D3, scope corrected). Chunk parts are split
-trim-safely because the
-client removes edge whitespace from metadata values — measured, with a shipped artifact's
-Russian text corrupted by exactly this, in
-[`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md).
+Two contracts from ADR 0003 remain load-bearing. **Corrections outrank translations:** when the
+Correction Overlay supplies a localizable field, the provider skips localization, so corrected
+text is never replaced by a stale lookup. **Table-typed fields keep their table shape:** CBOR
+stores `objectivesText` as a list, including legitimate locale-specific element counts, and the
+shared copy producer still returns a fresh mutable table on every read.
 
-l10n stays **inside** the QuestieTDB TOC rather than becoming a separate addon. TOC metadata
-lives in client-side storage, not the Lua heap — nothing materialises until a getter decodes
-it, so a German user never touches the other eight locales' strings and they never cost Lua
-memory or GC pressure.
+l10n stays **inside** the QuestieTDB TOC rather than becoming a separate addon. Compression
+across whole field columns removes about 65% of localization directive bytes. The retained
+active-locale heap is the deliberate trade: 3.2 to 4.1 MB on Vanilla and 14.2 to 18.4 MB on
+Mists. The inactive eight locales remain compressed metadata and never enter the Lua heap.
 
-Sizing, for the record: l10n is ~72% of the artifact (`{l10n}-Mists` is 61 MB of the 84.5 MB
-combined), across 9 locales — `deDE, esES, esMX, frFR, koKR, ptBR, ruRU, zhCN, zhTW` — with
-**no enUS**, since base data is already English. In-client testing confirms this loads fast at
-full size, so keeping all locales in the store is validated rather than assumed. Splitting l10n
-out stays available as a mitigation at the same seam, only finer, if the artifact ever grows
-substantially.
-
-Field coverage already matches exactly: quest `name` + `objectivesText`, npc `name` +
-`subName`, item `name`, object `name`.
+The nine stored locales are `deDE, esES, esMX, frFR, koKR, ptBR, ruRU, zhCN, zhTW`; base data
+is already enUS. Field coverage is quest `name` + `objectivesText`, npc `name` + `subName`, item
+`name`, and object `name`.
 
 ## Variants: SoD, Classic+
 
@@ -541,20 +532,20 @@ downloaded** so switching test clients needs no re-bootstrap.
 
 ### Measured sizes
 
-Deterministic contract-2 artifacts after ADR 0010, in decimal bytes:
+Deterministic contract-3 artifacts after ADR 0011, in decimal bytes:
 
 | Flavor | Raw TOC bytes |
 | --- | ---: |
-| Vanilla | 21,174,673 |
-| TBC | 35,259,167 |
-| Wrath | 50,016,797 |
-| Cata | 79,222,191 |
-| Mists | 96,616,116 |
-| **All five** | **282,288,944** |
+| Vanilla | 13,019,881 |
+| TBC | 21,242,139 |
+| Wrath | 29,900,504 |
+| Cata | 47,360,651 |
+| Mists | 57,111,494 |
+| **All five** | **168,634,669** |
 
-CBOR entity storage removes 15,001,110 bytes, or 5.05%, from the post-ADR-0006 literal
-artifacts. Localization is unchanged and now dominates every artifact. Package ZIP sizes are
-produced by the release workflow and were not remeasured in this acceptance pass.
+Compressed localization columns remove 113,654,275 bytes, or 40.3%, from the contract-2
+artifacts. Mists localization directives alone fall from 57.48 MiB to 19.80 MiB. Package ZIP
+sizes are produced by the release workflow and were not remeasured in this acceptance pass.
 
 The compressed ID headers add 2.82 MB of fixed memory attributed to QuestieTDB on Vanilla.
 The decoded arrays and existence maps are retained for the session and create no recurring
@@ -570,11 +561,11 @@ Historical measurements remain useful for comparison:
 
 ### Generation cost
 
-| Contract-2 generation | Time |
+| Contract-3 generation | Time |
 | --- | ---: |
-| Vanilla, including l10n | 8.6 s |
-| Mists, including l10n | 49.2 s |
-| All flavors in the memory-budgeted check runner | 64 s wall time |
+| Vanilla, including l10n | 34 s |
+| Mists, including l10n | 168 s |
+| All flavors in the memory-budgeted check runner | 168 s wall time |
 
 Generation is pure Lua with no C dependencies. **Later, nice-to-have:** commit a small
 `lua.exe` so contributors can generate and run tests locally without installing a toolchain.
@@ -588,8 +579,8 @@ QuestieTDB/
   QuestieTDB_<Flavor>.toc     generated, baked mode (gitignored)
 
   src/
-    config.lua                flavors, entity types, l10n field contract
-    meta/                     schema, field keys, types, defaults, l10n literal markers
+    config.lua                flavors, entity types, l10n block contract
+    meta/                     schema, field keys, types, defaults, chunk markers
     read/
       shared.lua              getters, row cache, overlay lookup, defaults, freezing
       source.lua              readField/getAllIds over raw tables
@@ -598,7 +589,7 @@ QuestieTDB/
       registry.lua            Register / Apply / load-order / recomposition
       <expansion>/            Static and Dynamic Corrections
       enum/, icons.lua        constants corrections reference
-    l10n/                     locale-joined overlay
+    l10n/                     eager active-locale columns and lookup
     types/                    LuaLS annotations
 
   data/                       raw entity data, moved from Questie
@@ -649,7 +640,7 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
 
 ## Open risks and gates
 
-### 1. TOC size in the live client: cleared at 85 MB; Mists recheck open at 96.6 MB
+### 1. TOC size in the live client: cleared; Mists is 57.1 MB
 
 Previously the blocking gate. **Resolved by prior in-client testing**: both `toc-database` and
 `Getters` were tested deeply against real clients at full size and load fast, with no parse or
@@ -657,15 +648,14 @@ memory problem at the 20–85 MB range. The merged Vanilla artifact (25.4 MB) is
 live-validated end-to-end on build 69109
 ([`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md) §7b).
 
-The post-ADR-0010 Mists artifact is 96,616,116 bytes (96.6 MB decimal, 92.1 MiB), still above
-the historically cleared range. Its four compressed ID headers decoded in 10.36 ms when the
-artifact was loaded through the Era client. A Mists-client acceptance session for full load,
-memory and one non-enUS locale remains open; see `docs/merge-program.md` future work. This is
-a regression check, not a return to an undecided storage architecture.
+ADR 0011 reduces the Mists artifact to 57,111,494 bytes, below the historically cleared
+85 MB range. Its active non-enUS locale retains 14.2 to 18.4 MiB in the Era-client prototype
+and takes 71 to 128 ms to decode. A Mists-client acceptance session for full load and
+client-wide memory remains open; see `docs/merge-program.md` future work.
 
-This also settles the l10n-in-TOC decision — keeping all nine locales in the store is
-validated, not assumed. Splitting l10n out remains a known mitigation if the artifact grows
-substantially beyond today's size, but it is not currently needed.
+This settles the l10n-in-TOC decision. Keeping all nine compressed locales in the store costs
+less artifact and metadata memory than the earlier joined format, while enUS decodes none.
+Splitting l10n out remains available if the artifact grows substantially beyond today's size.
 
 Consequence for the rest of the plan: **the prototypes' runtime behaviour is validated**, which
 raises the value of extracting their format precisely — see
@@ -729,11 +719,10 @@ mutable tables, and native CBOR returns them without a Lua parse. Freezing would
 public ownership contract and does not work reliably for values owned by another execution
 context.
 
-**Splitting localization into its own addon.** Would let English users — who need none of the
-9 locales — skip ~72% of the artifact. Rejected because TOC metadata lives in client-side
-storage rather than the Lua heap, so unused locales are never decoded and cost no Lua memory
-or GC pressure. Download size remains the only real cost, and this stays the first lever to
-pull if the size gate is unfavourable.
+**Splitting localization into its own addon.** Would let English users skip the compressed
+locale blocks. Rejected because ADR 0011 removes about 65% of localization directive bytes,
+enUS decodes no blocks, and a second addon would add packaging and dependency complexity for
+little runtime benefit. It remains the first lever to pull if artifact size grows again.
 
 **Keeping raw data in Questie.** Rejected: the generator would need Questie checked out to
 build, and support-data validators such as

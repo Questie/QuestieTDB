@@ -256,3 +256,16 @@ Conclusions:
 
 The read-cost side of the same question — CBOR against `loadstring` per field, per row and
 per table — belongs in `read-performance.md`.
+
+## 11. Locale suffixes on custom metadata keys — MEASURED (build 69547)
+
+The first contract-3 localization artifact used `X-l10n-Quest-deDE` as a block key. On an enUS
+client its chunk marker returned nil, while `X-l10n-Quest-deDE-1` returned the first chunk.
+The client interpreted the final `-deDE` as the standard localized-TOC-directive suffix rather
+than as an ordinary part of a custom key. The metadata emulator, which indexes exact strings,
+did not reproduce this behavior.
+
+Reordering the key to `X-l10n-deDE-Quest` made the marker and every part directly readable on
+enUS after `/reload`. Localization block keys therefore keep the entity type last. A unit test
+asserts that no generated block key ends in `-<locale>`, and live acceptance checks the marker
+before switching locale.

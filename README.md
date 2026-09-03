@@ -4,7 +4,8 @@ The database Questie consumes. Stores entity data as WoW addon TOC metadata, rea
 runtime with no file I/O, and owns the offline generator that produces it.
 
 Quests, NPCs, items and objects for Classic Era, TBC, Wrath, Cataclysm and Mists. Baked
-artifacts include nine locales; Source and Baked modes return the same base entity values.
+artifacts include nine locales as compressed CBOR column blocks; Source and Baked modes return
+the same base entity values.
 
 ---
 
@@ -181,12 +182,12 @@ QuestieTDB.toc            base TOC — source mode (committed)
 QuestieTDB_<Flavor>.toc   generated, baked mode (gitignored)
 
 src/
-  config.lua              flavors, entity types, file lists, l10n contract
-  meta/                   schema, nil/empty semantics, chunk and l10n literal markers
+  config.lua              flavors, entity types, file lists, l10n block contract
+  meta/                   schema, nil/empty semantics, chunk markers
   types/                  distributable LuaLS declarations, never loaded by a TOC
   read/                   shared getters + the two backends that differ
   corrections/            registry, compat shim, ported correction sets
-  l10n/                   the locale overlay
+  l10n/                   eager active-locale block loading and lookup
   support/                whole-table game reference data
   ui/                     the source-mode indicator
 

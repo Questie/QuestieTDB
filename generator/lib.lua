@@ -23,7 +23,7 @@ local concat = table.concat
 ---
 --- A 1024-byte buffer including its terminator. This is the whole reason `writeMetadata`
 --- budgets by *line* rather than by value: the key counts against the same limit, and the
---- per-type prefixes this format uses (`X-Object-`, `X-l10n-Quest-`) make keys long enough to
+--- per-type prefixes this format uses (`X-Object-`, `X-l10n-deDE-Quest`) make keys long enough to
 --- matter. Chunking the value alone dropped 17 object IDs from a 43-part ID list, and 27,690
 --- lines across the five artifacts were over the limit before this was found.
 lib.TOC_LINE_LIMIT = 1023

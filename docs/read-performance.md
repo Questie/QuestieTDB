@@ -956,3 +956,51 @@ The non-enUS check returned `Klaue von Scharfkralle` for quest 2 in deDE and ret
 changed quest 2 `requiredLevel` from 20 to 27 and added quest 4,999,999. Reads, `Exists` and
 `GetAllIds(true)` saw both changes. Withdrawing the Correction restored level 20 and removed
 the synthetic quest from all three views.
+
+## 9.13 Localization column blocks, 2026-09-03
+
+ADR 0011 replaces the per-entity locale-joined store with one compressed CBOR block per locale
+and entity type. The blocks hold field columns aligned with the base entity ID list. The client
+decodes four blocks for a non-enUS locale and none for enUS.
+
+Two retained layouts were measured in Classic Era 1.15.9 build 69547:
+
+| Layout | Vanilla active locale | Mists active locale |
+| --- | ---: | ---: |
+| ID-keyed rows | 5.3 to 6.3 MiB | 27.9 to 32.5 MiB |
+| ID-aligned field columns | **3.2 to 4.1 MiB** | **14.2 to 18.4 MiB** |
+
+Columns won because they remove the outer ID hash and the inner Quest/NPC row tables. Across
+every locale in the probe, Vanilla retained 3.2 to 4.1 MiB and decoded in 14 to 18 ms; Mists
+retained 14.2 to 18.4 MiB and decoded in 71 to 128 ms.
+
+The production contract-3 reader measured deDE at **16.36 ms and 3.26 MiB** of Lua heap on
+Vanilla. Returning to enUS released 3.44 MiB attributed to QuestieTDB. The generated Mists
+artifact, loaded through the Era-selected TOC with only its `Interface` changed, measured
+**81.41 ms and 15.09 MiB** of Lua heap for deDE.
+
+Compression and the lower metadata-key count changed the artifact substantially:
+
+| Flavor | Retired l10n directives | Column blocks | Metadata lines |
+| --- | ---: | ---: | ---: |
+| Vanilla | 11.99 MiB | **4.20 MiB** | 44,859 to 4,362 |
+| Mists | 57.48 MiB | **19.76 MiB** | 198,947 to 20,300 |
+
+The provider uses a same-ID and next-position cursor before binary search. Against full
+ascending sweeps, which match Questie's initialization work, live cold reads measured:
+
+| Read | Joined metadata | Active columns | Change |
+| --- | ---: | ---: | ---: |
+| Quest `name` | 7.22 µs | 5.12 µs | 29% faster |
+| Quest `objectivesText` | 16.55 µs | 7.92 µs | 52% faster |
+| Npc `name` | 10.09 µs | 5.81 µs | 42% faster |
+| Item `name` | 8.13 µs | 5.27 µs | 35% faster |
+| Object `name` | 6.69 µs | 4.12 µs | 38% faster |
+
+These are production contract-3 measurements. Warm scalar reads stayed near 0.4 µs and warm
+translated objectives measured 1.84 µs, effectively unchanged. Translated objectives still
+return a fresh mutable list; the retained block value feeds the existing deep-copy producer
+rather than escaping directly.
+The active-locale heap is fixed rather than proportional to reads. That trade is accepted for
+non-enUS clients because it removes much more uncompressed metadata than it adds to Lua, while
+enUS clients decode no blocks.

@@ -9,7 +9,7 @@
 ## Notes: |cFFFFD100(source mode)|r The database Questie consumes. No generated artifact present.
 ## Author: Questie contributors
 ## Version: 0.0.0
-## X-Contract-Version: 2
+## X-Contract-Version: 3
 ## X-Mode: source
 
 src\config.lua

@@ -181,6 +181,12 @@ suite("deflate", function()
   local compressed = LibDeflate:CompressZlib(input, { level = 9 })
   check(type(compressed) == "string" and #compressed < #input, "LibDeflate produced compressed zlib bytes")
   equal(LibDeflate:DecompressZlib(compressed), input, "LibDeflate zlib round trip")
+
+  local value = { [7] = { "typed", 42 }, [2] = "block" }
+  local encoded = encode.compressedCbor(value)
+  local decoded = cbor.decode(LibDeflate:DecompressZlib(base64.decode(encoded)))
+  equal(decoded, value, "compressed CBOR helper round trip")
+  equal(encoded, encode.compressedCbor(value), "compressed CBOR helper is deterministic")
 end)
 
 suite("encoding-util", function()
@@ -284,24 +290,7 @@ suite("codec", function()
   equal(codec.chunkCount["~3~"], 3, "chunk header parsed")
   equal(codec.chunkCount["~21~"], 21, "chunk header beyond the warmed range")
   equal(codec.chunkCount["Sharptalon's Claw"], nil, "ordinary value is not a chunk header")
-  equal(codec.chunkCount["{1,2}"], nil, "table literal is not a chunk header")
-  equal(codec.chunkCount["~E~"], nil, "empty marker is not a chunk header")
-
-  equal(codec.decodeString("Sharptalon's Claw"), "Sharptalon's Claw", "raw string")
-  equal(codec.decodeString(codec.EMPTY_STRING), "", "empty-string marker")
-
-  -- Every string must survive encode -> decode, including the ones that need a marker.
-  for _, s in ipairs({ "plain", "", "nil", "~E~", "~7~", "~Q~x", "line\nbreak", "Ünïcödé" }) do
-    equal(codec.decodeString(encode.string(s)), s, "encode/decode string: " .. s:gsub("%c", "?"))
-  end
-
-  local sep = config.localeSeparator
-  local joined = table.concat({ "eins", "", "dos", "un" }, sep)
-  equal(codec.localeSegment(joined, 1, sep), "eins", "first locale segment")
-  equal(codec.localeSegment(joined, 2, sep), nil, "empty segment means no translation")
-  equal(codec.localeSegment(joined, 3, sep), "dos", "middle locale segment")
-  equal(codec.localeSegment(joined, 4, sep), "un", "last locale segment")
-  equal(codec.localeSegment(joined, 5, sep), nil, "segment past the end")
+  equal(codec.chunkCount["gqFhAQ=="], nil, "base64 CBOR is not a chunk header")
 end)
 
 --------------------------------------------------------------------------------------------
@@ -955,6 +944,50 @@ suite("rows", function()
     "a schema wider than the exact presence mask is rejected")
 end)
 
+suite("l10n-blocks", function()
+  local l10nGen = dofile("generator/l10n.lua")
+  local ids = { 10, 20, 30, 40 }
+  local values = {
+    [10] = {
+      [1] = { [1] = "Zehn", [2] = "Ten" },
+      [2] = { [1] = { "Erstes Ziel" } },
+    },
+    [20] = { [1] = { [2] = "Twenty" } },
+    [30] = { [2] = { [1] = { "Ziel A", "Ziel B" } } },
+    [999] = { [1] = { [1] = "Unknown" } },
+  }
+
+  local german, germanEntities, germanValues =
+    l10nGen.buildBlock("Quest", values, ids, 1)
+  equal(german, {
+    [1] = { [1] = "Zehn" },
+    [2] = { [1] = { "Erstes Ziel" }, [3] = { "Ziel A", "Ziel B" } },
+  }, "localization columns align with base entity positions and preserve nil holes")
+  equal(germanEntities, 2, "entities with any German translation are counted")
+  equal(germanValues, 3, "individual German translated fields are counted")
+  equal(german[1][4], nil, "an untranslated known entity leaves a fallback hole")
+  equal(german[1][999], nil, "an unknown translated id is excluded from the block")
+
+  local english, englishEntities, englishValues =
+    l10nGen.buildBlock("Quest", values, ids, 2)
+  equal(english, { [1] = { [1] = "Ten", [2] = "Twenty" }, [2] = {} },
+    "each locale builds an independent set of columns")
+  equal(englishEntities, 2, "second-locale entity count")
+  equal(englishValues, 2, "second-locale field count")
+
+  local encoded = encode.compressedCbor(german)
+  local decoded = cbor.decode(LibDeflate:DecompressZlib(base64.decode(encoded)))
+  equal(decoded, german, "localization block survives compressed CBOR encoding")
+  equal(encoded, encode.compressedCbor(l10nGen.buildBlock("Quest", values, ids, 1)),
+    "localization block bytes are deterministic")
+  equal(config.l10nBlockKey("Quest", "deDE"), "X-l10n-deDE-Quest",
+    "localization block key names its locale and entity type")
+  for _, locale in ipairs(config.locales) do
+    check(config.l10nBlockKey("Quest", locale):sub(-#locale - 1) ~= "-" .. locale,
+      "localization block key does not trigger the client's localized-directive suffix: " .. locale)
+  end
+end)
+
 suite("cbor-cache", function()
   local questMeta = dofile("src/meta/questMeta.lua")
   local fixturePath = ".out/test-cbor-cache.toc"
@@ -1228,7 +1261,22 @@ suite("negative-controls", function()
   check(truncatedCount == 1, "corruption fixture did not apply (truncated id header)")
   runVerify(truncated, "truncated id header")
 
-  -- 4. A missing chunk part must raise rather than return a short string. Pick the first
+  -- 4. Localization blocks without their format header must not disappear silently.
+  local headerless, headerCount = original:gsub(
+    "## X%-l10n%-Version: [^\n]*\n", "", 1)
+  check(headerCount == 1, "corruption fixture did not apply (deleted l10n header)")
+  runVerify(headerless, "localization blocks without a format header")
+  local equivalenceOk = os.execute(shellQuote(LUA_BIN) ..
+    " equivalence.lua Vanilla --toc-dir=.out/corrupt --quiet >/dev/null 2>&1")
+  local equivalenceFailed
+  if type(equivalenceOk) == "number" then
+    equivalenceFailed = equivalenceOk ~= 0
+  else
+    equivalenceFailed = not equivalenceOk
+  end
+  check(equivalenceFailed, "equivalence accepted localization blocks without a format header")
+
+  -- 5. A missing chunk part must raise rather than return a short string. Pick the first
   -- eligible key deterministically so this control fails the same field on every run.
   local map = emulator.parse(sourceToc)
   local chunkKey
@@ -3235,7 +3283,26 @@ suite("l10n", function()
 
   client.reset()
   client.install({ expansion = "Classic", locale = "enUS" })
-  emulator.install(config.addonName, emulator.parse(tocPath))
+  local deserialize = C_EncodingUtil.DeserializeCBOR
+  local deserializeCalls = 0
+  C_EncodingUtil.DeserializeCBOR = function(bytes)
+    deserializeCalls = deserializeCalls + 1
+    return deserialize(bytes)
+  end
+  local metadataMap = emulator.parse(tocPath)
+  local metadataHandle = emulator.install(config.addonName, metadataMap)
+  local localizationPartReads = 0
+  local localizationBaseReads = {}
+  local function countedMetadata(addonName, key)
+    if key:find("^X%-l10n%-") and key:find("%-%d+$") then
+      localizationPartReads = localizationPartReads + 1
+    elseif key == config.l10nHeaderKey or key:match("^X%-l10n%-%a+%-%a+$") then
+      localizationBaseReads[key] = (localizationBaseReads[key] or 0) + 1
+    end
+    return metadataHandle.get(addonName, key)
+  end
+  C_AddOns.GetAddOnMetadata = countedMetadata
+  GetAddOnMetadata = countedMetadata
   local Lib = emulator.loadAddon(tocPath, config.addonName)
   local l10n = Lib.l10n
 
@@ -3250,39 +3317,120 @@ suite("l10n", function()
     check(l10n.localeIndex[locale] ~= nil, "locale declared: " .. locale)
   end
   equal(l10n.localeIndex.enUS, nil, "enUS is not stored — base data is already English")
+  equal(deserializeCalls, 4, "enUS decodes only the four entity ID headers")
+  equal(localizationPartReads, 0, "enUS does not reassemble any localization block")
+  equal(localizationBaseReads, { [config.l10nHeaderKey] = 1 },
+    "enUS reads only the localization format header")
 
-  -- Only the requested locale is decoded on access, and switching takes effect immediately
-  -- with no regeneration and no rebuild.
+  -- Selecting a non-English locale eagerly decodes exactly one block per entity type.
   local base = Lib.Quest.name(2)
   equal(base, "Sharptalon's Claw", "enUS reads the base value")
 
+  local expectedGermanParts = 0
+  for _, entityType in ipairs(config.entityTypes) do
+    local marker = metadataMap[config.l10nBlockKey(entityType.name, "deDE")]
+    expectedGermanParts = expectedGermanParts + tonumber(marker:match("^~(%d+)~$"))
+  end
+  localizationPartReads = 0
+  localizationBaseReads = {}
+  local beforeLocaleDecode = deserializeCalls
   l10n.SetLocale("deDE")
+  equal(deserializeCalls - beforeLocaleDecode, 4, "deDE eagerly decodes four localization blocks")
+  equal(localizationPartReads, expectedGermanParts,
+    "deDE reads each localization chunk part exactly once")
+  for _, entityType in ipairs(config.entityTypes) do
+    local key = config.l10nBlockKey(entityType.name, "deDE")
+    equal(localizationBaseReads[key], 1, "deDE reads its " .. entityType.name .. " block header once")
+  end
   equal(Lib.Quest.name(2), "Klaue von Scharfkralle", "deDE quest name")
-  equal(Lib.Quest.objectivesText(2),
-    { "Bringt die Klaue von Scharfkralle zu Senani Thunderheart im Splintertreeposten in Ashenvale." },
+  local expectedObjectives = {
+    "Bringt die Klaue von Scharfkralle zu Senani Thunderheart im Splintertreeposten in Ashenvale.",
+  }
+  local translatedObjectives = Lib.Quest.objectivesText(2)
+  equal(translatedObjectives, expectedObjectives,
     "deDE objectivesText comes back as a list, matching the base field's shape")
+  translatedObjectives[1] = "caller mutation"
+  equal(Lib.Quest.objectivesText(2), expectedObjectives,
+    "translated table reads remain fresh and mutation-isolated")
+
+  local correctedObjectives = { "Corrected localized objective" }
+  local objectiveField = Lib.Meta.Quest.keys.objectivesText
+  Lib.Corrections.RegisterRuntimeCorrection("L10nTableTest", "Quest", "objectives",
+    function() return { [2] = { [objectiveField] = correctedObjectives } } end, 10)
+  Lib.Corrections.ApplyRegisteredCorrections("L10nTableTest")
+  local correctedFirst = Lib.Quest.objectivesText(2)
+  equal(correctedFirst, correctedObjectives,
+    "a corrected objective list outranks the active translation")
+  correctedFirst[1] = "caller mutation"
+  equal(Lib.Quest.objectivesText(2), correctedObjectives,
+    "a corrected translated field still returns fresh table copies")
+  equal(Lib.GetProvenance("Quest", 2, "objectivesText"), "L10nTableTest",
+    "corrected objective provenance names the winning owner")
+  Lib.Corrections.UnregisterCorrection("L10nTableTest", "Quest", "objectives")
+  Lib.Corrections.ApplyRegisteredCorrections("L10nTableTest")
+  equal(Lib.Quest.objectivesText(2), expectedObjectives,
+    "withdrawing a corrected objective list restores the active translation")
+
   equal(Lib.Npc.name(54), "Corina Steele", "deDE npc name")
   equal(Lib.Npc.subName(54), "Waffenschmiedin", "deDE npc subName")
   equal(Lib.Item.name(25), "Abgenutztes Kurzschwert", "deDE item name")
   equal(Lib.Object.name(31), "Alte Löwenstatue", "deDE object name")
 
+  local invalidations = 0
+  local originalInvalidations = {}
+  for _, entityType in ipairs(config.entityTypes) do
+    local entity = Lib[entityType.name]
+    originalInvalidations[entity] = entity.InvalidateCache
+    entity.InvalidateCache = function(id)
+      invalidations = invalidations + 1
+      return originalInvalidations[entity](id)
+    end
+  end
+  local callbacks = 0
+  l10n.onLocaleChanged[#l10n.onLocaleChanged + 1] = function() callbacks = callbacks + 1 end
+  beforeLocaleDecode = deserializeCalls
+  l10n.SetLocale("deDE")
+  equal(deserializeCalls - beforeLocaleDecode, 0, "selecting the active locale reuses its blocks")
+  equal(invalidations, 0, "selecting the active locale preserves entity caches")
+  equal(callbacks, 0, "selecting the active locale fires no change callback")
+
+  local russianKey = config.l10nBlockKey("Item", "ruRU")
+  local russianBlock = metadataMap[russianKey]
+  metadataMap[russianKey] = nil
+  local invalidationsBeforeFailure, callbacksBeforeFailure = invalidations, callbacks
+  local switched, switchError = pcall(l10n.SetLocale, "ruRU")
+  check(not switched and tostring(switchError):find(russianKey, 1, true) ~= nil,
+    "an incomplete replacement locale fails with its missing block key")
+  equal(l10n.currentLocale, "deDE", "a failed locale switch keeps the previous locale active")
+  equal(Lib.Quest.name(2), "Klaue von Scharfkralle",
+    "a failed locale switch keeps previous translations readable")
+  equal(invalidations, invalidationsBeforeFailure,
+    "a failed locale switch preserves every entity cache")
+  equal(callbacks, callbacksBeforeFailure,
+    "a failed locale switch fires no change callback")
+  metadataMap[russianKey] = russianBlock
+  l10n.onLocaleChanged[#l10n.onLocaleChanged] = nil
+  for entity, original in pairs(originalInvalidations) do entity.InvalidateCache = original end
+
+  beforeLocaleDecode = deserializeCalls
   l10n.SetLocale("ruRU")
+  equal(deserializeCalls - beforeLocaleDecode, 4, "switching locale decodes four replacement blocks")
   equal(Lib.Quest.name(2), "Коготь гиппогрифа Острокогтя", "ruRU quest name, after a switch")
+  beforeLocaleDecode = deserializeCalls
   l10n.SetLocale("zhCN")
+  equal(deserializeCalls - beforeLocaleDecode, 4, "another locale switch replaces all four blocks")
   equal(Lib.Quest.name(2), "沙普塔隆的爪子", "zhCN quest name, after another switch")
 
   l10n.SetLocale("enUS")
   equal(Lib.Quest.name(2), base, "switching back to enUS restores the base value")
 
-  -- A field with no translation falls back to the base English value.
+  -- A field with no translation falls back to the raw English value without reloading blocks.
   local ids = Lib.Quest.GetAllIds()
   l10n.SetLocale("deDE")
   local fallbacks, translated = 0, 0
   for i = 1, math.min(#ids, 400) do
     local localized = Lib.Quest.name(ids[i])
-    l10n.SetLocale("enUS")
-    local english = Lib.Quest.name(ids[i])
-    l10n.SetLocale("deDE")
+    local english = Lib.Quest.GetRaw(ids[i], "name")
     if localized == english then fallbacks = fallbacks + 1 else translated = translated + 1 end
   end
   check(translated > 0, "translations resolve (" .. translated .. " of 400)")
@@ -3301,7 +3449,26 @@ suite("l10n", function()
   equal(covered.Item, "name", "item translates name only")
   equal(covered.Object, "name", "object translates name only")
 
+  l10n.SetLocale("itIT")
+  equal(l10n.currentLocale, "itIT", "an unsupported requested locale remains observable")
+  equal(l10n.currentIndex, nil, "an unsupported locale has no stored block index")
+  equal(Lib.Quest.name(2), base, "an unsupported locale falls back to base English")
+
   l10n.SetLocale("enUS")
+  C_EncodingUtil.DeserializeCBOR = deserialize
+
+  -- A selected type is determined by its non-empty base ID header, not by whichever locale
+  -- block happens to exist. Missing deDE data must fail an initial deDE load atomically.
+  client.reset()
+  client.install({ expansion = "Classic", locale = "deDE" })
+  local incompleteMap = emulator.parse(tocPath)
+  local missingGermanKey = config.l10nBlockKey("Item", "deDE")
+  incompleteMap[missingGermanKey] = nil
+  emulator.install(config.addonName, incompleteMap)
+  local loaded, loadError = pcall(emulator.loadAddon, tocPath, config.addonName)
+  check(not loaded and tostring(loadError):find(missingGermanKey, 1, true) ~= nil,
+    "an initial non-enUS load rejects a missing selected-type block")
+
   client.reset()
 end)
 
@@ -3471,15 +3638,6 @@ suite("wire-safety", function()
     out:close()
     check(not okLead, "leading-whitespace value is refused at write time")
     check(not okTrail, "trailing-whitespace value is refused at write time")
-  end
-
-  -- And the string encoder routes edge-whitespace strings through the quoted form instead.
-  do
-    local encoded = encode.string(" padded ")
-    check(encoded:sub(1, 3) == codec.QUOTED_PREFIX, "edge-whitespace string encodes quoted")
-    equal(codec.decodeString(encoded), " padded ", "quoted edge-whitespace string round-trips")
-    equal(encode.string("interior spaces fine"), "interior spaces fine",
-      "interior whitespace still stores raw")
   end
 
   -- GetAddOnMetadata folds key case (measured §2): a case-only key collision is one key to

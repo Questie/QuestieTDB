@@ -89,8 +89,8 @@ split:
 - The base key holds `~<partCount>~` — a tilde-delimited decimal count, and nothing else.
 - Parts are numbered from 1 and reassembled by concatenation in order, with no separator.
 - **Splits must not fall inside a UTF-8 sequence.** Back the split point up while the next
-  byte is a continuation byte (`0x80`–`0xBF`). Localized names make this reachable in practice,
-  not theoretical.
+  byte is a continuation byte (`0x80`–`0xBF`). Current binary payloads are base64, but the
+  shared writer keeps this invariant for any future raw-text metadata.
 - **No part may begin or end with a byte the client trims** — space, tab, CR, LF. Measured on
   Classic Era 1.15.9 (`docs/client-metadata-probes.md` §1): `GetAddOnMetadata` strips a
   value's edge whitespace, so a split landing beside a space silently loses that byte during
@@ -98,8 +98,7 @@ split:
   and `verify.lua` scans every emitted value for the invariant.
 
 A reader distinguishes a chunk header from an ordinary value by matching `^~(%d+)~$`. Entity
-values use base64, whose alphabet cannot begin with `~`. The localization writer rejects a
-joined value that would collide with this marker.
+values and localization blocks use base64, whose alphabet cannot begin with `~`.
 
 ## Line length limit
 
@@ -116,7 +115,7 @@ A 1024-byte buffer including its terminator.
 
 The consequence is that **the chunk threshold is a budget on the line, not on the value**. The
 key counts against the same limit, and it is not a constant: the per-type prefixes this format
-uses (`X-Object-`, `X-l10n-Quest-`) are long, and a chunk part's key grows as the part count
+uses (`X-Object-`, `X-l10n-ruRU-Quest`) are long, and a chunk part's key grows as the part count
 gains digits. `generator/lib.lua` therefore sizes parts from the key and then checks every line
 it is about to write, rather than trusting the arithmetic.
 
@@ -137,14 +136,12 @@ Two more client parser behaviors, both measured on Classic Era 1.15.9
 - **Keys are case-insensitive.** `x-quest-2-1` and `X-Quest-2-1` are the same key to
   `GetAddOnMetadata`, so two keys differing only in case would silently shadow one another.
   Generation asserts case-folded uniqueness across every key it writes. Canonical spellings
-  (`X-Quest-`, `X-l10n-Quest-`) are unchanged — they differ by more than case.
+  (`X-Quest-`, `X-l10n-deDE-Quest`) differ by more than case.
 
-## Tilde markers
+## Tilde marker
 
-`~<N>~` remains the entity format's only marker. It means the base key has N numbered chunk
-parts. `~E~` and `~Q~` remain reserved for the unchanged literal-safe localization codec but
-are never emitted for entity rows, entity tables or ID headers. CBOR represents empty strings
-and control bytes without a sentinel.
+`~<N>~` is the format's only marker. It means the base key has N numbered chunk parts. CBOR
+represents empty strings and control bytes without sentinels.
 
 ## ID header
 
@@ -155,42 +152,45 @@ encodes the compressed bytes. Chunking applies to the base64 text.
 Baked mode decodes all four headers at addon load through `DecodeBase64`,
 `DecompressString(bytes, 1)` and `DeserializeCBOR`. It retains the decoded lists and builds
 `[id] = true` existence maps in a loop. Rows remain lazy; this is the only eager entity decode.
-Localization keeps its separate `X-l10n-<Type>-IDS-LIST` keys and literal encoding unchanged.
 
-## Localization
+## Localization blocks
 
-Localized values are stored under their own prefixed keys:
+`X-l10n-Version: 1` declares the localization store. Each non-enUS locale has one compressed
+CBOR block per entity type:
 
 ```toc
-## X-l10n-<Type>-<id>-<fieldIndex>: <locale1>‡<locale2>‡...
+## X-l10n-deDE-Quest: <base64 zlib CBOR field columns>
+## X-l10n-deDE-Npc: <base64 zlib CBOR field columns>
+## X-l10n-deDE-Item: <base64 zlib CBOR field columns>
+## X-l10n-deDE-Object: <base64 zlib CBOR field columns>
 ```
 
-The `l10n-` prefix is load-bearing in the combined case, which is what QuestieTDB ships:
-without it `X-Quest-2-1` would be ambiguous between quest 2's name and Quest l10n id 2
-field 1.
+A block is an array of compact localization field columns. Each column uses positions from the
+entity type's ascending `X-<Type>-IDS` array:
 
-- The separator is **`‡`** (U+2021, UTF-8 `\226\128\161`).
-- Locale order is fixed and declared by the generator; the decoder captures the Nth segment.
-- **enUS is not stored.** Base entity data is already English, so the l10n store carries only
-  translations — currently `deDE, esES, esMX, frFR, koKR, ptBR, ruRU, zhCN, zhTW`.
-- An empty segment means "no translation for this locale"; the reader falls back to the base
-  entity value.
-- **A list-valued field's segments are Lua table literals** (ADR 0003, Decision 3): quest
-  `objectivesText` stores each locale's list as `{'…','…'}` and decodes that segment with
-  `loadstring("return " .. segment)`. This literal path belongs only to localization;
-  structure still travels in the value, so the field stays a table in every locale. Element counts follow the upstream lookup and
-  may differ, notably where zhCN or zhTW combines objectives. There is no second,
-  element-level separator.
-- Scalar segments are raw text, trimmed at extraction — the client trims value edges, and
-  which segment sits at a value's edge depends on which other locales are present, so
-  untrimmed translations would vary by position. Control characters are stripped at
-  extraction as display-text defects (observed in the wild: a leading DEL byte on a zhTW
-  NPC name); list elements need no stripping because the quoted literal form escapes them.
-- Generation fails on a segment containing `‡` or a control character, and on a joined value
-  that would collide with the `~<N>~` chunk-header marker.
+```lua
+{
+  [1] = { [entityPosition] = translatedName },
+  [2] = { [entityPosition] = translatedObjectivesOrSubName },
+}
+```
 
-Because segments are only extracted on access, unused locales cost no Lua memory — see
-`DESIGN.md`, Localization.
+Quest columns are `name`, `objectivesText`; NPC columns are `name`, `subName`; Item and Object
+have only `name`. A nil hole means no translation, so the reader falls back to the base entity
+field. List-valued quest objectives are CBOR tables and retain the locale's own element count.
+
+The locale precedes the entity type because the client reserves a final `-deDE`-style suffix
+for localized TOC directives; such a key disappears when another locale is active. Generation
+trims scalar translation edges and removes control characters before encoding, matching the
+display-text cleanup applied by the earlier store. It emits deterministic CBOR,
+zlib level 9, then base64. The full base ID list is not repeated in localization.
+
+**enUS has no blocks.** A client using enUS decodes no localization data. A non-enUS client
+decodes its four available type blocks during addon load and retains those columns for the
+session. Lookups use the backend ID list, with a sequential-position fast path and binary-search
+fallback. Locale changes replace all four active blocks before invalidating entity caches.
+Corrections still outrank translations, and translated tables still return fresh mutable copies.
+See ADR 0011.
 
 ## Build metadata
 
@@ -205,9 +205,9 @@ Every generated `.toc` carries provenance:
 `X-BUILD-COMMIT` is `git rev-parse HEAD`, or forty zeros when git is unavailable.
 
 `X-QUESTIE-COMMIT` is the same for the Questie checkout Generation reads (`--questie=`,
-default `QUESTIE_PATH` or `../Questie`). It is provenance, not decoration: the l10n lookups —
-~72% of the artifact — are read from that checkout rather than committed here, so an artifact
-is reproducible only from the *pair* of commits. `QUESTIE_COMMIT` pins the reviewed input;
+default `QUESTIE_PATH` or `../Questie`). It is provenance, not decoration: the localization
+blocks are built from lookups in that checkout rather than committed here, so an artifact is
+reproducible only from the *pair* of commits. `QUESTIE_COMMIT` pins the reviewed input;
 Generation, Reconstruction, the compiler differential, and the Correction port reject a
 different commit, and both workflows read that pin through the shared checkout action.
 `tools/package.sh` copies

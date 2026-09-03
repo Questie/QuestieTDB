@@ -7,7 +7,8 @@ This repo is **implemented**: the generator, both runtime modes, corrections,
 localization, validators, CI, and release tooling all exist. `DESIGN.md` describes the
 architecture as designed; where it and the code disagree, read the ADRs in `docs/adr/` —
 `0003-merged-storage-and-read-contract.md` remains the broad contract statement. ADR 0006
-supersedes its coordinate decision, and ADR 0010 defines Baked entity storage.
+supersedes its coordinate decision, ADR 0010 defines Baked entity storage, and ADR 0011
+defines compressed Localization blocks.
 
 ## Read first
 
@@ -15,7 +16,8 @@ supersedes its coordinate decision, and ADR 0010 defines Baked entity storage.
 - `CONTEXT.md` — glossary
 - `docs/storage-format.md` — the on-disk TOC contract and nil/empty rules
 - `docs/adr/` — decision records; `0003` is the broad contract, `0006` supersedes its
-  coordinate decision, and `0010` defines CBOR rows, tables, presence masks, and ID headers
+  coordinate decision, `0010` defines CBOR entity storage, and `0011` defines compressed
+  Localization blocks
 - `docs/merge-program.md` — how the two parallel implementations became one: defects
   fixed, standing guarantees, ready-to-file future work, retirement checklist
 - `docs/client-metadata-probes.md` — measured live-client behavior (trimming, key
