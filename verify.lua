@@ -1,8 +1,8 @@
 #!/usr/bin/env lua
 -- verify.lua
 --
--- Round-trip verification: for every entity and every field, the value read back through the
--- shipped reader must equal what the storage format says that source value reads back as.
+-- Round-trip verification: for every entity and field, the value read through the shipped
+-- reader must equal the normalized Generation input represented by the storage format.
 --
 -- This is a required CI gate, not a smoke test. It is also the feedback signal every other
 -- part of the build leans on, so it runs the *real* runtime files out of src/ against the
@@ -21,6 +21,8 @@ local lib = dofile("generator/lib.lua")
 local loader = dofile("generator/loader.lua")
 local schema = dofile("generator/schema.lua")
 local encode = dofile("generator/encode.lua")
+local rowBuilder = dofile("generator/rows.lua")
+local l10nGen = dofile("generator/l10n.lua")
 local emulator = dofile("emulator/metadata.lua")
 local client = dofile("emulator/client.lua")
 local flavorLoader = dofile("generator/flavor.lua")
@@ -79,7 +81,7 @@ local function reportMismatch(report, entityName, id, fieldIndex, fieldName, exp
   end
 end
 
---- Verify one flavor's generated TOC against the raw entity data it was generated from.
+---Verify one flavor's generated TOC against its Static-corrected, derived Generation input.
 local function verifyFlavor(flavor, opts)
   local tocPath = (opts.tocDir or ".") .. "/" .. config.tocPath(flavor)
   if not lib.fileExists(tocPath) then
@@ -157,8 +159,8 @@ local function verifyFlavor(flavor, opts)
   local normalize = LibQuestieDB.Meta.normalize
   local seenKeys = {}
 
-  -- The same corrected tables the generator wrote, so this checks the storage round trip
-  -- rather than accidentally re-checking whether corrections were applied.
+  -- Load the same Static-corrected, derived tables that Generation wrote. This checks the
+  -- storage round trip rather than re-testing whether Corrections and Derived Passes ran.
   local loadedFlavor = flavorLoader.load(flavor, opts.types)
 
   for _, entityType in ipairs(config.entityTypes) do
@@ -167,25 +169,25 @@ local function verifyFlavor(flavor, opts)
       local meta = LibQuestieDB.Meta[entityType.name]
       local sourceEntities = loadedFlavor[entityType.name].entities
 
-      -- The ID list must round-trip in both forms consumers build from it. This reads the
-      -- BACKEND's list, not `entity.GetAllIds()`: public enumeration is the composed view
+      -- The ID header must decode to both list and existence-map forms. This reads the
+      -- BACKEND's values, not `entity.GetAllIds()`: public enumeration is the composed view
       -- (ADR 0003 D7), which legitimately includes entities Dynamic Corrections add, while
       -- this check's subject is the stored artifact alone.
       local sourceIds = lib.sortedIds(sourceEntities)
       local storedList, storedMap = entity.backend.getAllIds()
       if not lib.deepEqual(sourceIds, storedList) then
-        io.write(("  MISMATCH %s IDS-LIST: %d source ids, %d stored\n")
+        io.write(("  MISMATCH %s IDS: %d source ids, %d stored\n")
           :format(entityType.name, #sourceIds, #storedList))
         report.errors = report.errors + 1
       end
       for _, id in ipairs(sourceIds) do
         if storedMap[id] ~= true then
-          io.write(("  MISMATCH %s IDS-LIST hashmap missing id %d\n"):format(entityType.name, id))
+          io.write(("  MISMATCH %s IDS hashmap missing id %d\n"):format(entityType.name, id))
           report.errors = report.errors + 1
           break
         end
       end
-      seenKeys["X-" .. meta.metaPrefix .. "IDS-LIST"] = true
+      seenKeys["X-" .. meta.metaPrefix .. "IDS"] = true
 
       local checkIds = sourceIds
       if opts.sample and #sourceIds > opts.sample then
@@ -215,12 +217,16 @@ local function verifyFlavor(flavor, opts)
             reportMismatch(report, entityType.name, id, fieldIndex,
               meta.names[fieldIndex] .. " (named vs generic getter)", generic, named)
           end
-          -- Orphan detection needs presence, not encoded bytes. Reuse the normalized value
-          -- instead of running table serialization again inside this exhaustive sweep.
-          if encode.hasStoredValue(meta, fieldIndex, expected) then
+          -- Only table fields retain per-field keys. Scalars and the table presence mask live
+          -- in the entity's `-S` row.
+          if meta.types[fieldIndex] == "table" and
+             encode.hasStoredValue(meta, fieldIndex, expected) then
             seenKeys["X-" .. meta.metaPrefix .. id .. "-" .. fieldIndex] = true
           end
          end
+        end
+        if rowBuilder.build(meta, row) then
+          seenKeys["X-" .. meta.metaPrefix .. id .. "-S"] = true
         end
       end
 
@@ -281,88 +287,130 @@ local function verifyFlavor(flavor, opts)
     freezeLib.reset()
   end
 
-  -- Localization: every stored value must split into the declared number of locale segments,
-  -- and every segment must be non-empty or absent — an empty segment means "no translation"
-  -- and the reader falls back, so a stray one is a silent English string in a German client.
-  local l10nFields, l10nSegments = 0, 0
-  local l10nGen = dofile("generator/l10n.lua")
-  local listFieldByType = {}
-  for typeName, typeCfg in pairs(l10nGen.types) do
-    listFieldByType[typeName] = {}
-    for fieldPos, fieldCfg in ipairs(typeCfg.fields) do
-      if fieldCfg.list then listFieldByType[typeName][fieldPos] = true end
+  -- Localization blocks are typed columns aligned with the base entity ID list. Validate the
+  -- raw shape before exercising the public locale overlay below.
+  local l10nBlocks, l10nResolved = 0, 0
+  local storedL10nVersion = map[config.l10nHeaderKey]
+  local hasLocalizationBlocks = false
+  for key in pairs(map) do
+    if key:match("^X%-l10n%-%a+%-%a+$") then
+      hasLocalizationBlocks = true
+      break
     end
   end
-  local function splitLocales(joined)
-    local segments, pos = {}, 1
-    while true do
-      local s, e = joined:find(config.localeSeparator, pos, true)
-      if not s then
-        segments[#segments + 1] = joined:sub(pos)
-        return segments
-      end
-      segments[#segments + 1] = joined:sub(pos, s - 1)
-      pos = e + 1
-    end
+  if hasLocalizationBlocks and not storedL10nVersion then
+    io.write(("  L10N %s: localization blocks exist without the format header\n")
+      :format(config.l10nHeaderKey))
+    report.errors = report.errors + 1
   end
-  for key, value in pairs(map) do
-    -- `X-l10n-<Type>-<id>-<fieldIndex>`. A chunk part carries a fourth number and is skipped.
-    local typeName, fieldPos = key:match("^X%-l10n%-(%a+)%-%d+%-(%d+)$")
-    if typeName then
-      l10nFields = l10nFields + 1
-      local joined = emulator.getValue(map, key)
-      local segments = splitLocales(joined)
-      if #segments > #config.locales then
-        io.write(("  L10N %s: %d locale segments, only %d locales declared\n")
-          :format(key, #segments, #config.locales))
-        report.errors = report.errors + 1
-      end
-      -- A list-valued field's segments are Lua table literals — the shape contract of
-      -- ADR 0003 Decision 3. Every non-empty segment must decode to a table.
-      if listFieldByType[typeName] and listFieldByType[typeName][tonumber(fieldPos)] then
-        for i = 1, #segments do
-          local segment = segments[i]
-          if segment ~= "" then
-            local chunk = loadstring("return " .. segment)
-            local ok, decoded = false, nil
-            if chunk then ok, decoded = pcall(chunk) end
-            if not ok or type(decoded) ~= "table" then
-              io.write(("  L10N %s segment %d does not decode to a table: %s\n")
-                :format(key, i, segment:sub(1, 80)))
+  if storedL10nVersion and storedL10nVersion ~= tostring(config.l10nVersion) then
+    io.write(("  L10N %s: format version %s, expected %d\n")
+      :format(config.l10nHeaderKey, tostring(storedL10nVersion), config.l10nVersion))
+    report.errors = report.errors + 1
+  end
+
+  if storedL10nVersion then
+    for _, entityType in ipairs(config.entityTypes) do
+      if not opts.types or opts.types[entityType.name] then
+        local typeName = entityType.name
+        local typeConfig = l10nGen.types[typeName]
+        local sourceIds = lib.sortedIds(loadedFlavor[typeName].entities)
+        for _, locale in ipairs(config.locales) do
+          local key = config.l10nBlockKey(typeName, locale)
+          local encoded, storedError = emulator.getValue(map, key)
+          if not encoded then
+            io.write(("  L10N %s: missing or incomplete block: %s\n")
+              :format(key, tostring(storedError)))
+            report.errors = report.errors + 1
+          else
+            local ok, block = pcall(function()
+              return C_EncodingUtil.DeserializeCBOR(C_EncodingUtil.DecompressString(
+                C_EncodingUtil.DecodeBase64(encoded), 1))
+            end)
+            if not ok or type(block) ~= "table" then
+              io.write(("  L10N %s: block decode failed: %s\n"):format(key, tostring(block)))
               report.errors = report.errors + 1
-              break
+            else
+              l10nBlocks = l10nBlocks + 1
+              for fieldIndex, fieldConfig in ipairs(typeConfig.fields) do
+                local column = block[fieldIndex]
+                if type(column) ~= "table" then
+                  io.write(("  L10N %s: field column %d is %s\n")
+                    :format(key, fieldIndex, type(column)))
+                  report.errors = report.errors + 1
+                else
+                  local expectedType = fieldConfig.list and "table" or "string"
+                  for position, value in pairs(column) do
+                    if type(position) ~= "number" or position % 1 ~= 0 or
+                       position < 1 or position > #sourceIds then
+                      io.write(("  L10N %s: invalid entity position %s in column %d\n")
+                        :format(key, tostring(position), fieldIndex))
+                      report.errors = report.errors + 1
+                      break
+                    elseif type(value) ~= expectedType then
+                      io.write(("  L10N %s: column %d position %d is %s, expected %s\n")
+                        :format(key, fieldIndex, position, type(value), expectedType))
+                      report.errors = report.errors + 1
+                      break
+                    end
+                  end
+                end
+              end
             end
           end
         end
       end
     end
   end
-  for _, entityType in ipairs(config.entityTypes) do
-    if not opts.types or opts.types[entityType.name] then
-      local entity = LibQuestieDB[entityType.name]
-      local l10n = LibQuestieDB.l10n
-      if entity and l10n and entity.HasL10nProvider and entity.HasL10nProvider() then
-        for _, locale in ipairs(config.locales) do
-          l10n.SetLocale(locale)
-          local ids = entity.GetAllIds()
-          local translated = 0
-          for i = 1, math.min(#ids, 500) do
-            local value = entity.Get(ids[i], "name")
-            if type(value) == "string" and value ~= "" then translated = translated + 1 end
+
+  -- Decode each locale once, then compare every stored translation through the public reader.
+  -- This proves that the runtime's position lookup agrees with Generation's column alignment.
+  local l10n = LibQuestieDB.l10n
+  if storedL10nVersion and l10n then
+    for _, locale in ipairs(config.locales) do
+      l10n.SetLocale(locale)
+      for _, entityType in ipairs(config.entityTypes) do
+        if not opts.types or opts.types[entityType.name] then
+          local typeName = entityType.name
+          local entity = LibQuestieDB[typeName]
+          if entity and entity.HasL10nProvider and entity.HasL10nProvider() then
+            local sourceIds = lib.sortedIds(loadedFlavor[typeName].entities)
+            local encoded = emulator.getValue(map, config.l10nBlockKey(typeName, locale))
+            local block = C_EncodingUtil.DeserializeCBOR(C_EncodingUtil.DecompressString(
+              C_EncodingUtil.DecodeBase64(encoded), 1))
+            for columnIndex, fieldConfig in ipairs(l10nGen.types[typeName].fields) do
+              local fieldIndex = entity.meta.keys[fieldConfig.name]
+              local mismatchReported = false
+              local compared = 0
+              for position, expected in pairs(block[columnIndex]) do
+                if not opts.sample or compared < opts.sample then
+                  local id = sourceIds[position]
+                  local layer = entity.overlay[id]
+                  if not layer or layer[fieldIndex] == nil then
+                    local actual = entity.Get(id, fieldIndex)
+                    if not lib.deepEqual(actual, expected) and not mismatchReported then
+                      io.write(("  L10N %s/%s column %d position %d: expected %s, got %s\n")
+                        :format(typeName, locale, columnIndex, position,
+                          lib.show(expected):sub(1, 100), lib.show(actual):sub(1, 100)))
+                      report.errors = report.errors + 1
+                      mismatchReported = true
+                    end
+                  end
+                  compared = compared + 1
+                  l10nResolved = l10nResolved + 1
+                end
+                if opts.sample and compared >= opts.sample then break end
+              end
+            end
           end
-          if translated == 0 then
-            io.write(("  L10N %s/%s: no name resolved across 500 ids\n"):format(entityType.name, locale))
-            report.errors = report.errors + 1
-          end
-          l10nSegments = l10nSegments + translated
         end
-        l10n.SetLocale("enUS")
       end
     end
+    l10n.SetLocale("enUS")
   end
-  if l10nFields > 0 then
-    say(("       l10n: %d stored values, %d segments resolved across %d locales")
-      :format(l10nFields, l10nSegments, #config.locales))
+  if l10nBlocks > 0 then
+    say(("       l10n: %d compressed blocks, %d localized reads across %d locales")
+      :format(l10nBlocks, l10nResolved, #config.locales))
   end
 
   say(("[%s] %s: %d entities, %d fields, %d chunked values, %d errors, %.1fs")

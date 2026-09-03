@@ -207,3 +207,65 @@ buckets with provenance naming the owner; withdrawing both restored the base nam
 `SetLocale("deDE")` rebuilt to `Alte Löwenstatue` and dropped the English bucket, and
 `enUS` restored it. (The smoke owner `NameIndexSmoke` persists, empty, for the session; a
 `/reload` clears it.)
+
+## 10. CBOR transport — MEASURED (build 69547, TDBProbe addon)
+
+Whether the client's native CBOR codec can replace `loadstring` as the decode path, probed
+through `tools/probe-addon/` with its `gen-cbor-probe.*` generators. The Classic quest table
+from `data/Classic/classicQuestDB.lua` (4,244 rows, every field) was encoded offline with
+Questie's verified `BlizzardCBOR.lua`, shipped in the TOC two ways, and shipped once more as
+a plain Lua literal in `data.lua` for a deep comparison.
+
+| | zlib + base64 | base64 only |
+| --- | ---: | ---: |
+| Text in the TOC | 356 KB, 366 lines | 889 KB, 912 lines |
+| Leaf values compared | 55,726 | 55,726 |
+| Differences | **0** | **0** |
+
+Stage costs, best of five with a collection before each run, on the same 690 KB of CBOR:
+
+| Stage | ms |
+| --- | ---: |
+| Reassemble 366 chunks / 912 chunks | 1.2 / 3.1 |
+| `DecodeBase64`, 889 KB | 3.2 |
+| `DecompressString`, any method | 2.2 |
+| `DeserializeCBOR`, 690 KB | 8.8 |
+| **Pipeline, base64 only** | **11.0** |
+| **Pipeline, zlib + base64** | **12.4** |
+
+Conclusions:
+
+- **Base64 survives a TOC line byte for byte.** `+`, `/` and trailing `=` and `==` padding
+  all read back unchanged, so no hex doubling is needed.
+- **The offline encoder and the client codec agree on real data.** Sparse arrays with nil
+  holes, integer-keyed maps, floats, and every string in the quest table round-trip exactly.
+- **Compression is a size decision, not a speed one.** It costs about 1.5 ms extra at decode
+  and cuts the TOC text by 2.5×. A first single-run pass showed the compressed pipeline at
+  23 ms against 45 ms uncompressed; that was heap state between two back-to-back 690 KB
+  decodes, not the codec, and the isolated figures above are the ones to trust.
+- **Deflate, Zlib and Gzip are the same compressor.** Identical output size (264 KB) and
+  identical inflate time. Zlib adds a 6-byte header and an Adler-32 checksum, Gzip an 18-byte
+  header and a CRC-32; `DecompressString` validates both and raises on corruption. Raw
+  Deflate has no checksum. `OptimizeForSize` gives 264 KB, `Default` 265 KB,
+  `OptimizeForSpeed` 308 KB; compression runs offline so only size matters.
+- **A `/reload` re-reads TOC metadata on this build.** The README's restart requirement,
+  measured on 69109, did not hold on 69547.
+- `C_EncodingUtil` on 1.15.9 build 69547 exposes `SerializeCBOR`, `DeserializeCBOR`,
+  `SerializeJSON`, `DeserializeJSON`, `CompressString`, `DecompressString`, `EncodeBase64`,
+  `DecodeBase64`, `EncodeHex`, `DecodeHex`.
+
+The read-cost side of the same question — CBOR against `loadstring` per field, per row and
+per table — belongs in `read-performance.md`.
+
+## 11. Locale suffixes on custom metadata keys — MEASURED (build 69547)
+
+The first localization-block artifact used `X-l10n-Quest-deDE` as a block key. On an enUS
+client its chunk marker returned nil, while `X-l10n-Quest-deDE-1` returned the first chunk.
+The client interpreted the final `-deDE` as the standard localized-TOC-directive suffix rather
+than as an ordinary part of a custom key. The metadata emulator, which indexes exact strings,
+did not reproduce this behavior.
+
+Reordering the key to `X-l10n-deDE-Quest` made the marker and every part directly readable on
+enUS after `/reload`. Localization block keys therefore keep the entity type last. A unit test
+asserts that no generated block key ends in `-<locale>`, and live acceptance checks the marker
+before switching locale.

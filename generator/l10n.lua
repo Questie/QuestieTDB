@@ -1,12 +1,11 @@
 -- generator/l10n.lua
 --
--- Entity localization: extracts Questie's per-locale lookup tables and emits them as
--- locale-joined metadata alongside entity data.
+-- Entity localization: extracts Questie's per-locale lookup tables and emits one compressed
+-- CBOR column block per locale and entity type.
 --
--- This is what removes Questie's recompile-on-locale-change. Today `l10n:Initialize()` writes
--- translated strings into `questData` *before* compile and `dbCompiledLang` forces a full
--- rebuild when the UI locale changes. Storing every locale in one value and extracting the Nth
--- segment on access makes locale a read-time concern.
+-- This removes Questie's recompile-on-locale-change. A non-enUS client decodes its available
+-- entity-type blocks and keeps those translations in memory; enUS uses base data and decodes
+-- no localization blocks.
 --
 -- ## Reading every locale in one run
 --
@@ -28,7 +27,7 @@
 local config = dofile("src/config.lua")
 local lib = dofile("generator/lib.lua")
 local loader = dofile("generator/loader.lua")
-local serialize = dofile("generator/serialize.lua")
+local encode = dofile("generator/encode.lua")
 
 local l10n = {}
 
@@ -36,8 +35,8 @@ local l10n = {}
 -- Layout
 --------------------------------------------------------------------------------------------
 
---- Which lookup directory and module field each entity type uses, and how a row maps onto the
---- compact l10n field indices. Coverage matches what Questie translates today, and no more.
+---Which lookup directory and module field each entity type uses, and how source values map to
+---compact Localization-block columns. Coverage matches what Questie translates today.
 l10n.types = {
   Quest = {
     dir = "lookupQuests", field = "questLookup",
@@ -61,16 +60,12 @@ l10n.types = {
   },
 }
 
---- Separator between locales. U+2021 DOUBLE DAGGER.
-l10n.localeSeparator = config.localeSeparator
-
--- There is deliberately no second, element-level separator. A list-valued field
--- (`objectivesText`) serializes each locale's list as a Lua table literal through the same
--- serializer entity fields use (ADR 0003, Decision 3), so structure travels in the value and
--- the field keeps its table shape identically in every locale. The retired `‖` joiner could
--- change a quest's element count per locale — observed on 155 Vanilla quests — and its
--- documented collision guard never actually existed.
-
+---Resolve one Questie localization lookup file.
+---@param questiePath string
+---@param flavor table
+---@param typeCfg table
+---@param locale string
+---@return string path
 function l10n.lookupPath(questiePath, flavor, typeCfg, locale)
   return ("%s/Localization/lookups/%s/%s/%s.lua")
     :format(questiePath, flavor.expansion, typeCfg.dir, locale)
@@ -168,14 +163,9 @@ function l10n.extract(questiePath, flavor, typeName, knownIds)
                 value = row[fieldCfg.from]
               end
               if type(value) == "string" then
-                -- The client trims a metadata value's edges (measured — see
-                -- docs/client-metadata-probes.md §1), and which segment sits at the value's
-                -- edge depends on which other locales are present. Trimming uniformly at
-                -- extraction keeps a translation identical regardless of its position.
-                -- Control characters are stripped outright: they are defects in display
-                -- text — observed in the wild as a leading DEL on TBC npc 24996's zhTW
-                -- name — and a raw segment cannot carry them (the join guard would
-                -- correctly fail the build).
+                -- Preserve the established display-text cleanup even though CBOR can carry
+                -- these bytes. Edge whitespace varied by the old segment position, and a
+                -- leading DEL was observed on TBC NPC 24996's zhTW name.
                 value = value:gsub("[%z\1-\31\127]", "")
                 value = value:match("^[ \t\r\n]*(.-)[ \t\r\n]*$")
                 if value == "" then value = nil end
@@ -199,73 +189,73 @@ function l10n.extract(questiePath, flavor, typeName, knownIds)
 end
 
 --------------------------------------------------------------------------------------------
--- Emission
+-- Column blocks
 --------------------------------------------------------------------------------------------
 
---- Join nine locale slots into one stored value. An empty segment means "no translation for
---- this locale"; the reader falls back to the base entity value. A table slot (list-valued
---- field) serializes as a Lua table literal — the same codec entity fields use.
-function l10n.join(slots)
-  local parts, last = {}, 0
-  for index = 1, #config.locales do
-    local value = slots[index]
-    if value ~= nil then
-      local segment = value
-      if type(value) == "table" then
-        segment = serialize.value(value)
-      end
-      -- A separator inside a segment would make the segments unrecoverable, and a control
-      -- character would break the line-oriented TOC format itself. Fail the build rather
-      -- than emit something that decodes wrong. (This guard was documented before — now it
-      -- exists.)
-      if segment:find(l10n.localeSeparator, 1, true) then
-        error("l10n: a translation contains the locale separator: " .. segment:sub(1, 80), 0)
-      end
-      if segment:find("[%z\1-\31\127]") then
-        error("l10n: a translation contains a control character: " .. segment:sub(1, 80), 0)
-      end
-      parts[index] = segment
-      last = index
-    else
-      parts[index] = ""
-    end
-  end
-  if last == 0 then return nil end
-  -- Trailing empty segments carry no information and cost bytes across ~500k values.
-  for index = #parts, last + 1, -1 do parts[index] = nil end
-  local joined = table.concat(parts, l10n.localeSeparator)
-  -- A joined value that happens to look like a chunk-count header would be misread by every
-  -- consumer of the store. No real translation is `~3~`, so refuse rather than escape.
-  if joined:match("^~%d+~$") then
-    error("l10n: joined value collides with the chunk-header marker: " .. joined, 0)
-  end
-  return joined
-end
+---Build one locale's field columns aligned with the entity backend's ascending ID list.
+---A missing translation leaves a nil hole, so the runtime falls back to the base field.
+---@param typeName string
+---@param values table<number, table> Output from l10n.extract.
+---@param ids number[] Exact ascending base entity IDs stored in the artifact.
+---@param localeIndex number Index in config.locales.
+---@return table block Compact field index -> values by base ID position.
+---@return integer translatedEntities
+---@return integer translatedValues
+function l10n.buildBlock(typeName, values, ids, localeIndex)
+  local fieldCount = #l10n.types[typeName].fields
+  local block = {}
+  for fieldIndex = 1, fieldCount do block[fieldIndex] = {} end
 
---- Write one entity type's localization metadata.
----@return number entries
----@return number fields
-function l10n.writeMetadata(out, typeName, values)
-  local prefix = "X-" .. config.l10nMetaPrefix .. typeName .. "-"
-  local ids = lib.sortedIds(values)
-  local fields = 0
-
-  for _, id in ipairs(ids) do
+  local translatedEntities, translatedValues = 0, 0
+  for position, id in ipairs(ids) do
     local byField = values[id]
-    for fieldIndex = 1, #l10n.types[typeName].fields do
-      local slots = byField[fieldIndex]
-      if slots then
-        local joined = l10n.join(slots)
-        if joined then
-          lib.writeMetadata(out, prefix .. id .. "-" .. fieldIndex, joined, config.maxValueLength)
-          fields = fields + 1
+    local entityHasTranslation = false
+    if byField then
+      for fieldIndex = 1, fieldCount do
+        local slots = byField[fieldIndex]
+        local value = slots and slots[localeIndex]
+        if value ~= nil then
+          block[fieldIndex][position] = value
+          translatedValues = translatedValues + 1
+          entityHasTranslation = true
         end
       end
     end
+    if entityHasTranslation then translatedEntities = translatedEntities + 1 end
   end
 
-  lib.writeMetadata(out, prefix .. "IDS-LIST", table.concat(ids, ","), config.maxValueLength)
-  return #ids, fields
+  return block, translatedEntities, translatedValues
+end
+
+---Write the localization format marker once before any blocks.
+---@param out file*
+---@return integer lines
+function l10n.writeHeader(out)
+  return lib.writeMetadata(out, config.l10nHeaderKey, tostring(config.l10nVersion),
+    config.maxValueLength)
+end
+
+---Write all locale blocks for one entity type.
+---@param out file*
+---@param typeName string
+---@param values table<number, table> Output from l10n.extract.
+---@param ids number[] Exact ascending base entity IDs stored in the artifact.
+---@return table stats Block count, translated counts, encoded bytes, and emitted lines.
+function l10n.writeMetadata(out, typeName, values, ids)
+  local stats = { blocks = 0, translatedEntities = 0, translatedValues = 0, bytes = 0, lines = 0 }
+
+  for localeIndex, locale in ipairs(config.locales) do
+    local block, entityCount, valueCount = l10n.buildBlock(typeName, values, ids, localeIndex)
+    local encoded = encode.compressedCbor(block)
+    stats.lines = stats.lines + lib.writeMetadata(out,
+      config.l10nBlockKey(typeName, locale), encoded, config.maxValueLength)
+    stats.blocks = stats.blocks + 1
+    stats.translatedEntities = stats.translatedEntities + entityCount
+    stats.translatedValues = stats.translatedValues + valueCount
+    stats.bytes = stats.bytes + #encoded
+  end
+
+  return stats
 end
 
 return l10n

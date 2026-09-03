@@ -1,7 +1,8 @@
 # QuestieTDB — Questie TOC Database
 
 The design document this implementation was built from. Contracts decided after the
-buildout live in `docs/adr/` — ADR 0003 supersedes this document where they disagree.
+buildout live in `docs/adr/`. ADR 0003 supersedes the broad read contract, ADR 0006 owns
+coordinate storage, and ADR 0010 owns Baked entity storage.
 
 Vocabulary is defined in [`CONTEXT.md`](./CONTEXT.md) and used precisely here.
 
@@ -98,7 +99,7 @@ Take accordingly.
 
 | Take | From | Why |
 | --- | --- | --- |
-| `Meta/DumpFunctions.lua` | GetterDB | The Lua serializer. TOC metadata stores tables as Lua source, so **serialization is generation**. Already solves compact output, sparse arrays with `nil` holes, and deterministic ordering via `dumpAsArraySorted`. |
+| `Meta/DumpFunctions.lua` | GetterDB | The Lua serializer remains offline tooling only. ADRs 0010 and 0011 replaced entity and localization literals with deterministic CBOR. |
 | `dumpCoordinatesV2`, `dumpTriggerEndV2`, `dumpExtraObjectivesV2` | GetterDB | Domain-specific compaction for the fields that dominate artifact size. |
 | `Corrections/Corrections.lua`, `Enum/`, `Icons.lua` | GetterDB | The registry, load-order namespaces, and the constants corrections reference. |
 | Config-driven pipeline shape, TOC emission, chunking, `verify.lua` | toc-database | Explicit type/version enumeration instead of directory scanning. |
@@ -108,7 +109,7 @@ Take accordingly.
 | The `.lua-table` intermediate stage | Produces the dead-end format above. QuestieTDB goes raw → corrections → TOC in one pass. |
 | `require("lfs")` | GetterDB depends on LuaFileSystem, a **C module**. `Getters/generate.lua` is pure Lua and proves it is avoidable by enumerating inputs in config. Keeping the generator dependency-free preserves the option of shipping a bare `lua` binary for contributors. |
 | `mangos_translation`, `translations` | Questie's lookups are taken as-is. |
-| `Meta/*Meta.lua` field ordering | Served the compiler's skip-map. TOC is keyed by field index, so ordering is irrelevant — and the schema itself comes from Questie, which is more current. |
+| `Meta/*Meta.lua` field ordering | Served the compiler's skip-map. QuestieTDB uses Questie's current positional indices in scalar rows and table keys instead. |
 
 Deterministic serialization is a requirement, not a preference: without it, every regeneration
 produces a spuriously different 85 MB artifact, making releases unreviewable and checksums
@@ -144,8 +145,8 @@ failure instead of a discovery months later.
 Questie's compiler type names describe a byte stream. Most of that means nothing in a text
 store:
 
-- **Width is dead.** `u8`, `u16`, `u24`, `u32`, `s8`, `s16`, `s24` all become the same decimal
-  text. Seven types, one behaviour.
+- **Width is dead.** `u8`, `u16`, `u24`, `u32`, `s8`, `s16`, `s24` all become Lua numbers
+  encoded directly by CBOR. Seven types, one behaviour.
 - **Array width is dead.** `u8u16array`, `u16u16array`, `u8u24array`, `u8s24array`,
   `u16u24array` all become one ID array. Five types, one behaviour.
 - **Signedness is dead**, and notably so: the stream offsets (`value - 32767`) exist only
@@ -154,13 +155,12 @@ store:
 
 Three things do not collapse and must be preserved:
 
-- **Structure** — `spawnlist`, `waypointlist`, `questgivers`, `objectives`,
-  `extraobjectives`, `trigger` each need a distinct serializer. This is why `DumpFunctions`
-  has `dumpCoordinates`, `dumpTriggerEnd`, and `dumpExtraObjectives` rather than one generic
-  dumper.
-- **Nil semantics** — pair types return `nil` when both components are zero; string types use
-  the `"nil"` sentinel to keep empty-string distinct from nil; zero-count arrays return `nil`.
-  Load-bearing, because the rule is to match Questie exactly.
+- **Structure.** `spawnlist`, `waypointlist`, `questgivers`, `objectives`,
+  `extraobjectives`, and `trigger` each need distinct normalization before the generic CBOR
+  encoder receives them.
+- **Nil semantics.** Pair types return `nil` when both components are zero, numeric slots
+  default to zero, empty strings remain distinct from nil, and zero-count arrays return nil.
+  These rules are load-bearing because the result must match Questie exactly.
 - **`faction`**, which has its own normalizer.
 
 So the mapping is compiler type → `{ storage, normalize }`, and **an unrecognised compiler
@@ -275,19 +275,16 @@ the map or in Questie's settings — not just a login message.
 
 ### Sharing the code path
 
-Only two functions differ between modes:
+The backend seam is narrow:
 
-| Shared, written once | Differs per mode |
-| --- | --- |
-| Named getters (generated from schema) | `readField(id, fieldIndex)` |
-| Generic `Get(id, fieldIdx)` | `getAllIds()` |
-| Correction Overlay lookup | |
-| Decoded field cache | |
-| Field defaults | |
-| l10n overlay | |
-| Schema / Meta | |
+| Shared, written once | Both modes | Baked fast paths |
+| --- | --- | --- |
+| Named getters and generic `Get` | `readField(id, fieldIndex)` | `scalarRow(id)` |
+| Correction and l10n overlays | `getAllIds()` | `tableProducer(id, fieldIndex, row)` |
+| Cache, defaults and Name index | | |
 
-Source: `rawData[id][fieldIndex]`. Baked: `decode(getMetadata(id, fieldIndex))`.
+Source reads `rawData[id][fieldIndex]`. Baked mode decodes one scalar row on first touch and
+uses the row's presence mask before reading a table key.
 
 Source mode and Generation apply Static Corrections through the *same* path, so "what I see
 in dev is what ships" follows from shared code rather than from a test.
@@ -451,11 +448,10 @@ database is wrong" path.
 revised after live measurement.** This section originally mandated frozen shared values; what
 ships is the opposite, and better on this design's own terms.
 
-Table reads return a **fresh mutable copy per read**, produced by executing a cached compiled
-chunk — Baked mode caches `loadstring` of the stored literal, Source mode and overlay values
-serialize once through the shared serializer and compile once, so both modes execute chunks
-and stay equivalent by construction. Scalar fields keep the plain decoded cache (strings and
-numbers are immutable).
+Table reads return a **fresh mutable copy per read**. Baked mode caches a producer over CBOR
+bytes and calls the client's native deserializer for each read. Source mode, Corrections and
+translated values cache deep-copy producers. Scalars remain immutable; Baked mode caches the
+whole decoded scalar row on the entity's first field read.
 
 Why the reversal, in short (full numbers in
 [`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md)):
@@ -464,14 +460,12 @@ Why the reversal, in short (full numbers in
   call, and the ~290 call sites were written against that — sites like `GetQuest`'s
   `creatureObjective[3] = nil` stay harmless, and the consumer-side mutation audit this
   section used to require disappears entirely.
-- **The original rejection reason is measured away.** "Fresh-per-read" was rejected for the
-  `loadstring` parse per read; caching the compiled chunk removes the parse, and re-execution
-  costs 0.13–1.8 µs for typical field shapes (19 µs for the largest spawn tables) against a
-  0.25 µs cache hit.
-- **Frozen values never actually held in Baked mode.** `table.freeze` is taint-ownership
-  gated, and tables built by `loadstring` chunks belong to the force-taint context — the
-  refusal was measured live, along with the chunk-internal freeze pattern that would fix it,
-  recorded in the probes document should shared values ever return.
+- **The original rejection reason is measured away.** Native CBOR decode returns a fresh tree
+  without lexing, parsing or compiling Lua source. Typical warm tables remain in the same
+  cost class as the former compiled-chunk producer.
+- **Frozen values never held in Baked mode.** `table.freeze` is taint-ownership gated, and the
+  earlier literal chunks belonged to the force-taint context. Native CBOR now supplies the
+  caller-owned tree directly.
 
 `table.freeze` remains in use only for QuestieTDB-internal shared structures (schema meta,
 ID maps), where addon ownership makes it real. `docs/table.freeze.md` holds the underlying
@@ -484,35 +478,26 @@ Questie today bakes locale into the compiled binary: `l10n:Initialize()` writes 
 strings into `questData` *before* compile, and `dbCompiledLang` forces a full recompile when
 the UI locale changes.
 
-Replace with the l10n overlay: locale-joined values, `SetLocale()` at runtime, getters
-wrapped with enUS fallback. **This deletes the recompile-on-locale-change entirely.**
+Replace with the l10n overlay and `SetLocale()` at runtime. **This deletes the
+recompile-on-locale-change entirely.** ADR 0011 stores one compressed CBOR column block per
+locale and entity type. The columns align with the entity backend's ascending ID list, so they
+repeat no IDs. enUS decodes no localization. A non-enUS client decodes four blocks during addon
+load and keeps that locale's translations in memory.
 
-Two contracts ADR 0003 added after the buildout: **corrections outrank translations** — when
-Correction Overlay provenance supplied a localizable field, the lookup translation is skipped,
-so corrected text is never replaced by a stale copied lookup and provenance never names an
-owner for a value it did not supply (D8); and **table-typed fields keep their table shape per
-locale segment** — `objectivesText` segments are serialized table literals, so a translated
-list is always a table, never a joined string; element counts follow the upstream lookup's
-own shape, which zhCN/zhTW legitimately vary (D3, scope corrected). Chunk parts are split
-trim-safely because the
-client removes edge whitespace from metadata values — measured, with a shipped artifact's
-Russian text corrupted by exactly this, in
-[`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md).
+Two contracts from ADR 0003 remain load-bearing. **Corrections outrank translations:** when the
+Correction Overlay supplies a localizable field, the provider skips localization, so corrected
+text is never replaced by a stale lookup. **Table-typed fields keep their table shape:** CBOR
+stores `objectivesText` as a list, including legitimate locale-specific element counts, and the
+shared copy producer still returns a fresh mutable table on every read.
 
-l10n stays **inside** the QuestieTDB TOC rather than becoming a separate addon. TOC metadata
-lives in client-side storage, not the Lua heap — nothing materialises until a getter decodes
-it, so a German user never touches the other eight locales' strings and they never cost Lua
-memory or GC pressure.
+l10n stays **inside** the QuestieTDB TOC rather than becoming a separate addon. Compression
+across whole field columns removes about 65% of localization directive bytes. The retained
+active-locale heap is the deliberate trade: 3.2 to 4.1 MB on Vanilla and 14.2 to 18.4 MB on
+Mists. The inactive eight locales remain compressed metadata and never enter the Lua heap.
 
-Sizing, for the record: l10n is ~72% of the artifact (`{l10n}-Mists` is 61 MB of the 84.5 MB
-combined), across 9 locales — `deDE, esES, esMX, frFR, koKR, ptBR, ruRU, zhCN, zhTW` — with
-**no enUS**, since base data is already English. In-client testing confirms this loads fast at
-full size, so keeping all locales in the store is validated rather than assumed. Splitting l10n
-out stays available as a mitigation at the same seam, only finer, if the artifact ever grows
-substantially.
-
-Field coverage already matches exactly: quest `name` + `objectivesText`, npc `name` +
-`subName`, item `name`, object `name`.
+The nine stored locales are `deDE, esES, esMX, frFR, koKR, ptBR, ruRU, zhCN, zhTW`; base data
+is already enUS. Field coverage is quest `name` + `objectivesText`, npc `name` + `subName`, item
+`name`, and object `name`.
 
 ## Variants: SoD, Classic+
 
@@ -547,36 +532,40 @@ downloaded** so switching test clients needs no re-bootstrap.
 
 ### Measured sizes
 
-Deterministic post-ADR-0006 artifacts, measured after all-flavor regeneration. Byte counts are
-decimal bytes; each flavor ZIP is its standalone package.
+Deterministic contract-2 artifacts after ADRs 0010 and 0011, in decimal bytes:
 
-| Flavor | Raw TOC bytes | Standalone ZIP bytes |
-| --- | ---: | ---: |
-| Vanilla | 21,860,697 | 6,516,908 |
-| TBC | 36,472,056 | 10,358,374 |
-| Wrath | 52,455,587 | 14,418,554 |
-| Cata | 84,071,181 | 22,290,243 |
-| Mists | 102,430,533 | 27,059,866 |
-| **All five** | **297,290,054** | **80,643,945** |
+| Flavor | Raw TOC bytes |
+| --- | ---: |
+| Vanilla | 13,019,881 |
+| TBC | 21,242,139 |
+| Wrath | 29,900,504 |
+| Cata | 47,360,651 |
+| Mists | 57,111,494 |
+| **All five** | **168,634,669** |
 
-Raw coordinate storage reduced the five TOCs by **44,528,384 bytes (13.03%)** from the
-341,818,438-byte post-ADR-0003 baseline. The combined all-flavor package is **79,909,948
-bytes**; it is a separate ZIP, not the 80,643,945-byte sum of the five standalone packages.
+Compressed localization columns remove 113,654,275 bytes, or 40.3%, from the contract-2
+artifacts. Mists localization directives alone fall from 57.48 MiB to 19.80 MiB. Package ZIP
+sizes are produced by the release workflow and were not remeasured in this acceptance pass.
 
-Historical prototype measurements, retained for comparison rather than overwritten:
+The compressed ID headers add 2.82 MB of fixed memory attributed to QuestieTDB on Vanilla.
+The decoded arrays and existence maps are retained for the session and create no recurring
+GC work. ADR 0010 accepts that cost in exchange for portable typed storage and the measured
+40% reduction in Questie's `CalculateAndDrawAll` workload.
 
-| | Raw | Zipped |
-| --- | ---: | ---: |
-| All five flavors | 251 MB | **66 MB** |
-| Vanilla | 20.4 MB | 5.3 MB |
-| Mists | 84.5 MB | 22.0 MB |
+Historical measurements remain useful for comparison:
+
+| Format | Vanilla | Mists | All five |
+| --- | ---: | ---: | ---: |
+| Post-ADR-0006 literals | 21,860,697 | 102,430,533 | 297,290,054 |
+| Early prototypes | 20.4 MB | 84.5 MB | 251 MB |
 
 ### Generation cost
 
-| | |
+| Contract-2 generation | Time |
 | --- | ---: |
-| One entity type, all five flavors | **2.7 s** |
-| Everything, including l10n and combined | 47 s |
+| Vanilla, including l10n | 34 s |
+| Mists, including l10n | 168 s |
+| All flavors in the memory-budgeted check runner | 168 s wall time |
 
 Generation is pure Lua with no C dependencies. **Later, nice-to-have:** commit a small
 `lua.exe` so contributors can generate and run tests locally without installing a toolchain.
@@ -590,17 +579,17 @@ QuestieTDB/
   QuestieTDB_<Flavor>.toc     generated, baked mode (gitignored)
 
   src/
-    config.lua                flavors, entity types, l10n field contract
-    meta/                     schema — field keys, types, per-field defaults
+    config.lua                flavors, entity types, l10n block contract
+    meta/                     schema, field keys, types, defaults, chunk markers
     read/
-      shared.lua              getters, cache, overlay lookup, defaults, freezing
+      shared.lua              getters, row cache, overlay lookup, defaults, freezing
       source.lua              readField/getAllIds over raw tables
-      baked.lua               readField/getAllIds over TOC metadata
+      baked.lua               CBOR rows, table producers and compressed ID headers
     corrections/
       registry.lua            Register / Apply / load-order / recomposition
       <expansion>/            Static and Dynamic Corrections
       enum/, icons.lua        constants corrections reference
-    l10n/                     locale-joined overlay
+    l10n/                     eager active-locale columns and lookup
     types/                    LuaLS annotations
 
   data/                       raw entity data, moved from Questie
@@ -618,8 +607,8 @@ QuestieTDB/
     adr/
 ```
 
-`src/read/` is the only place the two modes diverge — `shared.lua` holds everything else, so
-the seam stays two functions wide.
+`src/read/` is the only place the two modes diverge. `shared.lua` holds everything else;
+Baked mode adds scalar-row and table-producer fast paths to the two-function base seam.
 
 ## Testing
 
@@ -651,7 +640,7 @@ Build on Questie's existing harness: `cli/loadTOC.lua`, `cli/apiMocks.lua`, bust
 
 ## Open risks and gates
 
-### 1. TOC size in the live client — CLEARED at 85 MB; recheck open at 102.4 MB
+### 1. TOC size in the live client: cleared; Mists is 57.1 MB
 
 Previously the blocking gate. **Resolved by prior in-client testing**: both `toc-database` and
 `Getters` were tested deeply against real clients at full size and load fast, with no parse or
@@ -659,14 +648,14 @@ memory problem at the 20–85 MB range. The merged Vanilla artifact (25.4 MB) is
 live-validated end-to-end on build 69109
 ([`docs/client-metadata-probes.md`](./docs/client-metadata-probes.md) §7b).
 
-The post-ADR-0006 Mists artifact is 102,430,533 bytes (102.4 MB decimal, 97.7 MiB) — still
-above the historically cleared range. Run one Mists-client acceptance session (load time,
-metadata reads, memory, one non-enUS locale); see `docs/merge-program.md` future work. This is
-a regression check, not a return to an undecided storage architecture.
+ADR 0011 reduces the Mists artifact to 57,111,494 bytes, below the historically cleared
+85 MB range. Its active non-enUS locale retains 14.2 to 18.4 MiB in the Era-client prototype
+and takes 71 to 128 ms to decode. A Mists-client acceptance session for full load and
+client-wide memory remains open; see `docs/merge-program.md` future work.
 
-This also settles the l10n-in-TOC decision — keeping all nine locales in the store is
-validated, not assumed. Splitting l10n out remains a known mitigation if the artifact grows
-substantially beyond today's size, but it is not currently needed.
+This settles the l10n-in-TOC decision. Keeping all nine compressed locales in the store costs
+less artifact and metadata memory than the earlier joined format, while enUS decodes none.
+Splitting l10n out remains available if the artifact grows substantially beyond today's size.
 
 Consequence for the rest of the plan: **the prototypes' runtime behaviour is validated**, which
 raises the value of extracting their format precisely — see
@@ -725,16 +714,15 @@ two counts: an overlay can add and change but **never remove**, so deleting a co
 untestable through it; and source mode shares the generator's correction path rather than
 being a parallel one.
 
-**Fresh-per-read values.** Every read returns a new table, matching today's semantics exactly
-and requiring no consumer changes. Rejected because it forces a `loadstring` per read in
-`IsDoable`'s availability loops and discards the Decoded field cache — paying a Lua parse on
-the hottest path to accommodate a small number of fixable mutation sites.
+**Frozen shared read values.** Rejected after live measurement. Callers already expect fresh
+mutable tables, and native CBOR returns them without a Lua parse. Freezing would change the
+public ownership contract and does not work reliably for values owned by another execution
+context.
 
-**Splitting localization into its own addon.** Would let English users — who need none of the
-9 locales — skip ~72% of the artifact. Rejected because TOC metadata lives in client-side
-storage rather than the Lua heap, so unused locales are never decoded and cost no Lua memory
-or GC pressure. Download size remains the only real cost, and this stays the first lever to
-pull if the size gate is unfavourable.
+**Splitting localization into its own addon.** Would let English users skip the compressed
+locale blocks. Rejected because ADR 0011 removes about 65% of localization directive bytes,
+enUS decodes no blocks, and a second addon would add packaging and dependency complexity for
+little runtime benefit. It remains the first lever to pull if artifact size grows again.
 
 **Keeping raw data in Questie.** Rejected: the generator would need Questie checked out to
 build, and support-data validators such as

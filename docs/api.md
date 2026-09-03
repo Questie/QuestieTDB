@@ -53,11 +53,10 @@ LibQuestieDB.Object  -- ObjectDB
 
 ### `Entity.Get(id, key) -> value`
 
-`key` is a canonical field name or a positional index. Both return the same value, but the
-name is the faster path as well as the clearer one: a name resolves in a single lookup, a
-number misses that map and falls through to a type check. The gap is small, 0.55 µs against
-0.63 µs warm, and `GetByIndex` closes most of it if you need positional access. See
-[`read-performance.md`](./read-performance.md).
+`key` is a canonical field name or a positional index. Both return the same value. Prefer a
+name for clarity, or the generated named getter on a hot path because it skips key resolution
+entirely. Baked mode decodes the entity's scalar row on its first field read; later scalar
+reads from that entity are cache lookups. See [`read-performance.md`](./read-performance.md).
 
 ```lua
 QuestDB.Get(2, "name")           --> "Sharptalon's Claw"
@@ -147,9 +146,9 @@ Base data only, bypassing the Correction Overlay and localization. For tooling a
 debugging — use `Get` for anything a player sees. An overlay-added entity has no raw row, so
 `GetRaw` legitimately returns nil for it.
 
-**`GetRaw` is not cached.** It reaches the backend on every call, so it stays at roughly
-2.7 µs no matter how often you read the same field, where `Get` drops to 0.6 µs once warm.
-Do not reach for it in a loop.
+**`GetRaw` is not cached.** In Baked mode, every scalar call decodes the entity row again and
+every table call performs a fresh CBOR decode. `Get` retains the scalar row and table producer,
+so use it for loops and ordinary consumer reads.
 
 ---
 
@@ -204,9 +203,9 @@ local again = NpcDB.spawns(30)       --> a fresh, unmutated copy — your edit n
 
 This matches the semantics Questie's compiler always had: every query decoded fresh tables,
 so consumers that annotate or trim what they read keep working unchanged. Two reads are
-never the same table — do not use table identity to compare reads, and hold onto a value
-rather than re-reading if you need stability. The copy costs 0.13–1.8 µs for typical field
-shapes (measured live), the same class as a cache hit.
+never the same table. Do not use table identity to compare reads, and hold onto a value rather
+than re-reading if you need stability. Baked mode gets the fresh tree from native CBOR decode;
+Source mode, Corrections and translated values use deep-copy producers.
 
 ---
 
@@ -416,10 +415,15 @@ LibQuestieDB.l10n.onLocaleChanged[#… + 1] = function(locale) … end
 ```
 
 Nine locales — `deDE esES esMX frFR koKR ptBR ruRU zhCN zhTW`. `enUS` means "no overlay",
-because base data is already English. Missing translations fall back to English. Changing
-locale needs no regeneration and no rebuild. A translated `objectivesText` remains a table;
-element counts follow the upstream lookup and may differ where a locale combines objectives.
-A field a Correction supplied is never overridden by a translation (see Corrections above).
+because base data is already English. Missing translations fall back to English. A non-enUS
+locale eagerly loads its four compressed localization blocks; changing locale replaces those
+blocks and invalidates cached entity values without regenerating the database. Selecting the
+already-active locale is a no-op and preserves existing caches. An unsupported locale records
+the requested name in `currentLocale` but behaves like enUS because it has no blocks.
+
+A translated `objectivesText` remains a table; element counts follow the upstream lookup and
+may differ where a locale combines objectives. Every read returns a fresh mutable copy. A field
+a Correction supplied is never overridden by a translation (see Corrections above).
 
 Translated fields: quest `name` and `objectivesText`, npc `name` and `subName`, item `name`,
 object `name`.
@@ -478,8 +482,10 @@ if not ok then
 end
 ```
 
-`LibQuestieDB.contractVersion` is also readable directly. It is bumped when the API or the
-storage format changes in a way a consumer can observe.
+`LibQuestieDB.contractVersion` is also readable directly. Contract 2 introduces CBOR scalar
+rows, CBOR table values, compressed CBOR ID headers, and compressed locale-and-type
+localization columns. These storage changes ship together and do not change the public read
+API, so `minSupportedContract` remains 1.
 
 The check is a **range**: `RequireContract(v)` passes for any
 `minSupportedContract <= v <= contractVersion`, so a consumer built against an older
@@ -497,6 +503,12 @@ LibQuestieDB.InvalidateCache()             -- everything
 ```
 
 Applying corrections and changing locale already invalidate what they need to, the Name index
-included — correction writes scoped to the written datatypes, a locale change across all four. This is for a consumer that mutates state QuestieTDB cannot see. Every form drops the
-Name index — the per-entity one too, since a single entity's name can change — so a consumer
-invalidating in a loop pays one index rebuild on its next `IdsByName`.
+included. Correction writes are scoped to their datatypes; a locale change covers all four.
+This API is for a consumer that mutates state QuestieTDB cannot see. Every form drops the Name
+index, including per-entity invalidation, because one entity's name can change.
+
+In Baked mode, the first read of a known entity decodes its CBOR scalar row and adopts that
+table as the cache row. Corrections and active scalar translations settle before the row is
+installed. Table fields cache producers over decoded CBOR bytes, not decoded tables, so each
+read still returns a fresh value. Presence-mask misses cache their nil or never-nil default
+without a metadata call. Unknown IDs create no cache entry.

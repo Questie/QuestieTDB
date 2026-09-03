@@ -1,50 +1,38 @@
 -- src/l10n/overlay.lua
 --
--- The optional localization layer wrapping selected Named getters for the active locale.
+-- The optional localization layer for selected composed entity fields in the active locale.
 --
--- Locale-joined values live in the TOC metadata store alongside entity data. Because segments
--- are only extracted on access, a German user never touches the other eight locales' strings
--- and they never cost Lua memory or GC pressure — which is what makes keeping all nine locales
--- in one store the right call rather than splitting l10n into its own addon.
+-- Baked artifacts store one compressed CBOR column block per locale and entity type. Columns
+-- align with the backend's ascending base ID list. A non-enUS client eagerly decodes its
+-- available type blocks during addon load and keeps those translations in memory; enUS
+-- decodes none.
 --
--- Changing locale at runtime takes effect without regeneration and without a database rebuild.
--- That is what removes Questie's `dbCompiledLang` recompile trigger, where `l10n:Initialize()`
--- wrote translated strings into `questData` *before* compile and a locale change forced the
--- whole database to be rebuilt.
---
--- With no localization data present — Source mode, or a Baked artifact generated with
--- `--no-l10n` — every getter behaves exactly as if this file were absent.
+-- Locale changes replace the active blocks and invalidate entity caches. Correction values
+-- still outrank translations, and translated tables still pass through shared.lua's copy
+-- producer so every caller receives a fresh mutable value.
 
 local _, LibQuestieDB = ...
 
 local overlay = {}
 
 local config = LibQuestieDB.config
-local codec = LibQuestieDB.Meta.codec
+local Encoding = C_EncodingUtil
 
 --------------------------------------------------------------------------------------------
--- Locale
+-- Locale and field coverage
 --------------------------------------------------------------------------------------------
 
 overlay.locales = config.locales
-overlay.separator = config.localeSeparator
-
 overlay.localeIndex = {}
 for index, locale in ipairs(config.locales) do overlay.localeIndex[locale] = index end
 
---- enUS is the base data's own language and is deliberately not stored, so it is "no overlay".
 overlay.currentLocale = "enUS"
 overlay.currentIndex = nil
-
 overlay.onLocaleChanged = {}
+overlay.available = false
 
---------------------------------------------------------------------------------------------
--- Field coverage
---------------------------------------------------------------------------------------------
---
--- Compact l10n field indices, matching what the generator emits. Field coverage matches what
--- Questie translates today, and no more.
-
+-- Compact field indices match generator/l10n.lua. They are intentionally separate from entity
+-- field indices, which differ by schema.
 overlay.fields = {
   Quest = { { name = "name" }, { name = "objectivesText", list = true } },
   Npc = { { name = "name" }, { name = "subName" } },
@@ -53,108 +41,196 @@ overlay.fields = {
 }
 
 --------------------------------------------------------------------------------------------
--- Reading
+-- Block loading
 --------------------------------------------------------------------------------------------
 
+-- Providers close over this variable, not a block snapshot. Locale replacement can therefore
+-- release the old blocks after entity-cache invalidation.
+local activeBlocks = {}
+local availableTypes = {}
+
+---@param key string
+---@return string? value
 local function readStored(key)
   local baked = LibQuestieDB.read and LibQuestieDB.read.baked
   if not baked then return nil end
   return baked.getStored(key)
 end
 
---- Build a provider for one entity type: `(id, entityFieldIndex) -> translated | nil`.
----
---- Returns nil when there is no localization data for the type at all, so the shared getter
---- can skip the check entirely rather than paying for a lookup per read.
-function overlay.CreateProvider(meta)
-  local typeFields = overlay.fields[meta.entity]
-  if not typeFields then return nil end
+---@param encoded string Base64 zlib CBOR.
+---@return table block
+local function decodeBlock(encoded)
+  return Encoding.DeserializeCBOR(
+    Encoding.DecompressString(Encoding.DecodeBase64(encoded), 1))
+end
 
-  local prefix = "X-" .. config.l10nMetaPrefix .. meta.entity .. "-"
-  if readStored(prefix .. "IDS-LIST") == nil then return nil end
+---Decode every selected entity type for one configured locale.
+---The caller does not publish the result until this function completes.
+---@param locale string
+---@return table<string, table> blocks
+local function loadLocaleBlocks(locale)
+  local blocks = {}
+  if not overlay.available or not overlay.localeIndex[locale] then return blocks end
 
-  -- entity field index -> { l10nFieldIndex, list }
-  local byEntityField = {}
-  for l10nIndex, fieldCfg in ipairs(typeFields) do
-    local entityIndex = meta.keys[fieldCfg.name]
-    if entityIndex then
-      byEntityField[entityIndex] = { index = l10nIndex, list = fieldCfg.list }
+  -- Decode into a temporary table first. A corrupt or incomplete locale must leave the
+  -- currently active blocks and entity caches untouched.
+  for _, entityType in ipairs(config.entityTypes) do
+    local typeName = entityType.name
+    if availableTypes[typeName] then
+      local key = config.l10nBlockKey(typeName, locale)
+      local encoded = readStored(key)
+      if not encoded then error("QuestieTDB: missing localization block " .. key, 0) end
+      local block = decodeBlock(encoded)
+      if type(block) ~= "table" then
+        error("QuestieTDB: localization block " .. key .. " did not decode to a table", 0)
+      end
+      blocks[typeName] = block
+    end
+  end
+  return blocks
+end
+
+--------------------------------------------------------------------------------------------
+-- Provider
+--------------------------------------------------------------------------------------------
+
+---Build one entity type's provider over the replaceable active block table.
+---@param meta table Entity metadata.
+---@param entity table Entity global owning the backend ID list.
+---@return function? provider `(id, fieldIndex) -> translated | nil`.
+---@return table<number, boolean>? scalarFields Translatable scalar field indices.
+---@return function? isActive Whether a decoded locale is active.
+function overlay.CreateProvider(meta, entity)
+  local typeName = meta.entity
+  local typeFields = overlay.fields[typeName]
+  if not typeFields or not availableTypes[typeName] then return nil end
+
+  local columnByEntityField = {}
+  local scalarFields = {}
+  for columnIndex, fieldConfig in ipairs(typeFields) do
+    local entityFieldIndex = meta.keys[fieldConfig.name]
+    if entityFieldIndex then
+      columnByEntityField[entityFieldIndex] = columnIndex
+      if not fieldConfig.list then scalarFields[entityFieldIndex] = true end
     end
   end
 
-  return function(id, entityFieldIndex)
-    local localeIndex = overlay.currentIndex
-    if not localeIndex then return nil end
+  local baseIds = entity.backend.getAllIds()
+  local lastId, lastPosition
 
-    local mapping = byEntityField[entityFieldIndex]
-    if not mapping then return nil end
+  ---Resolve a base entity ID to the column position Generation used.
+  ---Name/subname pairs reuse the same ID, and initialization sweeps advance in ID order;
+  ---random reads fall back to binary search. Composed-only IDs deliberately have no position.
+  ---@param id number
+  ---@return integer? position
+  local function findPosition(id)
+    if id == lastId then return lastPosition end
 
-    local stored = readStored(prefix .. id .. "-" .. mapping.index)
-    if stored == nil then return nil end
-
-    local segment = codec.localeSegment(stored, localeIndex, overlay.separator)
-    if segment == nil then return nil end
-
-    if mapping.list then
-      -- A list-typed field's segment is a Lua table literal, serialized by the generator with
-      -- the same serializer entity fields use, so the translated value keeps the field's TYPE
-      -- (a table, never a joined string). Element counts follow the upstream lookup's own
-      -- shape and may legitimately differ from base — zhCN/zhTW combine multiple objectives
-      -- into one string (1,486 Vanilla reads; equivalence counts them as "locale-shaped").
-      -- The shared getter wraps the decoded table in a fresh-per-read producer as usual.
-      return codec.decodeTable(segment)
+    local position
+    if lastPosition and baseIds[lastPosition + 1] == id then
+      position = lastPosition + 1
+    else
+      local low, high = 1, #baseIds
+      while low <= high do
+        local middle = math.floor((low + high) / 2)
+        local found = baseIds[middle]
+        if found == id then
+          position = middle
+          break
+        elseif found < id then
+          low = middle + 1
+        else
+          high = middle - 1
+        end
+      end
     end
 
-    return segment
+    lastId, lastPosition = id, position
+    return position
   end
+
+  ---Read one translation from the current block, or nil for base-data fallback.
+  ---@param id number
+  ---@param entityFieldIndex integer
+  ---@return any value
+  local function provider(id, entityFieldIndex)
+    local block = activeBlocks[typeName]
+    if not block then return nil end
+    local column = block[columnByEntityField[entityFieldIndex]]
+    if not column then return nil end
+    local position = findPosition(id)
+    return position and column[position] or nil
+  end
+
+  return provider, scalarFields, function() return activeBlocks[typeName] ~= nil end
 end
 
 --------------------------------------------------------------------------------------------
 -- Lifecycle
 --------------------------------------------------------------------------------------------
 
---- Attach providers to every Entity global. Called once at load.
+---Attach providers and load the client's active locale.
+---enUS reads only the format header; non-empty base ID headers identify the types a filtered
+---artifact selected, so a missing locale block remains corruption rather than disabling a type.
 function overlay.Initialize()
+  overlay.available = readStored(config.l10nHeaderKey) == tostring(config.l10nVersion)
+  availableTypes = {}
+
+  if overlay.available then
+    -- Type-filtered artifacts already publish empty base ID headers for omitted types. Use
+    -- those headers as the source of truth so enUS never probes another locale's block data.
+    for _, entityType in ipairs(config.entityTypes) do
+      local entity = LibQuestieDB[entityType.name]
+      local ids = entity and entity.backend.getAllIds()
+      availableTypes[entityType.name] = ids ~= nil and #ids > 0
+    end
+  end
+
   for _, entityType in ipairs(config.entityTypes) do
     local entity = LibQuestieDB[entityType.name]
     local meta = LibQuestieDB.Meta[entityType.name]
     if entity and meta and entity.SetL10nProvider then
-      entity.SetL10nProvider(overlay.CreateProvider(meta))
+      local provider, scalarFields, isActive = overlay.CreateProvider(meta, entity)
+      entity.SetL10nProvider(provider, scalarFields, isActive)
     end
   end
+
   overlay.SetLocale(overlay.DetectLocale())
 end
 
---- The client's UI locale, or enUS when there is no client.
+---The client's UI locale, or enUS when no client function is present.
 function overlay.DetectLocale()
   local getLocale = rawget(_G, "GetLocale")
   if type(getLocale) == "function" then return getLocale() end
   return "enUS"
 end
 
---- Changing locale takes effect immediately: the cached values that were decided by the old
---- locale are dropped, and the next read decodes a different segment of the same stored value.
---- Nothing is regenerated and nothing is rebuilt.
+---Select a locale atomically; selecting the current locale is a no-op.
+---Replacement blocks finish decoding before the old blocks or entity caches are changed.
+---@param locale string?
+---@return string activeLocale
 function overlay.SetLocale(locale)
-  overlay.currentLocale = locale or "enUS"
-  overlay.currentIndex = overlay.localeIndex[overlay.currentLocale]
+  locale = locale or "enUS"
+  if locale == overlay.currentLocale then return locale end
+
+  local nextBlocks = loadLocaleBlocks(locale)
+  activeBlocks = nextBlocks
+  overlay.currentLocale = locale
+  overlay.currentIndex = overlay.localeIndex[locale]
 
   for _, entityType in ipairs(config.entityTypes) do
     local entity = LibQuestieDB[entityType.name]
     if entity then entity.InvalidateCache(nil) end
   end
 
-  for _, callback in ipairs(overlay.onLocaleChanged) do callback(overlay.currentLocale) end
-  return overlay.currentLocale
+  for _, callback in ipairs(overlay.onLocaleChanged) do callback(locale) end
+  return locale
 end
 
---- Whether any localization data is present at all.
+---Report whether the artifact declares the supported localization-block format.
+---@return boolean available
 function overlay.IsAvailable()
-  for _, entityType in ipairs(config.entityTypes) do
-    local entity = LibQuestieDB[entityType.name]
-    if entity and entity.HasL10nProvider and entity.HasL10nProvider() then return true end
-  end
-  return false
+  return overlay.available
 end
 
 LibQuestieDB.l10n = overlay

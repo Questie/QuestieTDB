@@ -16,61 +16,63 @@ Storage volume is a disk and client-memory question, never a read-latency one, s
 can afford to be verbose where that buys clarity.
 Measurements in [`read-performance.md`](./read-performance.md).
 
-## Metadata line
+## Entity metadata keys
 
-Every stored value is one TOC metadata directive:
-
-```toc
-## X-<id>-<fieldIndex>: <encoded value>
-```
-
-- `<id>` — entity ID, decimal.
-- `<fieldIndex>` — 1-based position in the entity's schema, per the **Database Key Enum**.
-- Values are raw text. No quoting, no escaping beyond what Lua source itself requires.
-
-Fields whose value is absent produce **no line at all**. Absence is the encoding for `nil`.
-
-A schema field may instead declare a constant placeholder. It keeps its name and positional
-index for compatibility, but Generation emits no per-entity metadata for it. Source mode
-normalizes the raw value to the placeholder; Baked mode treats even stale metadata as absent
-and reconstructs the same value as the field's missing-storage default. NPC `minLevelHealth`
-and `maxLevelHealth` use this rule and return `0` and `1` for known NPCs.
-
-### Combined-addon prefix
-
-When several entity databases share one addon, keys carry a per-type prefix:
+Each entity type owns one key prefix and three key shapes:
 
 ```toc
-## X-<prefix><id>-<fieldIndex>: <encoded value>
+## X-<Type>-IDS: <base64 zlib CBOR id array>
+## X-<Type>-<id>-S: <base64 CBOR scalar row>
+## X-<Type>-<id>-<fieldIndex>: <base64 CBOR table>
 ```
 
-The decoder is generated with `META_PREFIX` baked in, so split and combined addons expose an
-identical runtime API and differ only in key spelling.
+`<fieldIndex>` is the 1-based position in the entity's Database Key Enum. The four canonical
+prefixes are `X-Quest-`, `X-Npc-`, `X-Item-` and `X-Object-`.
 
-## Value encoding
+A schema field may declare a constant placeholder. It keeps its name and positional index for
+compatibility, but Generation stores no value for it. Source mode normalizes obsolete source
+data to the placeholder. Baked mode ignores even a stale scalar-row slot and reconstructs the
+same missing-storage default. NPC `minLevelHealth` and `maxLevelHealth` use this rule and
+return `0` and `1` for known NPCs.
 
-| Schema type | Encoding | Example |
-| --- | --- | --- |
-| `number` | decimal literal — the shortest spelling that reads back as exactly the same double (`tostring`, then `%.15g` → `%.17g`, first that round-trips) | `## X-2-4: 20` |
-| `string` | raw text, unquoted | `## X-2-1: Sharptalon's Claw` |
-| `table` | **Lua table source**, decoded by `loadstring("return " .. value)` | `## X-2-2: {{12676},nil,{16305}}` |
+## Scalar rows
 
-**Coordinates preserve their raw authored or Derived Pass values** (ADR 0006). The same
-shortest-exact number serializer handles them, so ordinary source values such as `36.43` remain
-short while calculated coordinates retain only the digits needed to reconstruct the same Lua
-number. Tuple shape stays canonical: explicit `{-1,-1}` instance sentinels have two elements,
-spawn phase `0` is omitted, nonzero phases survive, and waypoint rows never carry a third
-element. `{0,0}` and sub-grid pairs remain real coordinates rather than compiler sentinels.
+`X-<Type>-<id>-S` holds one CBOR map:
 
-Table values are Lua source, so the serializer *is* the storage format. Two properties are
-load-bearing rather than cosmetic:
+```lua
+{
+  [fieldIndex] = scalar,
+  p = tablePresenceMask,
+}
+```
 
-- **Compactness** — no whitespace, no trailing separators. This directly determines artifact size.
-- **Determinism** — identical input must produce byte-identical output, or every regeneration
-  produces a spurious diff and checksums stop meaning anything.
+Generation stores every number or string for which `encode.hasStoredValue` returns true:
+nonzero numbers and all non-nil strings, including `""`. It never stores constants. The `p`
+slot is the sum of `2 ^ (fieldIndex - 1)` for every stored table field and is omitted when no
+table is present. Generation rejects schemas wider than 52 fields so every mask bit remains
+exact in a Lua double.
 
-Sparse arrays keep their holes (`{{12676},nil,{16305}}`); the decoder relies on Lua's own
-table constructor semantics.
+An entity with no stored scalar and no stored table has no `-S` key. It still exists through
+the type's `IDS` header. On the first Baked read of an entity, the reader decodes this row and
+uses it as that entity's scalar cache.
+
+## Table fields
+
+A normalized, non-empty table is stored under its existing field key as base64 CBOR. The
+presence bit and metadata key either both exist or both do not. Baked reads consult `p` first,
+so an absent table needs no metadata call. A present table's producer retains decoded CBOR
+bytes and calls `C_EncodingUtil.DeserializeCBOR` for each read. The resulting tree is the
+fresh mutable value promised by ADR 0003 Decision 10.
+
+**Coordinates preserve their raw authored or Derived Pass values** (ADR 0006). CBOR encodes
+the Lua numbers directly, including every significant bit of a calculated coordinate. Tuple
+shape stays canonical: explicit `{-1,-1}` instance sentinels have two elements, spawn phase
+`0` is omitted, nonzero phases survive, and waypoint rows never carry a third element.
+`{0,0}` and sub-grid pairs remain real coordinates rather than compiler sentinels.
+
+Sparse arrays keep their positions because CBOR null items preserve nil holes. Maps are
+encoded with sorted encoded keys at every nesting level. That deterministic ordering is part
+of the generation contract: identical input must produce byte-identical artifacts.
 
 ## Chunked values
 
@@ -78,27 +80,25 @@ TOC metadata values have a practical length ceiling. Values longer than **1000 b
 split:
 
 ```toc
-## X-2-8: ~3~
-## X-2-8-1: <first 1000 bytes>
-## X-2-8-2: <next 1000 bytes>
-## X-2-8-3: <remainder>
+## X-Quest-2-8: ~3~
+## X-Quest-2-8-1: <first part>
+## X-Quest-2-8-2: <next part>
+## X-Quest-2-8-3: <remainder>
 ```
 
 - The base key holds `~<partCount>~` — a tilde-delimited decimal count, and nothing else.
 - Parts are numbered from 1 and reassembled by concatenation in order, with no separator.
 - **Splits must not fall inside a UTF-8 sequence.** Back the split point up while the next
-  byte is a continuation byte (`0x80`–`0xBF`). Localized names make this reachable in practice,
-  not theoretical.
+  byte is a continuation byte (`0x80`–`0xBF`). Current binary payloads are base64, but the
+  shared writer keeps this invariant for any future raw-text metadata.
 - **No part may begin or end with a byte the client trims** — space, tab, CR, LF. Measured on
   Classic Era 1.15.9 (`docs/client-metadata-probes.md` §1): `GetAddOnMetadata` strips a
   value's edge whitespace, so a split landing beside a space silently loses that byte during
   reassembly. The split point backs up past any such boundary, exactly like the UTF-8 rule,
   and `verify.lua` scans every emitted value for the invariant.
 
-A reader distinguishes a chunk header from an ordinary value by matching `^~(%d+)~$`. Ordinary
-values that would match this pattern cannot occur, because every stored value is either a
-number, a Lua table literal (starting `{`), or a name — and a name that would collide is
-written in `~Q~` form instead, below.
+A reader distinguishes a chunk header from an ordinary value by matching `^~(%d+)~$`. Entity
+values and localization blocks use base64, whose alphabet cannot begin with `~`.
 
 ## Line length limit
 
@@ -107,7 +107,7 @@ the value. Measured on Classic Era 1.15.9: past that, `C_AddOns.GetAddOnMetadata
 silently truncated value and reports nothing.
 
 ```
-key `X-Object-IDS-LIST-1`   line 1024 -> value came back 999 bytes of 1000
+key `X-Object-IDS-1`        line 1024 -> value came back 999 bytes of 1000
 key `X-Npc-5797-8-1`        line 1019 -> value came back intact
 ```
 
@@ -115,7 +115,7 @@ A 1024-byte buffer including its terminator.
 
 The consequence is that **the chunk threshold is a budget on the line, not on the value**. The
 key counts against the same limit, and it is not a constant: the per-type prefixes this format
-uses (`X-Object-`, `X-l10n-Quest-`) are long, and a chunk part's key grows as the part count
+uses (`X-Object-`, `X-l10n-ruRU-Quest`) are long, and a chunk part's key grows as the part count
 gains digits. `generator/lib.lua` therefore sizes parts from the key and then checks every line
 it is about to write, rather than trusting the arithmetic.
 
@@ -130,81 +130,67 @@ Two more client parser behaviors, both measured on Classic Era 1.15.9
 (`docs/client-metadata-probes.md`):
 
 - **The client trims a value's edges.** Leading and trailing space/tab/CR/LF never survive a
-  read. Therefore no stored value may begin or end with such a byte: an entity string with an
-  edge space is written in `~Q~` quoted form (the quotes become the value's edges),
-  translations are trimmed at extraction, and chunk parts obey the split rule above.
-  `generator/lib.lua` refuses at write time and `verify.lua` scans the raw file.
+  read. Base64 entity values contain none of those bytes. Translations are trimmed at
+  extraction, and chunk parts obey the split rule above. `generator/lib.lua` refuses unsafe
+  writes and `verify.lua` scans the raw file.
 - **Keys are case-insensitive.** `x-quest-2-1` and `X-Quest-2-1` are the same key to
   `GetAddOnMetadata`, so two keys differing only in case would silently shadow one another.
   Generation asserts case-folded uniqueness across every key it writes. Canonical spellings
-  (`X-Quest-`, `X-l10n-Quest-`) are unchanged — they differ by more than case.
+  (`X-Quest-`, `X-l10n-deDE-Quest`) differ by more than case.
 
-## Tilde markers
+## Tilde marker
 
-Three markers share the `~…~` space, checked before a value is interpreted as its declared
-type:
+`~<N>~` is the format's only marker. It means the base key has N numbered chunk parts. CBOR
+represents empty strings and control bytes without sentinels.
 
-| Marker | Meaning |
-| --- | --- |
-| `~<N>~` | Chunked metadata value with N parts |
-| `~E~` | The empty string |
-| `~Q~<lua literal>` | A Lua string literal, for a value the line format cannot carry raw |
+## ID header
 
-`~E~` exists because an absent key already means nil, so `""` has no other way to distinguish
-itself. `~Q~` covers the two remaining cases: a string containing a control character or line
-break, which a line-oriented format cannot carry at all, and a string that would otherwise be
-mistaken for a marker. The encoder rewrites any raw string matching a marker into `~Q~` form,
-so collision is impossible by construction rather than by survey.
+Each entity type stores its complete ascending ID array under `X-<Type>-IDS`. Generation
+serializes the array as deterministic CBOR, compresses it with zlib level 9, then base64
+encodes the compressed bytes. Chunking applies to the base64 text.
 
-## ID list
+Baked mode decodes all four headers at addon load through `DecodeBase64`,
+`DecompressString(bytes, 1)` and `DeserializeCBOR`. It retains the decoded lists and builds
+`[id] = true` existence maps in a loop. Rows remain lazy; this is the only eager entity decode.
 
-Each entity type stores the full set of IDs it contains under a reserved key:
+## Localization blocks
 
-```toc
-## X-IDS-LIST: 2,5,7,12,13,...
-```
-
-Comma-separated decimal IDs, ascending. Chunking applies here too — this value is large.
-
-Consumers build either form from it:
-
-- **list** — `loadstring("return {" .. value .. "}")()`
-- **hashmap** — same, with `(%d+)` replaced by `[%1]=true`
-
-## Localization
-
-Localized values are stored under their own prefixed keys:
+`X-l10n-Version: 1` declares the localization store. Each non-enUS locale has one compressed
+CBOR block per entity type:
 
 ```toc
-## X-l10n-<Type>-<id>-<fieldIndex>: <locale1>‡<locale2>‡...
+## X-l10n-deDE-Quest: <base64 zlib CBOR field columns>
+## X-l10n-deDE-Npc: <base64 zlib CBOR field columns>
+## X-l10n-deDE-Item: <base64 zlib CBOR field columns>
+## X-l10n-deDE-Object: <base64 zlib CBOR field columns>
 ```
 
-The `l10n-` prefix is load-bearing in the combined case, which is what QuestieTDB ships:
-without it `X-Quest-2-1` would be ambiguous between quest 2's name and Quest l10n id 2
-field 1.
+A block is an array of compact localization field columns. Each column uses positions from the
+entity type's ascending `X-<Type>-IDS` array:
 
-- The separator is **`‡`** (U+2021, UTF-8 `\226\128\161`).
-- Locale order is fixed and declared by the generator; the decoder captures the Nth segment.
-- **enUS is not stored.** Base entity data is already English, so the l10n store carries only
-  translations — currently `deDE, esES, esMX, frFR, koKR, ptBR, ruRU, zhCN, zhTW`.
-- An empty segment means "no translation for this locale"; the reader falls back to the base
-  entity value.
-- **A list-valued field's segments are Lua table literals** (ADR 0003, Decision 3): quest
-  `objectivesText` stores each locale's list as `{'…','…'}`, decoded with the same
-  `loadstring("return " .. segment)` codec entity fields use. Structure travels in the value,
-  so the field stays a table in every locale. Element counts follow the upstream lookup and
-  may differ, notably where zhCN or zhTW combines objectives. There is no second,
-  element-level separator.
-- Scalar segments are raw text, trimmed at extraction — the client trims value edges, and
-  which segment sits at a value's edge depends on which other locales are present, so
-  untrimmed translations would vary by position. Control characters are stripped at
-  extraction as display-text defects (observed in the wild: a leading DEL byte on a zhTW
-  NPC name); list elements need no stripping because the quoted literal form escapes them.
-- Generation fails on a segment containing `‡` or a control character, and on a joined value
-  that would collide with the `~<N>~` chunk-header marker.
+```lua
+{
+  [1] = { [entityPosition] = translatedName },
+  [2] = { [entityPosition] = translatedObjectivesOrSubName },
+}
+```
 
-Because segments are only extracted on access, unused locales cost no Lua memory — see
-`DESIGN.md`, Localization.
+Quest columns are `name`, `objectivesText`; NPC columns are `name`, `subName`; Item and Object
+have only `name`. A nil hole means no translation, so the reader falls back to the base entity
+field. List-valued quest objectives are CBOR tables and retain the locale's own element count.
+
+The locale precedes the entity type because the client reserves a final `-deDE`-style suffix
+for localized TOC directives; such a key disappears when another locale is active. Generation
+trims scalar translation edges and removes control characters before encoding, matching the
+display-text cleanup applied by the earlier store. It emits deterministic CBOR,
+zlib level 9, then base64. The full base ID list is not repeated in localization.
+
+**enUS has no blocks.** A client using enUS decodes no localization data. A non-enUS client
+decodes its four available type blocks during addon load and retains those columns for the
+session. Lookups use the backend ID list, with a sequential-position fast path and binary-search
+fallback. Locale changes replace all four active blocks before invalidating entity caches.
+Corrections still outrank translations, and translated tables still return fresh mutable copies.
+See ADR 0011.
 
 ## Build metadata
 
@@ -219,9 +205,9 @@ Every generated `.toc` carries provenance:
 `X-BUILD-COMMIT` is `git rev-parse HEAD`, or forty zeros when git is unavailable.
 
 `X-QUESTIE-COMMIT` is the same for the Questie checkout Generation reads (`--questie=`,
-default `QUESTIE_PATH` or `../Questie`). It is provenance, not decoration: the l10n lookups —
-~72% of the artifact — are read from that checkout rather than committed here, so an artifact
-is reproducible only from the *pair* of commits. `QUESTIE_COMMIT` pins the reviewed input;
+default `QUESTIE_PATH` or `../Questie`). It is provenance, not decoration: the localization
+blocks are built from lookups in that checkout rather than committed here, so an artifact is
+reproducible only from the *pair* of commits. `QUESTIE_COMMIT` pins the reviewed input;
 Generation, Reconstruction, the compiler differential, and the Correction port reject a
 different commit, and both workflows read that pin through the shared checkout action.
 `tools/package.sh` copies
@@ -235,7 +221,7 @@ sites.
 
 | Source value | Read back as | Note |
 | --- | --- | --- |
-| constant field | schema placeholder | Raw values are obsolete and no metadata line is stored |
+| constant field | schema placeholder | Raw values are obsolete and no scalar-row slot is stored |
 | number `nil` | **`0`** | Lossy, and deliberate — Questie's writers emit `value or 0` |
 | number `n` | `n` | |
 | string `nil` | `nil` | |
@@ -248,21 +234,19 @@ sites.
 
 Two consequences for implementation:
 
-- **Numeric getters must default to `0`, never `nil`.** An absent metadata key means the field
-  was nil at source, and Questie returns `0` there. Note `0` is truthy in Lua, so consumers
-  already test `~= 0` rather than truthiness — returning `nil` instead would change behaviour.
+- **Numeric getters must default to `0`, never `nil`.** An absent scalar-row slot means the
+  field was nil or zero at source, and Questie returns `0` there. Note `0` is truthy in Lua,
+  so consumers already test `~= 0` rather than truthiness; returning `nil` would change
+  behaviour.
 - **Ordinary table getters return `nil`, never an empty table.** The three never-nil structures
   above are explicit exceptions. The prototypes' `EMPTY` sentinel (`{"startedBy", "table",
   EMPTY}`) contradicts the general rule and must be removed. It is independently disqualified
   anyway: a frozen table carrying `__newindex` redirects writes instead of failing — see
   `docs/table.freeze.md`.
 
-Empty strings need an explicit representation, since an absent key already means `nil`.
-Questie's compiler solves this with a literal `"nil"` sentinel in the opposite direction —
-`writers["u8string"]` emits `value or "nil"` and `readers["u8string"]` maps `"nil"` back to
-nil, which means a genuine string `"nil"` is lost. QuestieTDB instead marks the empty string
-explicitly with `~E~`, so nothing needs to be inferred from a survey and no legitimate value
-is unrepresentable.
+CBOR represents an empty string directly, so `""` occupies a scalar-row slot while nil has
+no slot. Questie's compiler instead uses a literal `"nil"` sentinel and cannot represent a
+genuine string with that value. QuestieTDB needs no inference or sentinel on the entity path.
 
 ### Element-level, not field-level
 

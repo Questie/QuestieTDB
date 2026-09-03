@@ -25,6 +25,7 @@ local lib = dofile("generator/lib.lua")
 local loader = dofile("generator/loader.lua")
 local schema = dofile("generator/schema.lua")
 local encode = dofile("generator/encode.lua")
+local rows = dofile("generator/rows.lua")
 local corrections = dofile("generator/corrections.lua")
 local flavorLoader = dofile("generator/flavor.lua")
 local l10nGen = dofile("generator/l10n.lua")
@@ -188,34 +189,55 @@ function generate.baseToc()
   say(string.format("Generated %s (%d files, source mode)", path, #config.sourceFileList()))
 end
 
---- Emit every metadata line for one entity type.
+---Emit every metadata line for one entity type.
+---@param out file* Open artifact handle.
+---@param meta table Entity metadata.
+---@param entities table<number, table> Composed Generation rows by entity ID.
+---@param fieldFilter table<string, boolean>? Optional tracer-bullet field selection.
 ---@return number entityCount
----@return number fieldCount
----@return number lineCount
+---@return table stats Scalar-row, table-field, byte, and line counts.
 local function writeEntityMetadata(out, meta, entities, fieldFilter)
   local ids = lib.sortedIds(entities)
-  local fieldCount, lineCount = 0, 0
+  local stats = { rows = 0, tableFields = 0, rowBytes = 0, tableBytes = 0, lines = 0 }
   local prefix = "X-" .. meta.metaPrefix
 
   for _, id in ipairs(ids) do
-    local row = entities[id]
+    local sourceRow = entities[id]
     local key = prefix .. id .. "-"
+
+    -- Table fields retain one metadata key each. Write them before the scalar row so the
+    -- artifact's entity records have a stable, easy-to-scan order.
     for fieldIndex = 1, meta.fieldCount do
-      if not fieldFilter or fieldFilter[meta.names[fieldIndex]] then
-        local ok, encoded = pcall(encode.field, meta, fieldIndex, row[fieldIndex])
+      if meta.types[fieldIndex] == "table" and
+         (not fieldFilter or fieldFilter[meta.names[fieldIndex]]) then
+        local ok, encoded = pcall(encode.field, meta, fieldIndex, sourceRow[fieldIndex])
         if not ok then
           error(string.format("%s id %d: %s", meta.entity, id, tostring(encoded)), 0)
         end
         if encoded ~= nil then
-          lineCount = lineCount + lib.writeMetadata(out, key .. fieldIndex, encoded, config.maxValueLength)
-          fieldCount = fieldCount + 1
+          stats.lines = stats.lines +
+            lib.writeMetadata(out, key .. fieldIndex, encoded, config.maxValueLength)
+          stats.tableFields = stats.tableFields + 1
+          stats.tableBytes = stats.tableBytes + #encoded
         end
       end
     end
+
+    local ok, scalarRow = pcall(rows.build, meta, sourceRow, fieldFilter)
+    if not ok then error(string.format("%s id %d: %s", meta.entity, id, tostring(scalarRow)), 0) end
+    if scalarRow then
+      local encoded = encode.row(scalarRow)
+      stats.lines = stats.lines + lib.writeMetadata(out, key .. "S", encoded, config.maxValueLength)
+      stats.rows = stats.rows + 1
+      stats.rowBytes = stats.rowBytes + #encoded
+    end
   end
 
-  lineCount = lineCount + lib.writeMetadata(out, prefix .. "IDS-LIST", encode.idList(ids), config.maxValueLength)
-  return #ids, fieldCount, lineCount
+  local encodedIds = encode.idList(ids)
+  stats.lines = stats.lines +
+    lib.writeMetadata(out, prefix .. "IDS", encodedIds, config.maxValueLength)
+  stats.idBytes = #encodedIds
+  return #ids, stats
 end
 
 --------------------------------------------------------------------------------------------
@@ -237,41 +259,71 @@ function generate.flavor(flavor, opts)
       stats.corrections and stats.corrections.files or 0))
   end
 
+  -- A Lua number represents every possible Presence mask through field 52 exactly.
+  -- Reject a wider schema before opening the artifact so a failed run leaves no partial TOC.
+  for _, entry in pairs(loaded) do
+    if entry.meta.fieldCount > 52 then
+      error(("%s schema has %d fields; the presence mask supports at most 52")
+        :format(entry.meta.entity, entry.meta.fieldCount), 0)
+    end
+  end
+
   local tocPath = config.tocPath(flavor)
   local out = assert(io.open(tocPath, "wb"), "Cannot write " .. tocPath)
   writeHeader(out, flavor, config.bakedFileList(flavor))
 
-  local totals = { entities = 0, fields = 0, lines = 0 }
+  local totals = { entities = 0, fields = 0, rows = 0, lines = 0, entityBytes = 0 }
   for _, entityType in ipairs(config.entityTypes) do
     local entry = loaded[entityType.name]
     if entry then
-      local entities, fields, lines = writeEntityMetadata(out, entry.meta, entry.entities, opts.fields)
-      totals.entities = totals.entities + entities
-      totals.fields = totals.fields + fields
-      totals.lines = totals.lines + lines
-      say(string.format("  %-7s %6d entities  %8d fields", entityType.name, entities, fields))
+      local entityCount, typeStats =
+        writeEntityMetadata(out, entry.meta, entry.entities, opts.fields)
+      totals.entities = totals.entities + entityCount
+      totals.fields = totals.fields + typeStats.tableFields + typeStats.rows
+      totals.rows = totals.rows + typeStats.rows
+      totals.lines = totals.lines + typeStats.lines
+      totals.entityBytes = totals.entityBytes + typeStats.rowBytes +
+        typeStats.tableBytes + typeStats.idBytes
+      say(string.format(
+        "  %-7s %6d entities  %6d rows  %7.1f KB rows+ids  %7.1f KB tables",
+        entityType.name, entityCount, typeStats.rows,
+        (typeStats.rowBytes + typeStats.idBytes) / 1024, typeStats.tableBytes / 1024))
+    elseif opts.types and not opts.types[entityType.name] then
+      -- The runtime always constructs all four Entity globals. A type-filtered tracer artifact
+      -- therefore carries an empty header for each omitted backend rather than looking corrupt.
+      local encodedIds = encode.idList({})
+      totals.lines = totals.lines + lib.writeMetadata(out,
+        "X-" .. entityType.metaPrefix .. "IDS", encodedIds, config.maxValueLength)
+      totals.entityBytes = totals.entityBytes + #encodedIds
+      say(string.format("  %-7s %6d entities  %6d rows  (omitted)", entityType.name, 0, 0))
+    else
+      error("Generation loaded no " .. entityType.name .. " data for " .. flavor.name, 0)
     end
   end
 
   out:close()
 
-  -- Localization, appended after entity data. It is ~72% of the artifact, and it lives in the
-  -- same store rather than a separate addon because TOC metadata is client-side storage, not
-  -- Lua heap: a German user never touches the other eight locales' strings.
+  -- Localization follows entity data as compressed CBOR columns. A non-enUS client eagerly
+  -- decodes its available type blocks; enUS keeps localization out of the Lua heap.
   if not opts.noL10n then
     local questiePath = opts.questie or DEFAULT_QUESTIE_PATH
     out = assert(io.open(tocPath, "ab"), "Cannot append to " .. tocPath)
+    totals.lines = totals.lines + l10nGen.writeHeader(out)
     for _, entityType in ipairs(config.entityTypes) do
       local entry = loaded[entityType.name]
       if entry then
+        local ids = lib.sortedIds(entry.entities)
         local knownIds = {}
-        for id in pairs(entry.entities) do knownIds[id] = true end
-        local values, stats = l10nGen.extract(questiePath, flavor, entityType.name, knownIds)
-        local entries, fields = l10nGen.writeMetadata(out, entityType.name, values)
-        totals.l10nEntries = (totals.l10nEntries or 0) + entries
-        totals.l10nFields = (totals.l10nFields or 0) + fields
-        say(string.format("  l10n %-7s %6d entities  %8d fields  (%d locales, %d filtered)",
-          entityType.name, entries, fields, stats.locales, stats.filtered))
+        for _, id in ipairs(ids) do knownIds[id] = true end
+        local values, extractStats = l10nGen.extract(
+          questiePath, flavor, entityType.name, knownIds)
+        local blockStats = l10nGen.writeMetadata(out, entityType.name, values, ids)
+        totals.lines = totals.lines + blockStats.lines
+        totals.l10nBytes = (totals.l10nBytes or 0) + blockStats.bytes
+        say(string.format(
+          "  l10n %-7s %6d entities  %2d blocks  %7.1f KB  (%d locales, %d filtered)",
+          entityType.name, extractStats.entries, blockStats.blocks,
+          blockStats.bytes / 1024, extractStats.locales, extractStats.filtered))
         values = nil
         collectgarbage()
       end
@@ -280,8 +332,9 @@ function generate.flavor(flavor, opts)
   end
 
   local size = lib.fileSize(tocPath)
-  say(string.format("Generated %s — %d entities, %d fields, %.1f MB, %.1fs",
-    tocPath, totals.entities, totals.fields, size / 1048576, os.clock() - started))
+  say(string.format("Generated %s — %d entities, %d rows, %.1f MB entity data, %.1f MB total, %.1fs",
+    tocPath, totals.entities, totals.rows, totals.entityBytes / 1048576,
+    size / 1048576, os.clock() - started))
   return totals
 end
 

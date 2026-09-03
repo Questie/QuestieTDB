@@ -3,13 +3,60 @@
 -- The minimum WoW client environment a QuestieTDB addon file needs to load offline.
 --
 -- Kept separate from emulator/metadata.lua because the two answer different questions: that
--- file stands in for the addon-metadata API, this one stands in for the client. Source mode
--- needs the client (`WOW_PROJECT_ID` selects which expansion's data to keep, `CreateFrame`
--- backs the mode indicator); baked mode needs only the metadata.
+-- file stands in for the addon-metadata API, this one stands in for the client. Both read
+-- modes need this module: Source mode depends on project globals and Baked mode depends on
+-- `C_EncodingUtil` for base64, compression and CBOR.
+
+local base64 = dofile("generator/base64.lua")
+local BlizzardCBOR = dofile("generator/vendor/BlizzardCBOR.lua")
+local LibDeflate = dofile("generator/vendor/LibDeflate.lua")
 
 local client = {}
 
 local function noop() end
+
+-- C_EncodingUtil levels 1 and 2 select speed and size respectively; LibDeflate takes a
+-- numeric compression level instead.
+---@param level integer?
+---@return table config
+local function compressionConfig(level)
+  if level == 1 then return { level = 1 } end
+  if level == 2 then return { level = 9 } end
+  return { level = 6 }
+end
+
+---Stand in for the DEFLATE and zlib methods used by supported runtime paths.
+---@param value string
+---@param method integer
+---@param level integer?
+---@return string compressed
+local function compressString(value, method, level)
+  if method == 0 then
+    return LibDeflate:CompressDeflate(value, compressionConfig(level))
+  elseif method == 1 then
+    return LibDeflate:CompressZlib(value, compressionConfig(level))
+  end
+  error("C_EncodingUtil.CompressString: unsupported compression method " .. tostring(method), 2)
+end
+
+---Stand in for C_EncodingUtil decompression, including trailing-data rejection.
+---@param value string
+---@param method integer
+---@return string decompressed
+local function decompressString(value, method)
+  local output, leftover
+  if method == 0 then
+    output, leftover = LibDeflate:DecompressDeflate(value)
+  elseif method == 1 then
+    output, leftover = LibDeflate:DecompressZlib(value)
+  else
+    error("C_EncodingUtil.DecompressString: unsupported compression method " .. tostring(method), 2)
+  end
+  if output == nil or leftover ~= 0 then
+    error("C_EncodingUtil.DecompressString: invalid compressed data", 2)
+  end
+  return output
+end
 
 --- Blizzard's project IDs, by the expansion directory name QuestieTDB uses.
 client.projectIds = {
@@ -78,6 +125,14 @@ function client.install(opts)
   _G.tremove = table.remove
   _G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
   _G.C_Timer = { After = function(_, fn) if fn then fn() end end, NewTicker = noop }
+  _G.C_EncodingUtil = {
+    DecodeBase64 = base64.decode,
+    EncodeBase64 = base64.encode,
+    DecompressString = decompressString,
+    CompressString = compressString,
+    DeserializeCBOR = BlizzardCBOR.DeserializeCBOR,
+    SerializeCBOR = BlizzardCBOR.SerializeCBOR,
+  }
 
   -- Season gating (ADR 0003 D9). `opts.season = "SoD"` models a live Season of Discovery
   -- realm; `opts.season = "TitanReforged"` models a Titan Reforged realm — a Wrath client

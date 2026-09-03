@@ -15,7 +15,7 @@ config.addonName = "QuestieTDB"
 
 --- Bumped when the shape of the public API or the storage format changes in a way a consumer
 --- can observe. Questie checks this at init and fails with a specific message on mismatch.
-config.contractVersion = 1
+config.contractVersion = 2
 
 --- The oldest consumer contract this release still honors. `RequireContract` passes any
 --- required version in [minSupportedContract, contractVersion]; raise this floor only when a
@@ -78,15 +78,23 @@ end
 --------------------------------------------------------------------------------------------
 --
 -- enUS is deliberately absent: base entity data is already English, so the l10n store carries
--- only translations. Order is fixed and load-bearing — the decoder captures the Nth segment.
+-- only translations. Keep this order stable so generated blocks remain byte-identical.
 
 config.locales = { "deDE", "esES", "esMX", "frFR", "koKR", "ptBR", "ruRU", "zhCN", "zhTW" }
 
-config.localeSeparator = "\226\128\161" -- U+2021 DOUBLE DAGGER
-
---- l10n metadata keys are prefixed to keep them out of the entity key space. Without this,
---- `X-Quest-2-1` would be ambiguous between quest 2's name and Quest l10n id 2 field 1.
+config.l10nVersion = 1
+config.l10nHeaderKey = "X-l10n-Version"
 config.l10nMetaPrefix = "l10n-"
+
+---Storage key for one locale and entity type's compressed localization columns.
+---@param typeName string
+---@param locale string
+---@return string key
+function config.l10nBlockKey(typeName, locale)
+  -- A key ending in `-deDE` is interpreted as a localized TOC directive and disappears on an
+  -- enUS client. Keep the entity type last so every locale's block remains directly addressable.
+  return "X-" .. config.l10nMetaPrefix .. locale .. "-" .. typeName
+end
 
 --------------------------------------------------------------------------------------------
 -- Addon file lists

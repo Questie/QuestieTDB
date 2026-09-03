@@ -18,7 +18,7 @@
 -- Usage:
 --   lua reconstruct.lua                 Vanilla
 --   lua reconstruct.lua Cata Mists     named flavors
---   lua reconstruct.lua --toc-dir=.out/x --questie=../Questie --count-only --quiet
+--   lua reconstruct.lua --toc-dir=.out/x --questie=../Questie --types=Quest --count-only --quiet
 --
 -- `--questie` overrides `QUESTIE_PATH`, whose fallback is `../Questie`.
 -- `--count-only` prints a single number (the mismatch count) for negative-control harnesses.
@@ -27,6 +27,7 @@
 local config = dofile("src/config.lua")
 local lib = dofile("generator/lib.lua")
 local encode = dofile("generator/encode.lua")
+local rows = dofile("generator/rows.lua")
 local flavorLoader = dofile("generator/flavor.lua")
 local l10nGen = dofile("generator/l10n.lua")
 
@@ -46,11 +47,15 @@ local opts = {
   questie = os.getenv("QUESTIE_PATH") or "../Questie",
   quiet = false,
   countOnly = false,
+  types = nil,
 }
 for _, value in ipairs(arg or {}) do
   local key, val = value:match("^%-%-([%w%-]+)=(.*)$")
   if key == "toc-dir" then
     opts.tocDir = val
+  elseif key == "types" then
+    opts.types = {}
+    for name in val:gmatch("[^,]+") do opts.types[name] = true end
   elseif key == "questie" then
     opts.questie = val
   elseif value == "--count-only" then
@@ -93,9 +98,15 @@ local function newSink()
   return sink
 end
 
-local function expectedLines(flavor)
+---Rebuild the data directives for one artifact shape.
+---Localization presence comes from the artifact header, so intentional `--no-l10n` output
+---reconstructs without requiring a second command-line flag.
+---@param flavor table
+---@param includeLocalization boolean
+---@return string[] lines
+local function expectedLines(flavor, includeLocalization)
   local sink = newSink()
-  local loaded = flavorLoader.load(flavor, nil)
+  local loaded = flavorLoader.load(flavor, opts.types)
 
   -- Entity sections, in config order — the mirror of generate.lua's writeEntityMetadata.
   for _, entityType in ipairs(config.entityTypes) do
@@ -105,28 +116,40 @@ local function expectedLines(flavor)
       local ids = lib.sortedIds(entities)
       local prefix = "X-" .. meta.metaPrefix
       for _, id in ipairs(ids) do
-        local row = entities[id]
+        local sourceRow = entities[id]
         local key = prefix .. id .. "-"
         for fieldIndex = 1, meta.fieldCount do
-          local encoded = encode.field(meta, fieldIndex, row[fieldIndex])
-          if encoded ~= nil then
-            lib.writeMetadata(sink, key .. fieldIndex, encoded, config.maxValueLength)
+          if meta.types[fieldIndex] == "table" then
+            local encoded = encode.field(meta, fieldIndex, sourceRow[fieldIndex])
+            if encoded ~= nil then
+              lib.writeMetadata(sink, key .. fieldIndex, encoded, config.maxValueLength)
+            end
           end
         end
+        local scalarRow = rows.build(meta, sourceRow)
+        if scalarRow then
+          lib.writeMetadata(sink, key .. "S", encode.row(scalarRow), config.maxValueLength)
+        end
       end
-      lib.writeMetadata(sink, prefix .. "IDS-LIST", encode.idList(ids), config.maxValueLength)
+      lib.writeMetadata(sink, prefix .. "IDS", encode.idList(ids), config.maxValueLength)
+    elseif opts.types and not opts.types[entityType.name] then
+      lib.writeMetadata(sink, "X-" .. entityType.metaPrefix .. "IDS",
+        encode.idList({}), config.maxValueLength)
     end
   end
 
-  -- Localization, appended after entity data — the mirror of generate.lua's l10n block.
-  if lib.fileExists(opts.questie .. "/Localization/lookups/" .. flavor.expansion) then
+  -- Localization, appended after entity data. Keep this loop byte-identical to generate.lua.
+  if includeLocalization and
+     lib.fileExists(opts.questie .. "/Localization/lookups/" .. flavor.expansion) then
+    l10nGen.writeHeader(sink)
     for _, entityType in ipairs(config.entityTypes) do
       local entry = loaded[entityType.name]
       if entry then
+        local ids = lib.sortedIds(entry.entities)
         local knownIds = {}
-        for id in pairs(entry.entities) do knownIds[id] = true end
+        for _, id in ipairs(ids) do knownIds[id] = true end
         local values = l10nGen.extract(opts.questie, flavor, entityType.name, knownIds)
-        l10nGen.writeMetadata(sink, entityType.name, values)
+        l10nGen.writeMetadata(sink, entityType.name, values, ids)
         values = nil
         collectgarbage()
       end
@@ -175,7 +198,11 @@ local function compareFlavor(flavor)
   end
 
   local started = os.clock()
-  local expected = expectedLines(flavor)
+  local artifact = lib.readAll(tocPath)
+  -- The artifact declares whether Generation intentionally omitted localization.
+  local includeLocalization = artifact:find(
+    "## " .. config.l10nHeaderKey .. ":", 1, true) ~= nil
+  local expected = expectedLines(flavor, includeLocalization)
   local actual = artifactLines(tocPath)
 
   local mismatches, reported = 0, 0
