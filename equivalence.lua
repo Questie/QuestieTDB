@@ -27,9 +27,9 @@
 --   * A season pass for Classic: with Season of Discovery active in both modes, the SoD
 --     Dynamic sets must register and compose identically (ADR 0003 D9).
 --
--- The gate then proves it can fail: one stored value is deliberately mutated in the baked
--- map, the mutated id is re-compared through the same comparison code, and exactly one
--- divergence per read form must be detected. Equivalence that cannot fail is not a gate.
+-- The gate then proves it can fail: one scalar in a valid Baked CBOR row is deliberately
+-- mutated, and the affected Get, GetRaw, and Name-index results must all diverge exactly as
+-- expected. Equivalence that cannot fail is not a gate.
 --
 -- Usage:
 --   lua equivalence.lua                     every generated flavor
@@ -42,6 +42,8 @@
 
 local config = dofile("src/config.lua")
 local lib = dofile("generator/lib.lua")
+local base64 = dofile("generator/base64.lua")
+local cbor = dofile("generator/cbor.lua")
 local emulator = dofile("emulator/metadata.lua")
 local freezeLib = dofile("emulator/freeze.lua")
 local client = dofile("emulator/client.lua")
@@ -90,8 +92,7 @@ end
 -- Divergence classification
 --------------------------------------------------------------------------------------------
 
---- Nil versus empty table is the predicted failure mode — the whole `EMPTY` sentinel argument
---- turns on it — so it is named rather than lumped in with everything else.
+---Nil versus empty table is a high-risk semantic divergence, so classify it explicitly.
 local function classify(sourceValue, bakedValue)
   local function isEmptyTable(v) return type(v) == "table" and next(v) == nil end
   if (sourceValue == nil and isEmptyTable(bakedValue)) or
@@ -496,25 +497,29 @@ end
 ---@param tocPath string Generated TOC path.
 ---@param sourceLib table Source-mode addon namespace from the full pass.
 ---@param bakedMap table<string, string> Parsed metadata shared by this flavor's passes.
----@return integer failures Zero when the injected mutation is detected exactly twice.
+---@return integer failures Zero when the injected mutation causes exactly four divergences.
 local function selfProof(tocPath, sourceLib, bakedMap)
   local mutatedKey, mutatedId, originalValue
 
   ---@param map table<string, string>
   ---@return nil
   local function mutate(map)
-    -- The first quest whose name is stored unchunked: mutate the stored bytes themselves.
+    -- Find the first unchunked scalar row containing a quest name, then change only that
+    -- scalar. The CBOR remains valid so the proof reaches every public read form.
+    local mutatedRow
     for key, value in pairs(map) do
-      local id = key:match("^X%-Quest%-(%d+)%-1$")
-      if id and not value:find("^~") then
-        if not mutatedId or tonumber(id) < mutatedId then
-          mutatedId, mutatedKey = tonumber(id), key
+      local id = key:match("^X%-Quest%-(%d+)%-S$")
+      if id and value:sub(1, 1) ~= "~" then
+        local row = cbor.decode(base64.decode(value))
+        if type(row[1]) == "string" and (not mutatedId or tonumber(id) < mutatedId) then
+          mutatedId, mutatedKey, mutatedRow = tonumber(id), key, row
         end
       end
     end
-    assert(mutatedKey, "self-proof found no unchunked quest name to mutate")
+    assert(mutatedKey, "self-proof found no unchunked quest scalar row with a name")
     originalValue = map[mutatedKey]
-    map[mutatedKey] = originalValue .. "X"
+    mutatedRow[1] = mutatedRow[1] .. "X"
+    map[mutatedKey] = base64.encode(cbor.encode(mutatedRow))
   end
 
   -- The full pass has already loaded both the source data and the artifact map. Reusing them

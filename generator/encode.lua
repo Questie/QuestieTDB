@@ -1,23 +1,30 @@
 -- generator/encode.lua
 --
--- Encoding side of the on-disk contract; the mirror of src/meta/codec.lua.
+-- Encoding side of the on-disk contract. Entity rows and tables use CBOR; localization keeps
+-- the literal-safe string encoding shared with src/meta/codec.lua.
 --
--- Everything here runs through src/meta/normalize.lua first, so the generator never invents a
--- second opinion about nil and empty semantics — it stores exactly what a read must return,
--- and omits the line entirely whenever the read would produce the field's default.
+-- Entity fields run through src/meta/normalize.lua first, so the generator never invents a
+-- second opinion about nil and empty semantics: it stores exactly what a read must return and
+-- omits values whose read-time result is already the schema default.
 
 local serialize = dofile("generator/serialize.lua")
 local codec = dofile("src/meta/codec.lua")
 local normalize = dofile("src/meta/normalize.lua")
+local base64 = dofile("generator/base64.lua")
+local cbor = dofile("generator/cbor.lua")
+local LibDeflate = dofile("generator/vendor/LibDeflate.lua")
 
 local encode = {}
 
 local type, next = type, next
-local find, concat = string.find, table.concat
+local find = string.find
 
 --------------------------------------------------------------------------------------------
--- Strings
+-- Localization strings
 --------------------------------------------------------------------------------------------
+
+-- Entity strings live inside CBOR scalar rows. This literal-safe encoding remains only for
+-- the unchanged localization store.
 
 --- True when a raw string would be mistaken for one of the tilde markers.
 local function collidesWithMarker(value)
@@ -46,7 +53,7 @@ end
 -- Fields
 --------------------------------------------------------------------------------------------
 
----Whether a normalized field needs a metadata line.
+---Whether a normalized field needs storage in a Scalar row or table Metadata field.
 ---Verification calls this after normalization so it shares Generation's omission rules
 ---without serializing every table a second time.
 ---@param meta table
@@ -77,10 +84,8 @@ end
 
 encode.hasStoredValue = hasStoredValue
 
---- Encode one field of one entity, or return nil when no line should be written.
----
---- Absence is the encoding for constants, nil, numeric zero, and empty tables whose read-time
---- default is already in the schema.
+--- Encode one stored table field as base64 CBOR, or nil when its normalized value is absent.
+--- Scalar fields are collected by generator/rows.lua and encoded together through `row`.
 ---@param meta table
 ---@param fieldIndex number
 ---@param value any Raw source value
@@ -88,22 +93,31 @@ encode.hasStoredValue = hasStoredValue
 function encode.field(meta, fieldIndex, value)
   local normalized = normalize.field(meta, fieldIndex, value)
   if not hasStoredValue(meta, fieldIndex, normalized) then return nil end
+  if meta.types[fieldIndex] ~= "table" then
+    error("encode.field: scalar fields belong in the entity row", 2)
+  end
+  return base64.encode(cbor.encode(normalized))
+end
 
-  local storage = meta.types[fieldIndex]
-  if storage == "number" then return serialize.number(normalized) end
-  if storage == "string" then return encode.string(normalized) end
-  return serialize.value(normalized)
+---Encode one Scalar row as base64 CBOR.
+---@param scalarRow table
+---@return string encoded
+function encode.row(scalarRow)
+  return base64.encode(cbor.encode(scalarRow))
 end
 
 --------------------------------------------------------------------------------------------
--- ID list
+-- ID header
 --------------------------------------------------------------------------------------------
 
---- Comma-separated decimal IDs, ascending. Chunking applies to this value like any other.
+---Encode an ascending ID list as zlib-compressed, base64 CBOR.
+---Chunking applies to the encoded text.
+---@param ids number[]
+---@return string encoded
 function encode.idList(ids)
-  local parts = {}
-  for i = 1, #ids do parts[i] = serialize.integer(ids[i]) end
-  return concat(parts, ",")
+  local compressed = LibDeflate:CompressZlib(cbor.encode(ids), { level = 9 })
+  if not compressed then error("encode.idList: zlib compression failed", 2) end
+  return base64.encode(compressed)
 end
 
 encode.EMPTY_STRING = codec.EMPTY_STRING

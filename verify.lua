@@ -1,8 +1,8 @@
 #!/usr/bin/env lua
 -- verify.lua
 --
--- Round-trip verification: for every entity and every field, the value read back through the
--- shipped reader must equal what the storage format says that source value reads back as.
+-- Round-trip verification: for every entity and field, the value read through the shipped
+-- reader must equal the normalized Generation input represented by the storage format.
 --
 -- This is a required CI gate, not a smoke test. It is also the feedback signal every other
 -- part of the build leans on, so it runs the *real* runtime files out of src/ against the
@@ -21,6 +21,7 @@ local lib = dofile("generator/lib.lua")
 local loader = dofile("generator/loader.lua")
 local schema = dofile("generator/schema.lua")
 local encode = dofile("generator/encode.lua")
+local rowBuilder = dofile("generator/rows.lua")
 local emulator = dofile("emulator/metadata.lua")
 local client = dofile("emulator/client.lua")
 local flavorLoader = dofile("generator/flavor.lua")
@@ -79,7 +80,7 @@ local function reportMismatch(report, entityName, id, fieldIndex, fieldName, exp
   end
 end
 
---- Verify one flavor's generated TOC against the raw entity data it was generated from.
+---Verify one flavor's generated TOC against its Static-corrected, derived Generation input.
 local function verifyFlavor(flavor, opts)
   local tocPath = (opts.tocDir or ".") .. "/" .. config.tocPath(flavor)
   if not lib.fileExists(tocPath) then
@@ -157,8 +158,8 @@ local function verifyFlavor(flavor, opts)
   local normalize = LibQuestieDB.Meta.normalize
   local seenKeys = {}
 
-  -- The same corrected tables the generator wrote, so this checks the storage round trip
-  -- rather than accidentally re-checking whether corrections were applied.
+  -- Load the same Static-corrected, derived tables that Generation wrote. This checks the
+  -- storage round trip rather than re-testing whether Corrections and Derived Passes ran.
   local loadedFlavor = flavorLoader.load(flavor, opts.types)
 
   for _, entityType in ipairs(config.entityTypes) do
@@ -167,25 +168,25 @@ local function verifyFlavor(flavor, opts)
       local meta = LibQuestieDB.Meta[entityType.name]
       local sourceEntities = loadedFlavor[entityType.name].entities
 
-      -- The ID list must round-trip in both forms consumers build from it. This reads the
-      -- BACKEND's list, not `entity.GetAllIds()`: public enumeration is the composed view
+      -- The ID header must decode to both list and existence-map forms. This reads the
+      -- BACKEND's values, not `entity.GetAllIds()`: public enumeration is the composed view
       -- (ADR 0003 D7), which legitimately includes entities Dynamic Corrections add, while
       -- this check's subject is the stored artifact alone.
       local sourceIds = lib.sortedIds(sourceEntities)
       local storedList, storedMap = entity.backend.getAllIds()
       if not lib.deepEqual(sourceIds, storedList) then
-        io.write(("  MISMATCH %s IDS-LIST: %d source ids, %d stored\n")
+        io.write(("  MISMATCH %s IDS: %d source ids, %d stored\n")
           :format(entityType.name, #sourceIds, #storedList))
         report.errors = report.errors + 1
       end
       for _, id in ipairs(sourceIds) do
         if storedMap[id] ~= true then
-          io.write(("  MISMATCH %s IDS-LIST hashmap missing id %d\n"):format(entityType.name, id))
+          io.write(("  MISMATCH %s IDS hashmap missing id %d\n"):format(entityType.name, id))
           report.errors = report.errors + 1
           break
         end
       end
-      seenKeys["X-" .. meta.metaPrefix .. "IDS-LIST"] = true
+      seenKeys["X-" .. meta.metaPrefix .. "IDS"] = true
 
       local checkIds = sourceIds
       if opts.sample and #sourceIds > opts.sample then
@@ -215,12 +216,16 @@ local function verifyFlavor(flavor, opts)
             reportMismatch(report, entityType.name, id, fieldIndex,
               meta.names[fieldIndex] .. " (named vs generic getter)", generic, named)
           end
-          -- Orphan detection needs presence, not encoded bytes. Reuse the normalized value
-          -- instead of running table serialization again inside this exhaustive sweep.
-          if encode.hasStoredValue(meta, fieldIndex, expected) then
+          -- Only table fields retain per-field keys. Scalars and the table presence mask live
+          -- in the entity's `-S` row.
+          if meta.types[fieldIndex] == "table" and
+             encode.hasStoredValue(meta, fieldIndex, expected) then
             seenKeys["X-" .. meta.metaPrefix .. id .. "-" .. fieldIndex] = true
           end
          end
+        end
+        if rowBuilder.build(meta, row) then
+          seenKeys["X-" .. meta.metaPrefix .. id .. "-S"] = true
         end
       end
 

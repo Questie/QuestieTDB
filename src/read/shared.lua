@@ -4,20 +4,20 @@
 -- Decoded field cache, Correction Overlay lookup, field defaults, the fresh-per-read
 -- value contract, and the Name index.
 --
--- The seam between Source mode and Baked mode is `readField` and `getAllIds`, plus one
--- optional fast path — `tableChunk`, which Baked mode provides because it already holds the
--- serialized literal for a table field. Source mode and Generation apply Static Corrections
--- through the same path, so "what I see in dev is what ships" follows from shared code
--- rather than from a test.
+-- The seam between Source mode and Baked mode is `readField` and `getAllIds`. Baked mode
+-- also provides `scalarRow` and `tableProducer`: one native decode fills every stored scalar
+-- slot, while a table Producer retains CBOR bytes and returns a fresh value per call. Source
+-- mode and Generation apply Static Corrections through the same path, so "what I see in dev
+-- is what ships" follows from shared code rather than from a test.
 --
 -- ## Value ownership (ADR 0003 Decision 10, revised)
 --
 -- Table reads return a **fresh, mutable, deeply independent copy on every read** — the
 -- caller owns it outright, exactly as Questie's compiler semantics always promised. The
--- mechanism is a cached producer: the compiled chunk (Baked) or a deep-copy closure
--- (Source and Correction Overlay values) is cached instead of a decoded table, and every
--- read executes it. Measured at 0.13–1.8 µs for typical shapes — the same class as a plain
--- cache hit. Scalars are immutable and stay cached as plain values.
+-- mechanism is a cached Producer: a Baked Producer decodes retained CBOR bytes, while Source
+-- and Correction Overlay Producers deep-copy retained values. Every read executes the cached
+-- Producer. Scalars are immutable. In Baked mode, the first field read installs the entity's
+-- decoded Scalar row as its cache row.
 
 local _, LibQuestieDB = ...
 
@@ -139,11 +139,28 @@ function shared.CreateEntity(meta, backend)
     backend = backend,
   }
 
-  -- Decoded field cache. Scalars are cached as plain values — strings and numbers are
-  -- immutable and carry no hazard. A table field caches a **producer function** instead of
-  -- the table (ADR 0003 D10): every hit executes it and hands the caller a fresh mutable
-  -- copy. A function is unambiguous in the cache because no stored value can be one.
+  -- Decoded field cache. Source mode creates an empty row and fills fields on demand. Baked
+  -- mode adopts the decoded scalar row itself, avoiding a copy and a second table per entity.
+  -- Its `p` presence mask stays under a string key and cannot collide with field indices.
+  -- Before installing that row, the cache applies scalar Corrections and active translations
+  -- once. Stored scalars are then ordinary cache hits; omitted defaults settle only when read
+  -- instead of pre-filling every missing slot. Table fields cache Producer functions so every
+  -- hit returns a fresh mutable copy.
   local cache = {}
+
+  local function cacheField(byId, fieldIndex, value)
+    byId[fieldIndex] = value
+  end
+
+  local function missingScalar(byId, fieldIndex)
+    local default = defaults[fieldIndex]
+    if default ~= nil then
+      byId[fieldIndex] = default
+      return default
+    end
+    byId[fieldIndex] = NIL
+    return nil
+  end
 
   -- Correction Overlay: the composed query-time layer of Dynamic Corrections. Reads resolve
   -- through it first and fall back to base data. Recomposed on apply rather than resolved at
@@ -205,17 +222,57 @@ function shared.CreateEntity(meta, backend)
     return function() return deepCopy(value) end
   end
 
-  -- The l10n overlay, when localization data is present. Set by src/l10n/overlay.lua after the
-  -- Entity globals exist. nil means "no localization data", and the check below costs nothing.
+  -- The l10n overlay is attached after the Entity globals exist. A nil provider means this
+  -- entity type has no localization data and avoids all per-read localization probes.
   local l10nProvider
+  local l10nScalarFields
+  local l10nIsActive
 
-  function entity.SetL10nProvider(provider)
+  ---Attach the localization provider and the scalar fields to resolve when a row is installed.
+  ---@param provider function?
+  ---@param scalarFields table<number, boolean>?
+  ---@param isActive function?
+  function entity.SetL10nProvider(provider, scalarFields, isActive)
     l10nProvider = provider
+    l10nScalarFields = scalarFields
+    l10nIsActive = isActive
     entity.InvalidateCache(nil)
   end
 
   function entity.HasL10nProvider()
     return l10nProvider ~= nil
+  end
+
+  ---Compose every scalar Correction and active translation before the row becomes authoritative.
+  ---Later scalar reads skip both layers and must see the values installed here.
+  ---@param id number Entity ID.
+  ---@param row table Decoded Scalar row owned by the cache.
+  local function resolveScalarRow(id, row)
+    local layer = overlay[id]
+    if layer then
+      for scalarIndex, overlayValue in pairs(layer) do
+        if type(scalarIndex) == "number" and types[scalarIndex] ~= "table" then
+          if overlayValue == LibQuestieDB.Corrections.NIL then
+            row[scalarIndex] = defaults[scalarIndex] or NIL
+          else
+            row[scalarIndex] = overlayValue
+          end
+        end
+      end
+    end
+
+    if l10nProvider and l10nScalarFields and l10nIsActive and l10nIsActive() then
+      for scalarIndex in pairs(l10nScalarFields) do
+        if not layer or layer[scalarIndex] == nil then
+          local translated = l10nProvider(id, scalarIndex)
+          if translated ~= nil then
+            row[scalarIndex] = translated
+          elseif row[scalarIndex] == nil then
+            row[scalarIndex] = NIL
+          end
+        end
+      end
+    end
   end
 
   local function get(id, fieldIndex)
@@ -225,9 +282,32 @@ function shared.CreateEntity(meta, backend)
       local cached = byId[fieldIndex]
       if cached ~= nil then
         if cached == NIL then return nil end
+        if types[fieldIndex] ~= "table" then return cached end
         -- A cached producer: execute it for a fresh mutable copy the caller owns.
-        if type(cached) == "function" then return cached() end
-        return cached
+        return cached()
+      elseif backend.hasScalarRows and types[fieldIndex] ~= "table" then
+        -- resolveScalarRow already applied every layer that can change a scalar. A missing
+        -- slot can settle its default without repeating the overlay and l10n probes.
+        return missingScalar(byId, fieldIndex)
+      end
+    elseif backend.hasScalarRows then
+      byId = backend.scalarRow(id)
+      if not byId then
+        -- A valid entity can have no stored values at all. Build the composed id map before
+        -- deciding whether to cache its empty row; truly unknown ids leave no cache entry.
+        if not unionMap then buildUnion() end
+        if unionMap[id] ~= true then return nil end
+        byId = {}
+      end
+      resolveScalarRow(id, byId)
+      cache[id] = byId
+      if types[fieldIndex] ~= "table" then
+        local cached = byId[fieldIndex]
+        if cached ~= nil then
+          if cached == NIL then return nil end
+          return cached
+        end
+        return missingScalar(byId, fieldIndex)
       end
     else
       byId = {}
@@ -259,23 +339,24 @@ function shared.CreateEntity(meta, backend)
       end
 
       if value == nil then
-        if types[fieldIndex] == "table" and backend.tableChunk then
-          -- Baked fast path: compile the stored literal into the producer directly — the
-          -- decoded table is never materialised on this side of the cache at all.
-          local producer = backend.tableChunk(id, fieldIndex)
+        if types[fieldIndex] == "table" and backend.tableProducer then
+          -- The Producer closes over CBOR bytes. Its Presence-mask check uses the Scalar row
+          -- already in hand, so an absent table needs no metadata call.
+          local producer = backend.tableProducer(id, fieldIndex, byId)
           if producer then
-            byId[fieldIndex] = producer
+            cacheField(byId, fieldIndex, producer)
             return producer()
           end
+        elseif backend.hasScalarRows then
+          -- The scalar row was decoded on this entity's first cache miss. Read the base value
+          -- directly, then let defaults and the layers above settle the cached result.
+          value = byId[fieldIndex]
         else
           value = backend.readField(id, fieldIndex)
         end
       end
     end
 
-    -- Numeric getters default to 0, never nil — but only for an entity that exists in the
-    -- composed view (ADR 0003 D6). An unknown id reads nil for every field, so a missing
-    -- entity can no longer masquerade as a valid all-zero row.
     if value == nil then
       -- Defaults apply only to an entity that exists in the composed view. An unknown id reads
       -- nil for every field, so a missing entity can never masquerade as a valid all-zero row
@@ -284,12 +365,12 @@ function shared.CreateEntity(meta, backend)
       if default ~= nil then
         if not unionMap then buildUnion() end
         if unionMap[id] == true then
-          byId[fieldIndex] = default
+          cacheField(byId, fieldIndex, default)
           if type(default) == "function" then return default() end
           return default
         end
       end
-      byId[fieldIndex] = NIL
+      cacheField(byId, fieldIndex, NIL)
       return nil
     end
 
@@ -298,10 +379,10 @@ function shared.CreateEntity(meta, backend)
       -- over the retained value. Only copies ever escape, so the original — which may be the
       -- overlay's composed row or Source mode's frozen base — stays unreachable.
       local producer = copyProducer(value)
-      byId[fieldIndex] = producer
+      cacheField(byId, fieldIndex, producer)
       return producer()
     end
-    byId[fieldIndex] = value
+    cacheField(byId, fieldIndex, value)
     return value
   end
 
@@ -328,7 +409,11 @@ function shared.CreateEntity(meta, backend)
     local n = #requestedKeys
     local values = { n = n }
     for i = 1, n do
-      values[i] = entity.Get(id, requestedKeys[i])
+      local key = requestedKeys[i]
+      local fieldIndex = keys[key] or (type(key) == "number" and key or nil)
+      if fieldIndex and fieldIndex >= 1 and fieldIndex <= fieldCount then
+        values[i] = get(id, fieldIndex)
+      end
     end
     return values
   end

@@ -1,6 +1,6 @@
 -- src/l10n/overlay.lua
 --
--- The optional localization layer wrapping selected Named getters for the active locale.
+-- The optional localization layer for selected composed entity fields in the active locale.
 --
 -- Locale-joined values live in the TOC metadata store alongside entity data. Because segments
 -- are only extracted on access, a German user never touches the other eight locales' strings
@@ -21,6 +21,15 @@ local overlay = {}
 
 local config = LibQuestieDB.config
 local codec = LibQuestieDB.Meta.codec
+
+---Decode the Lua table literals retained by the unchanged localization storage format.
+---@param value string
+---@return table? decoded
+local function decodeListLiteral(value)
+  local chunk = loadstring("return " .. value)
+  if not chunk then return nil end
+  return chunk()
+end
 
 --------------------------------------------------------------------------------------------
 -- Locale
@@ -62,10 +71,13 @@ local function readStored(key)
   return baked.getStored(key)
 end
 
---- Build a provider for one entity type: `(id, entityFieldIndex) -> translated | nil`.
----
---- Returns nil when there is no localization data for the type at all, so the shared getter
---- can skip the check entirely rather than paying for a lookup per read.
+---Build a provider for one entity type.
+---Returns nil when the type has no localization data. The scalar-field map lets Baked mode
+---resolve translatable scalars when it installs a CBOR row; list fields stay lazy.
+---@param meta table Entity metadata.
+---@return function? provider `(id, fieldIndex) -> translated | nil`.
+---@return table<number, boolean>? scalarFields Translatable scalar field indices.
+---@return function? isActive Whether a non-enUS locale is active.
 function overlay.CreateProvider(meta)
   local typeFields = overlay.fields[meta.entity]
   if not typeFields then return nil end
@@ -75,14 +87,16 @@ function overlay.CreateProvider(meta)
 
   -- entity field index -> { l10nFieldIndex, list }
   local byEntityField = {}
+  local scalarFields = {}
   for l10nIndex, fieldCfg in ipairs(typeFields) do
     local entityIndex = meta.keys[fieldCfg.name]
     if entityIndex then
       byEntityField[entityIndex] = { index = l10nIndex, list = fieldCfg.list }
+      if not fieldCfg.list then scalarFields[entityIndex] = true end
     end
   end
 
-  return function(id, entityFieldIndex)
+  local function provider(id, entityFieldIndex)
     local localeIndex = overlay.currentIndex
     if not localeIndex then return nil end
 
@@ -96,17 +110,17 @@ function overlay.CreateProvider(meta)
     if segment == nil then return nil end
 
     if mapping.list then
-      -- A list-typed field's segment is a Lua table literal, serialized by the generator with
-      -- the same serializer entity fields use, so the translated value keeps the field's TYPE
-      -- (a table, never a joined string). Element counts follow the upstream lookup's own
-      -- shape and may legitimately differ from base — zhCN/zhTW combine multiple objectives
-      -- into one string (1,486 Vanilla reads; equivalence counts them as "locale-shaped").
-      -- The shared getter wraps the decoded table in a fresh-per-read producer as usual.
-      return codec.decodeTable(segment)
+      -- A list-typed field's segment remains a Lua table literal in the localization store,
+      -- so the translated value stays a table rather than a joined string. Element counts
+      -- follow the upstream lookup and may differ from base where zhCN or zhTW combines
+      -- objectives. The shared getter wraps the decoded table in a fresh-per-read producer.
+      return decodeListLiteral(segment)
     end
 
     return segment
   end
+
+  return provider, scalarFields, function() return overlay.currentIndex ~= nil end
 end
 
 --------------------------------------------------------------------------------------------
@@ -119,7 +133,8 @@ function overlay.Initialize()
     local entity = LibQuestieDB[entityType.name]
     local meta = LibQuestieDB.Meta[entityType.name]
     if entity and meta and entity.SetL10nProvider then
-      entity.SetL10nProvider(overlay.CreateProvider(meta))
+      local provider, scalarFields, isActive = overlay.CreateProvider(meta)
+      entity.SetL10nProvider(provider, scalarFields, isActive)
     end
   end
   overlay.SetLocale(overlay.DetectLocale())

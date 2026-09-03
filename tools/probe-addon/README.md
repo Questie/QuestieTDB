@@ -36,3 +36,23 @@ return out'
 | `X-P-LeadWs` / `X-P-TrailWs` / `X-P-OnlyWs` / `X-P-Tab` | | Confirm trim behavior for space and tab, both edges, and whole-value whitespace |
 
 Record results in `docs/client-metadata-probes.md` with the client build.
+
+## CBOR transport battery (build 69547)
+
+Answers whether a base64 blob survives a TOC line and whether the offline
+`BlizzardCBOR.lua` encoder and the client's `C_EncodingUtil.DeserializeCBOR` agree on real
+data. Generated on demand, never committed: the output is 2.3 MB.
+
+Run from the QuestieTDB root:
+
+```sh
+lua5.1 tools/probe-addon/gen-cbor-probe.lua <outdir>  # quests.cbor + data.lua
+uv run python tools/probe-addon/gen-cbor-probe.py \
+  <outdir> tools/probe-addon/TDBProbe.toc.orig tools/probe-addon/TDBProbe.toc
+cp <outdir>/data.lua tools/probe-addon/
+```
+
+`gen-cbor-probe.py` appends the CBOR directives to a copy of the byte-exact TOC, so keep
+the original aside and restore it afterwards. The client-side check is in
+`docs/client-metadata-probes.md` §10. On build 69547 a `/reload` re-reads TOC metadata, so
+the restart note above no longer applies; it was true on 69109.

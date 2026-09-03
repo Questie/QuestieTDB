@@ -1,20 +1,27 @@
 #!/usr/bin/env lua
 -- test.lua
 --
--- Decoder, serializer and equivalence tests, plus the negative controls that prove
--- verification is able to fail.
+-- Storage codecs, read semantics, workflow contracts, and the negative controls that prove
+-- the verification gates can fail.
 --
 -- Deliberately dependency-free: plain Lua 5.1, no busted, no luarocks. The guard has to be
 -- present in CI rather than conditional on a toolchain being installed.
 --
 -- Usage:
---   lua test.lua            every suite
---   lua test.lua serialize  one suite by name
+--   lua test.lua                 every suite
+--   lua test.lua serialize cbor  one or more suites by name
 
 local lib = dofile("generator/lib.lua")
 local serialize = dofile("generator/serialize.lua")
 local codec = dofile("src/meta/codec.lua")
 local encode = dofile("generator/encode.lua")
+local rowBuilder = dofile("generator/rows.lua")
+local base64 = dofile("generator/base64.lua")
+local cbor = dofile("generator/cbor.lua")
+local vendoredCBOR = dofile("generator/vendor/BlizzardCBOR.lua")
+local cborCases = dofile("generator/vendor/BlizzardCBORCompatibilityCases.lua")
+local cborFixtures = dofile("generator/vendor/BlizzardCBORCompatibilityFixtures.lua")
+local LibDeflate = dofile("generator/vendor/LibDeflate.lua")
 local normalize = dofile("src/meta/normalize.lua")
 local compilerCoordinates = dofile("tools/differential/compiler_coordinates.lua")
 local dumpValue = dofile("tools/differential/dump_value.lua")
@@ -66,12 +73,151 @@ local function equal(actual, expected, message)
     ("%s\n    expected: %s\n    actual:   %s"):format(message, lib.show(expected), lib.show(actual)))
 end
 
+---@param value string Lua literal produced by generator/serialize.lua.
+---@return any decoded
+local function decodeLiteral(value)
+  local chunk = assert(loadstring("return " .. value))
+  return chunk()
+end
+
 local function roundTrip(value, message)
   local encoded = serialize.value(value)
-  local decoded = codec.decodeTable(encoded)
+  local decoded = decodeLiteral(encoded)
   equal(decoded, value, (message or "round trip") .. "  [" .. encoded .. "]")
   return encoded
 end
+
+---Replace one scalar in an unchunked CBOR row while keeping the corruption fixture decodable.
+---@param content string TOC contents.
+---@param entityName string Metadata key entity name.
+---@param id number Entity ID.
+---@param fieldIndex number Scalar field index.
+---@param value any Replacement value.
+---@return string content
+---@return integer replacements
+local function replaceScalarInRow(content, entityName, id, fieldIndex, value)
+  local pattern = "(## X%-" .. entityName .. "%-" .. id .. "%-S: )([^\n]+)"
+  return content:gsub(pattern, function(prefix, encodedRow)
+    if encodedRow:sub(1, 1) == "~" then
+      error("test fixture expected an unchunked scalar row", 0)
+    end
+    local row = cbor.decode(base64.decode(encodedRow))
+    row[fieldIndex] = value
+    return prefix .. encode.row(row)
+  end, 1)
+end
+
+--------------------------------------------------------------------------------------------
+-- Offline binary codecs
+--------------------------------------------------------------------------------------------
+
+suite("base64", function()
+  local cases = {
+    { "", "" },
+    { "f", "Zg==" },
+    { "fo", "Zm8=" },
+    { "foo", "Zm9v" },
+    { "\0\1\127\128\255", "AAF/gP8=" },
+  }
+  for _, case in ipairs(cases) do
+    equal(base64.encode(case[1]), case[2], "base64 encoding with every padding shape")
+    equal(base64.decode(case[2]), case[1], "base64 round trip with every padding shape")
+  end
+
+  for _, invalid in ipairs({ "A", "A===", "AA=A", "AA==AAAA", "AA?=" }) do
+    local ok = pcall(base64.decode, invalid)
+    check(not ok, "invalid base64 was accepted: " .. invalid)
+  end
+end)
+
+suite("cbor", function()
+  local function toHex(bytes)
+    return (bytes:gsub(".", function(character)
+      return string.format("%02x", string.byte(character))
+    end))
+  end
+
+  local compared = 0
+  for _, compatibilityCase in ipairs(cborCases.GetCases()) do
+    local fixture = cborFixtures.cases[compatibilityCase.id]
+    check(fixture ~= nil, "CBOR compatibility case has a captured fixture: " .. compatibilityCase.id)
+    if fixture then
+      local ok, output = cborCases.CallSerialize(vendoredCBOR.SerializeCBOR, compatibilityCase)
+      if fixture.blizzardError ~= nil then
+        check(not ok, "CBOR case should fail like the client: " .. compatibilityCase.id)
+        compared = compared + 1
+      elseif fixture.blizzardHex ~= nil and
+             (not compatibilityCase.mapOrderUnstable or fixture.compareLocally == true) then
+        check(ok, "CBOR case failed locally: " .. compatibilityCase.id .. ": " .. tostring(output))
+        if ok then equal(toHex(output), fixture.blizzardHex, "CBOR client fixture: " .. compatibilityCase.id) end
+        compared = compared + 1
+      end
+    end
+  end
+  check(compared > 0, "CBOR compatibility suite compared captured client fixtures")
+
+  local first = {}
+  first.z, first.a, first[7], first[2] = "last", "first", true, false
+  local second = {}
+  second[2], second[7], second.a, second.z = false, true, "first", "last"
+  equal(cbor.encode(first), cbor.encode(second), "CBOR map bytes ignore insertion order")
+  equal(cbor.decode(cbor.encode(first)), first, "deterministic CBOR round trip")
+
+  local nestedFirst = { outer = { z = 1, a = 2 }, rows = { { y = 3, b = 4 } } }
+  local nestedSecond = { rows = {}, outer = {} }
+  nestedSecond.rows[1] = { b = 4, y = 3 }
+  nestedSecond.outer.a, nestedSecond.outer.z = 2, 1
+  equal(cbor.encode(nestedFirst), cbor.encode(nestedSecond),
+    "nested maps and maps inside arrays ignore insertion order")
+
+  local sparse = { [1] = { 12676 }, [3] = { 16305 } }
+  equal(cbor.decode(cbor.encode(sparse)), sparse, "CBOR arrays preserve nil holes")
+  equal(encode.idList({ 2, 5, 7, 12 }), encode.idList({ 2, 5, 7, 12 }),
+    "compressed CBOR ID headers are deterministic")
+end)
+
+suite("deflate", function()
+  local input = string.rep("QuestieTDB zlib round trip \0", 100)
+  local compressed = LibDeflate:CompressZlib(input, { level = 9 })
+  check(type(compressed) == "string" and #compressed < #input, "LibDeflate produced compressed zlib bytes")
+  equal(LibDeflate:DecompressZlib(compressed), input, "LibDeflate zlib round trip")
+end)
+
+suite("encoding-util", function()
+  client.reset()
+  client.install({ expansion = "Classic" })
+  local encoding = C_EncodingUtil
+
+  local ids = { 2, 5, 7, 12, 13 }
+  local idHeader = encoding.EncodeBase64(encoding.CompressString(encoding.SerializeCBOR(ids), 1, 2))
+  equal(encoding.DeserializeCBOR(encoding.DecompressString(encoding.DecodeBase64(idHeader), 1)), ids,
+    "C_EncodingUtil stand-ins round-trip an id header")
+
+  local row = { [1] = "Sharptalon's Claw", [4] = 10, p = 2 ^ 7 }
+  equal(encoding.DeserializeCBOR(encoding.DecodeBase64(
+    encoding.EncodeBase64(encoding.SerializeCBOR(row)))), row,
+    "C_EncodingUtil stand-ins round-trip a scalar row")
+
+  local input = string.rep("compression methods \0", 20)
+  for method = 0, 2 do
+    local compressed = encoding.CompressString(input, method, 2)
+    equal(encoding.DecompressString(compressed, method), input,
+      "compression method " .. method .. " round trip")
+  end
+
+  for _, method in ipairs({ 1, 2 }) do
+    local compressed = encoding.CompressString(input, method, 2)
+    local last = compressed:byte(-1)
+    local corrupted = compressed:sub(1, -2) .. string.char((last + 1) % 256)
+    local ok = pcall(encoding.DecompressString, corrupted, method)
+    check(not ok, "compression method " .. method .. " rejects a corrupt checksum")
+  end
+
+  local encodedRow = encoding.SerializeCBOR(row)
+  local ok = pcall(encoding.DeserializeCBOR, encodedRow .. "\0")
+  check(not ok, "CBOR stand-in rejects trailing bytes")
+  client.reset()
+end)
 
 --------------------------------------------------------------------------------------------
 -- serialize
@@ -117,7 +263,7 @@ suite("serialize", function()
     "~E~",
     "~3~",
   }) do
-    local decoded = codec.decodeTable(serialize.quote(s))
+    local decoded = decodeLiteral(serialize.quote(s))
     equal(decoded, s, "string quote round trip: " .. s:gsub("%c", "?"))
   end
 
@@ -148,10 +294,6 @@ suite("codec", function()
   for _, s in ipairs({ "plain", "", "nil", "~E~", "~7~", "~Q~x", "line\nbreak", "Ünïcödé" }) do
     equal(codec.decodeString(encode.string(s)), s, "encode/decode string: " .. s:gsub("%c", "?"))
   end
-
-  equal(codec.decodeIdList("2,5,7"), { 2, 5, 7 }, "id list")
-  equal(codec.decodeIdMap("2,5,7"), { [2] = true, [5] = true, [7] = true }, "id map")
-  equal(codec.decodeIdList(nil), {}, "absent id list")
 
   local sep = config.localeSeparator
   local joined = table.concat({ "eins", "", "dos", "un" }, sep)
@@ -742,15 +884,13 @@ suite("semantics", function()
   equal(normalize.default(meta, 3), {}, "never-nil structure default is {}")
   equal(normalize.default(meta, 6), nil, "ordinary table default is nil")
 
-  -- Encoding must agree: whatever reads back as a default is not written at all.
-  equal(encode.field(meta, 1, nil), nil, "numeric nil writes no line")
-  equal(encode.field(meta, 1, 0), nil, "numeric zero writes no line")
-  equal(encode.field(meta, 1, 7), "7", "numeric value writes a line")
+  -- Per-field encoding owns only table values. Defaults still produce no metadata.
   equal(encode.field(meta, 3, {}), nil, "empty table writes no line")
   equal(encode.field(meta, 3, nil), nil, "never-nil structure still writes no line when absent")
   equal(encode.field(meta, 6, {}), nil, "ordinary empty table writes no line")
   equal(encode.field(meta, 4, { 0, 0 }), nil, "zero pair writes no line")
-  equal(encode.field(meta, 2, ""), codec.EMPTY_STRING, "empty string writes its marker")
+  local encodedTable = encode.field(meta, 6, { 3 })
+  equal(cbor.decode(base64.decode(encodedTable)), { 3 }, "stored table is base64 CBOR")
 
   -- Verification starts from an already-normalized value and uses this cheaper presence test
   -- instead of serializing the field again. Cover every omission class it depends on.
@@ -760,6 +900,128 @@ suite("semantics", function()
   check(encode.hasStoredValue(meta, 2, ""), "normalized empty string needs a stored value")
   check(not encode.hasStoredValue(meta, 3, {}), "normalized empty table needs no stored value")
   check(encode.hasStoredValue(meta, 3, { 1 }), "normalized populated table needs a stored value")
+end)
+
+suite("rows", function()
+  local meta = {
+    entity = "Fixture",
+    fieldCount = 6,
+    names = { "number", "text", "values", "constant", "emptyTable", "absentText" },
+    types = { "number", "string", "table", "string", "table", "string" },
+    structures = {},
+    normalize = {},
+    zeroPairIsNil = {},
+    keys = {},
+    constantValues = { [4] = "placeholder" },
+  }
+
+  equal(rowBuilder.build(meta, { [1] = 0, [3] = {}, [4] = "obsolete", [5] = {} }), nil,
+    "an entity with only defaults and a constant has no scalar row")
+
+  local row = rowBuilder.build(meta, {
+    [1] = 7,
+    [2] = "",
+    [3] = { 99 },
+    [4] = "obsolete",
+    [5] = {},
+  })
+  equal(row, { [1] = 7, [2] = "", p = 2 ^ 2 },
+    "the row stores scalars, preserves an empty string and marks a present table")
+  equal(row[6], nil, "an absent string has no row slot")
+  equal(row[4], nil, "a constant field has no row slot")
+
+  local zero = rowBuilder.build(meta, { [1] = 0 })
+  local absent = rowBuilder.build(meta, {})
+  equal(zero, absent, "numeric zero and an absent number both need no scalar storage")
+  equal(rowBuilder.build(meta, { [3] = { 99 } }), { p = 2 ^ 2 },
+    "an entity containing only a table stores a presence-only row")
+
+  local boundaryMeta = {
+    entity = "Boundary", fieldCount = 52, names = {}, types = {}, structures = {},
+    normalize = {}, zeroPairIsNil = {}, keys = {},
+  }
+  for fieldIndex = 1, 52 do
+    boundaryMeta.names[fieldIndex] = "field" .. fieldIndex
+    boundaryMeta.types[fieldIndex] = fieldIndex == 52 and "table" or "number"
+  end
+  equal(rowBuilder.build(boundaryMeta, { [52] = { 1 } }), { p = 2 ^ 51 },
+    "the highest supported presence bit remains exact")
+
+  local wideMeta = {
+    entity = "TooWide", fieldCount = 53, names = {}, types = {}, structures = {}, keys = {},
+  }
+  local ok, err = pcall(rowBuilder.build, wideMeta, {})
+  check(not ok and tostring(err):find("at most 52", 1, true) ~= nil,
+    "a schema wider than the exact presence mask is rejected")
+end)
+
+suite("cbor-cache", function()
+  local questMeta = dofile("src/meta/questMeta.lua")
+  local fixturePath = ".out/test-cbor-cache.toc"
+  local lines = {
+    "## Interface: 11509",
+    "## X-Flavor: Vanilla",
+    "## X-Contract-Version: " .. tostring(config.contractVersion),
+    "## X-Quest-IDS: " .. encode.idList({ 2 }),
+    "## X-Quest-2-2: " .. encode.field(questMeta, 2, { { 123 } }),
+    "## X-Quest-2-S: " .. encode.row({ [1] = "Fixture quest", [4] = 20, p = 2 }),
+    "## X-Npc-IDS: " .. encode.idList({}),
+    "## X-Item-IDS: " .. encode.idList({}),
+    "## X-Object-IDS: " .. encode.idList({}),
+    "",
+  }
+  for _, file in ipairs(config.bakedFileList(config.flavorByName.Vanilla)) do
+    lines[#lines + 1] = file
+  end
+  lib.mkdirp(".out")
+  lib.writeAll(fixturePath, table.concat(lines, "\n") .. "\n")
+
+  client.reset()
+  client.install({ expansion = "Classic" })
+  local handle = emulator.install(config.addonName, emulator.parse(fixturePath))
+  local metadataCalls = {}
+  local function countedMetadata(addonName, key)
+    metadataCalls[key] = (metadataCalls[key] or 0) + 1
+    return handle.get(addonName, key)
+  end
+  C_AddOns.GetAddOnMetadata = countedMetadata
+  GetAddOnMetadata = countedMetadata
+
+  local deserialize = C_EncodingUtil.DeserializeCBOR
+  local deserializeCalls = 0
+  C_EncodingUtil.DeserializeCBOR = function(bytes)
+    deserializeCalls = deserializeCalls + 1
+    return deserialize(bytes)
+  end
+
+  local Lib = emulator.loadAddon(fixturePath, config.addonName)
+  metadataCalls = {}
+  deserializeCalls = 0
+  Lib.InvalidateCache()
+
+  equal(Lib.Quest.name(2), "Fixture quest", "first scalar read returns the decoded row value")
+  equal(metadataCalls["X-Quest-2-S"], 1, "first scalar read fetches one row")
+  equal(deserializeCalls, 1, "first scalar read decodes one row")
+
+  equal(Lib.Quest.requiredLevel(2), 20, "second scalar comes from the installed row")
+  equal(metadataCalls["X-Quest-2-S"], 1, "second scalar performs no metadata lookup")
+  equal(deserializeCalls, 1, "second scalar performs no decode")
+
+  equal(Lib.Quest.triggerEnd(2), nil, "clear presence bit returns the table default")
+  equal(metadataCalls["X-Quest-2-9"], nil,
+    "clear presence bit performs no table metadata lookup")
+
+  local first = Lib.Quest.startedBy(2)
+  local second = Lib.Quest.startedBy(2)
+  equal(first, { { 123 } }, "present table decodes through its producer")
+  check(first ~= second and lib.deepEqual(first, second),
+    "cached table producer returns a fresh equal value")
+  equal(metadataCalls["X-Quest-2-2"], 1, "warm table read reuses the stored CBOR bytes")
+  equal(deserializeCalls, 3, "each present table read performs one fresh CBOR decode")
+
+  C_EncodingUtil.DeserializeCBOR = deserialize
+  os.remove(fixturePath)
+  client.reset()
 end)
 
 --------------------------------------------------------------------------------------------
@@ -853,7 +1115,7 @@ suite("constant-fields", function()
   equal(source.GetProvenance("Npc", 30, "minLevelHealth"), source.Corrections.OWNER,
     "source: ignored constant writes do not claim provenance")
 
-  -- A tiny Baked artifact proves conflicting legacy metadata is unreadable and the
+  -- A tiny Baked artifact proves conflicting scalar-row slots are unreadable and the
   -- constants reconstruct without generating or checking in a flavor-sized TOC.
   local fixturePath = ".out/test-constant-fields.toc"
   lib.mkdirp(".out")
@@ -863,9 +1125,11 @@ suite("constant-fields", function()
     "## Interface: 11508",
     "## X-Flavor: Vanilla",
     "## X-Contract-Version: " .. tostring(config.contractVersion),
-    "## X-Npc-IDS-LIST: 30",
-    "## X-Npc-30-2: 9000",
-    "## X-Npc-30-3: 9001",
+    "## X-Quest-IDS: " .. encode.idList({}),
+    "## X-Npc-IDS: " .. encode.idList({ 30 }),
+    "## X-Npc-30-S: " .. encode.row({ [minHealth] = 9000, [maxHealth] = 9001 }),
+    "## X-Item-IDS: " .. encode.idList({}),
+    "## X-Object-IDS: " .. encode.idList({}),
     "",
   }
   for _, file in ipairs(config.bakedFileList(config.flavorByName.Vanilla)) do
@@ -947,20 +1211,22 @@ suite("negative-controls", function()
     check(failed, "verify.lua accepted a corrupted TOC: " .. label)
   end
 
-  -- 1. A changed value must be caught.
-  local changed = original:gsub("## X%-Quest%-2%-1: [^\n]*", "## X-Quest-2-1: Definitely Not Sharptalon", 1)
-  check(changed ~= original, "corruption fixture did not apply (changed value)")
+  -- 1. A changed scalar inside valid CBOR must be caught.
+  local changed, changedCount =
+    replaceScalarInRow(original, "Quest", 2, 1, "Definitely Not Sharptalon")
+  check(changedCount == 1, "corruption fixture did not apply (changed value)")
   runVerify(changed, "changed quest name")
 
-  -- 2. A deleted line must be caught.
-  local deleted = original:gsub("## X%-Quest%-2%-1: [^\n]*\n", "", 1)
-  check(deleted ~= original, "corruption fixture did not apply (deleted line)")
-  runVerify(deleted, "deleted quest name")
+  -- 2. A deleted scalar row must be caught.
+  local deleted, deletedCount = original:gsub("## X%-Quest%-2%-S: [^\n]*\n", "", 1)
+  check(deletedCount == 1, "corruption fixture did not apply (deleted row)")
+  runVerify(deleted, "deleted quest scalar row")
 
-  -- 3. A truncated ID list must be caught.
-  local truncated = original:gsub("(## X%-Quest%-IDS%-LIST%-1: %d+),%d+", "%1", 1)
-  check(truncated ~= original, "corruption fixture did not apply (truncated id list)")
-  runVerify(truncated, "truncated id list")
+  -- 3. A truncated compressed ID header must be rejected.
+  local truncated, truncatedCount =
+    original:gsub("(## X%-Quest%-IDS%-1: [^\n]*)[^\n]\n", "%1\n", 1)
+  check(truncatedCount == 1, "corruption fixture did not apply (truncated id header)")
+  runVerify(truncated, "truncated id header")
 
   -- 4. A missing chunk part must raise rather than return a short string. Pick the first
   -- eligible key deterministically so this control fails the same field on every run.
@@ -2406,15 +2672,16 @@ suite("equivalence-control", function()
     check(failed, "equivalence accepted a divergence: " .. label)
   end
 
-  -- A changed baked value must diverge from source.
-  local changed = original:gsub("## X%-Npc%-30%-1: [^\n]*", "## X-Npc-30-1: Not A Forest Spider", 1)
-  check(changed ~= original, "corruption fixture did not apply (changed npc name)")
+  -- A changed baked scalar must diverge from source.
+  local changed, changedCount = replaceScalarInRow(original, "Npc", 30, 1, "Not A Forest Spider")
+  check(changedCount == 1, "corruption fixture did not apply (changed npc name)")
   runEquivalence(changed, "changed npc name")
 
-  -- The predicted failure mode: a table field that reads nil on one side and {} on the other.
-  local emptied = original:gsub("## X%-Quest%-2%-2: [^\n]*", "## X-Quest-2-2: {}", 1)
-  check(emptied ~= original, "corruption fixture did not apply (empty table)")
-  runEquivalence(emptied, "nil versus empty table")
+  -- A present table whose CBOR is replaced by an empty table must diverge from source.
+  local emptied, emptiedCount = original:gsub("(## X%-Quest%-2%-2: )[^\n]*",
+    "%1" .. base64.encode(cbor.encode({})), 1)
+  check(emptiedCount == 1, "corruption fixture did not apply (empty table)")
+  runEquivalence(emptied, "populated versus empty table")
 
   -- And the healthy case still passes, so the control is not just always-fails.
   local runEquivalenceOk = os.execute(shellQuote(LUA_BIN) ..
@@ -3321,13 +3588,12 @@ suite("raw-coordinates", function()
     "coordinate normalization does not mutate source data")
 
   local encoded = encode.field(meta, 1, { [1440] = { { 36.43, 55.89 } } })
-  equal(encoded, "{[1440]={{36.43,55.89}}}", "Generation stores short authored coordinates")
-  equal(codec.decodeTable(encoded), { [1440] = { { 36.43, 55.89 } } },
+  equal(cbor.decode(base64.decode(encoded)), { [1440] = { { 36.43, 55.89 } } },
     "Baked decoding returns the same raw coordinates")
 
   local computed = 1 / 3
   local computedEncoded = encode.field(meta, 1, { [1440] = { { computed, computed * 2 } } })
-  equal(codec.decodeTable(computedEncoded), { [1440] = { { computed, computed * 2 } } },
+  equal(cbor.decode(base64.decode(computedEncoded)), { [1440] = { { computed, computed * 2 } } },
     "computed coordinates retain every significant digit needed to round-trip")
 end)
 
@@ -3669,9 +3935,11 @@ suite("perf-guard", function()
 
   -- A cached table read allocates exactly what the producer itself allocates — the fresh
   -- copy — and nothing on top. Tolerance: 16 bytes per read, smaller than any real string.
-  local stored = map["X-Quest-2-" .. tostring(Lib.Meta.QuestMeta.questKeys.startedBy)]
-  check(stored ~= nil, "quest 2 startedBy stored literal found for calibration")
-  local producer = codec.compileTable(stored)
+  local tableKey = "X-Quest-2-" .. tostring(Lib.Meta.QuestMeta.questKeys.startedBy)
+  local stored = emulator.getValue(map, tableKey)
+  check(stored ~= nil, "quest 2 startedBy stored CBOR found for calibration")
+  local bytes = base64.decode(stored)
+  local producer = function() return cbor.decode(bytes) end
   local baseline = allocatedBytes(function() return producer() end)
   local viaGet = allocatedBytes(function() return Lib.Quest.Get(2, "startedBy") end)
   check(viaGet - baseline <= N * 16,
@@ -3682,7 +3950,7 @@ suite("perf-guard", function()
 end)
 
 --------------------------------------------------------------------------------------------
--- Reconstruction negative control: the byte gate must detect a single corrupted byte
+-- Reconstruction negative control: the byte gate must detect one corrupted Scalar row
 --------------------------------------------------------------------------------------------
 
 suite("reconstruct-control", function()
@@ -3699,8 +3967,9 @@ suite("reconstruct-control", function()
 
   lib.mkdirp(".out/corrupt")
   local original = lib.readAll(sourceToc)
-  local corrupted = original:gsub("## X%-Npc%-30%-1: [^\n]*", "## X-Npc-30-1: Not A Forest Spider", 1)
-  check(corrupted ~= original, "corruption fixture did not apply")
+  local corrupted, corruptedCount =
+    replaceScalarInRow(original, "Npc", 30, 1, "Not A Forest Spider")
+  check(corruptedCount == 1, "corruption fixture did not apply")
   lib.writeAll(".out/corrupt/" .. sourceToc, corrupted)
 
   local countFile = ".out/reconstruct-count.txt"
@@ -3721,11 +3990,15 @@ end)
 -- Driver
 --------------------------------------------------------------------------------------------
 
-local requested = arg and arg[1]
+local requested
+if arg and #arg > 0 then
+  requested = {}
+  for _, name in ipairs(arg) do requested[name] = true end
+end
 local totalFailed, totalChecks = 0, 0
 
 for _, name in ipairs(order) do
-  if not requested or requested == name then
+  if not requested or requested[name] then
     current = { name = name, total = 0, failed = 0 }
     local ok, err = pcall(suites[name])
     if not ok then

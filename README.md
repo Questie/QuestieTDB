@@ -17,7 +17,7 @@ existing.**
 | | Source mode | Baked mode |
 | --- | --- | --- |
 | TOC | `QuestieTDB.toc` (committed) | `QuestieTDB_Vanilla.toc` etc. (generated, gitignored) |
-| Reads resolve from | raw entity data | the TOC metadata store |
+| Reads resolve from | raw entity data | CBOR rows and tables in the TOC metadata store |
 | Static Corrections | applied live | already folded in |
 | Requires | nothing but a clone | one bootstrap command, or Generation against pinned Questie |
 
@@ -182,7 +182,7 @@ QuestieTDB_<Flavor>.toc   generated, baked mode (gitignored)
 
 src/
   config.lua              flavors, entity types, file lists, l10n contract
-  meta/                   schema, nil/empty semantics, the on-disk codec
+  meta/                   schema, nil/empty semantics, chunk and l10n literal markers
   types/                  distributable LuaLS declarations, never loaded by a TOC
   read/                   shared getters + the two backends that differ
   corrections/            registry, compat shim, ported correction sets
@@ -199,14 +199,15 @@ verify.lua                round-trip verification
 equivalence.lua           source/baked equivalence, every read form, self-proving
 reconstruct.lua           byte-exact artifact reconstruction against the generator
 test.lua                  unit tests and negative controls
-generator/                offline internals
-emulator/                 metadata emulator, client stubs, freeze substitute
+generator/                offline internals, deterministic CBOR and vendored codecs
+emulator/                 metadata and C_EncodingUtil stand-ins, client stubs, freeze substitute
 validators/               data-invariant checks
 tools/                    port, package, bootstrap, differential golden gate
 docs/                     api.md, storage-format.md, adr/
 ```
 
-`src/read/` is the only place the two modes diverge — two functions wide.
+`src/read/` is the only place the two modes diverge. Both backends expose field reads and ID
+lists; Baked mode also exposes scalar rows and table producers for its cache fast paths.
 
 ---
 

@@ -16,8 +16,18 @@ Addon `.toc` metadata used as string-backed storage for lazy entity field access
 _Avoid_: TOC DB, metadata DB, file I/O replacement
 
 **Metadata field**:
-One stored value addressed by entity ID and positional field index inside the TOC metadata store.
-_Avoid_: Metadata row, TOC row
+One value addressed by a key inside the TOC metadata store. Entity storage uses ID headers,
+Scalar rows, and individual table fields.
+_Avoid_: TOC row, file record
+
+**Scalar row**:
+The stored scalar values for one entity, together with its Presence mask. Baked mode decodes it
+on the entity's first field read.
+_Avoid_: Metadata row, object, scalar column
+
+**Presence mask**:
+The bitmask in a Scalar row that records which table fields have stored values.
+_Avoid_: Table index, field map
 
 **Chunked metadata value**:
 A long Metadata field split into numbered parts and reassembled before decoding. Parts
@@ -98,14 +108,14 @@ A function on an Entity global returning one field by positional field index.
 _Avoid_: Index getter, raw getter
 
 **Decoded field cache**:
-The runtime cache behind the getters: scalar values are cached directly; table fields
-cache a Producer.
+The runtime cache behind the getters. Baked mode caches a decoded Scalar row per touched
+entity; table fields cache a Producer.
 _Avoid_: Getter cache, Lua cache
 
 **Producer**:
-The cached mechanism a table read executes to return a value — a compiled chunk of the
-stored literal in Baked mode, a deep-copy closure for Source, overlay, and translated
-values. Executing it costs 0.13–1.8 µs for typical shapes (measured).
+The cached mechanism a table read executes to return a fresh Caller-owned value. Baked
+producers retain CBOR bytes; Source, Correction Overlay, and translated values retain a value
+to copy.
 _Avoid_: Factory, thunk, generator (collides with the offline Generation vocabulary)
 
 **Caller-owned value**:

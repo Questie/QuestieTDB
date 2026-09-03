@@ -71,6 +71,8 @@
 
 ---@alias QuestieTDBLocalizedValue string|string[]
 ---@alias QuestieTDBL10nProvider fun(id: number, entityFieldIndex: integer): QuestieTDBLocalizedValue?
+---@alias QuestieTDBL10nScalarFields table<integer, true>
+---@alias QuestieTDBL10nIsActive fun(): boolean
 ---@alias QuestieTDBLocaleChangedCallback fun(locale: string)
 ---@alias QuestieTDBL10nFieldName "name"|"objectivesText"|"subName"
 
@@ -87,7 +89,7 @@
 ---@field currentIndex? integer Stored segment index for the active locale; nil for enUS or an unstored locale.
 ---@field onLocaleChanged QuestieTDBLocaleChangedCallback[] Callbacks invoked after cache invalidation with the selected locale.
 ---@field fields table<QuestieTDBCanonicalDatatype, QuestieTDBL10nField[]> Localized field coverage by entity type.
----@field CreateProvider fun(meta: QuestieTDBEntitySchema): QuestieTDBL10nProvider? Build a translation provider from a generated schema, or nil when that entity type has no localization data.
+---@field CreateProvider fun(meta: QuestieTDBEntitySchema): QuestieTDBL10nProvider?, QuestieTDBL10nScalarFields?, QuestieTDBL10nIsActive? Build a provider plus Baked scalar-row cache hints, or nil when the entity type has no localization data.
 ---@field Initialize fun() Attach available providers and select the client locale.
 ---@field DetectLocale fun(): string Return the client locale, or enUS outside the client.
 ---@field SetLocale fun(locale?: string): string Select a locale, defaulting nil to enUS, and invalidate entity caches.

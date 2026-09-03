@@ -27,6 +27,7 @@
 local config = dofile("src/config.lua")
 local lib = dofile("generator/lib.lua")
 local encode = dofile("generator/encode.lua")
+local rows = dofile("generator/rows.lua")
 local flavorLoader = dofile("generator/flavor.lua")
 local l10nGen = dofile("generator/l10n.lua")
 
@@ -105,16 +106,22 @@ local function expectedLines(flavor)
       local ids = lib.sortedIds(entities)
       local prefix = "X-" .. meta.metaPrefix
       for _, id in ipairs(ids) do
-        local row = entities[id]
+        local sourceRow = entities[id]
         local key = prefix .. id .. "-"
         for fieldIndex = 1, meta.fieldCount do
-          local encoded = encode.field(meta, fieldIndex, row[fieldIndex])
-          if encoded ~= nil then
-            lib.writeMetadata(sink, key .. fieldIndex, encoded, config.maxValueLength)
+          if meta.types[fieldIndex] == "table" then
+            local encoded = encode.field(meta, fieldIndex, sourceRow[fieldIndex])
+            if encoded ~= nil then
+              lib.writeMetadata(sink, key .. fieldIndex, encoded, config.maxValueLength)
+            end
           end
         end
+        local scalarRow = rows.build(meta, sourceRow)
+        if scalarRow then
+          lib.writeMetadata(sink, key .. "S", encode.row(scalarRow), config.maxValueLength)
+        end
       end
-      lib.writeMetadata(sink, prefix .. "IDS-LIST", encode.idList(ids), config.maxValueLength)
+      lib.writeMetadata(sink, prefix .. "IDS", encode.idList(ids), config.maxValueLength)
     end
   end
 
