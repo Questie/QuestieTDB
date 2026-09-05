@@ -34,6 +34,27 @@ compat.objectiveFirst = {
   spellObjectiveFirst = {},
 }
 
+-- Inapplicable files still define providers, but their hint writes must not enter the
+-- published tables. Keep both collections stable for modules that capture local references.
+local discardedObjectiveFirst = {}
+for field in pairs(compat.objectiveFirst) do discardedObjectiveFirst[field] = {} end
+
+---@param hints table<string, table<number, boolean>>
+---@return nil
+local function clearHints(hints)
+  for _, ids in pairs(hints) do
+    for id in pairs(ids) do ids[id] = nil end
+  end
+end
+
+---Select the hint destination before the next correction file imports its modules.
+---This does not suppress provider definitions or alter any entity-data stand-in.
+---@param enabled boolean
+---@return nil
+function compat.SelectObjectiveFirstScope(enabled)
+  compat.modules.QuestieCorrections = enabled and compat.objectiveFirst or discardedObjectiveFirst
+end
+
 --- Direct writes such as `QuestieDB.questData[5640] = {}` — how `LoadMissingQuests` and the
 --- `InsertMissing*Ids` helpers make the database emit a row at all. Captured per datatype so
 --- the apply path can fold them in alongside the function's return value.
@@ -172,6 +193,9 @@ function compat.Install(flavor)
   local modules = buildModules(expansionName)
   modules.Expansions.Current = order
 
+  -- A reinstall starts a new load without replacing the published table identities.
+  clearHints(compat.objectiveFirst)
+  clearHints(discardedObjectiveFirst)
   saved = { QuestieLoader = rawget(_G, "QuestieLoader") }
   compat.modules = modules
 
@@ -195,6 +219,8 @@ function compat.Remove()
   if not saved then return end
   _G.QuestieLoader = saved.QuestieLoader
   saved = nil
+  clearHints(discardedObjectiveFirst)
+  compat.modules.QuestieCorrections = compat.objectiveFirst
 end
 
 --- Invokes a copied correction provider with its private `Questie` constants available.

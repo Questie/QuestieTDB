@@ -151,9 +151,12 @@ function config.correctionFiles(flavor, mode)
   if not manifest then return {} end
 
   local expansionOrder = { Classic = 1, TBC = 2, Wotlk = 3, Cata = 4, MoP = 5 }
+  -- Scope markers use the existing season predicates. Loading register.lua here only
+  -- defines them; FromManifest still runs after every provider file, in _end.lua.
   local files = { "src/corrections/enum/constants.lua", "src/corrections/compat.lua",
-                  "src/corrections/_begin.lua" }
-  local body = {}
+                  "src/corrections/register.lua", "src/corrections/_begin.lua" }
+  local body, scopes = {}, {}
+  local previousScope
 
   for _, spec in ipairs(manifest) do
     local include = true
@@ -164,13 +167,23 @@ function config.correctionFiles(flavor, mode)
       end
     end
     if mode == "baked" and not (spec.dynamic and #spec.dynamic > 0) then include = false end
-    if include then body[#body + 1] = "src/corrections/" .. spec.file end
+    if include then
+      -- Module-load hints need admission before a file imports QuestieCorrections.
+      -- Keep the providers loaded: registration independently gates their invocation.
+      local scope = assert(spec.file:match("^([^/]+)/"))
+      if scope ~= previousScope then
+        -- TOC composition deduplicates paths, so a scope cannot be reopened later.
+        assert(not scopes[scope], "correction manifest must keep scope contiguous: " .. scope)
+        scopes[scope], previousScope = true, scope
+        body[#body + 1] = "src/corrections/scopes/" .. scope .. ".lua"
+      end
+      body[#body + 1] = "src/corrections/" .. spec.file
+    end
   end
 
   if #body == 0 then return {} end
   for _, file in ipairs(body) do files[#files + 1] = file end
   files[#files + 1] = "src/corrections/manifest.lua"
-  files[#files + 1] = "src/corrections/register.lua"
   files[#files + 1] = "src/corrections/_end.lua"
   return files
 end

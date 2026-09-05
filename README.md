@@ -160,7 +160,15 @@ lua5.1 generate.lua meta --questie=../Questie # schema -> src/meta/*Meta.lua
 lua5.1 tools/port-corrections.lua ../Questie  # corrections + constants
 lua5.1 generate.lua toc                      # refresh the committed Source-mode file list
 lua5.1 test.lua support support-fidelity     # check all copied support data and flavor selection
+lua5.1 test.lua objective-first              # check pinned hint contents and scope boundaries
+lua5.1 test.lua objective-first-addon        # check generated and static-stripped addons
 ```
+
+`objective-first` runs without generated entity artifacts. It compares all five published hint
+tables with the pinned correction sources across base flavors, SoD, Titan Reforged, and negative
+season cases. `objective-first-addon` requires all five generated artifacts and compares Source,
+Baked, and a staged package after Static Correction stripping. Issue #19 can invoke these two
+suites as its ObjectiveFirst release check rather than duplicate their persona matrix.
 
 The 24 support inputs, their pinned Questie paths, published fields, and Lua-source-string
 fields are listed in [`tools/support-inventory.lua`](tools/support-inventory.lua). See

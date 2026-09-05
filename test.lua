@@ -3495,6 +3495,18 @@ suite("l10n", function()
 end)
 
 --------------------------------------------------------------------------------------------
+-- Objective ordering hints
+--------------------------------------------------------------------------------------------
+
+suite("objective-first", function()
+  dofile("tools/objective-first.test.lua")(check, QUESTIE_PATH)
+end)
+
+suite("objective-first-addon", function()
+  dofile("tools/objective-first-addon.test.lua")(check, QUESTIE_PATH)
+end)
+
+--------------------------------------------------------------------------------------------
 -- Support data
 --------------------------------------------------------------------------------------------
 

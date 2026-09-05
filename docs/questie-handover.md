@@ -8,9 +8,11 @@ reference-implementation differential feeds, and the checklist to execute when Q
 switches over. If a divergence is not in here, either the differential has not been re-run or
 we found something new — both are reasons to update this file, never to ignore the row.
 
-Decisions live in [`adr/0004-derived-passes.md`](./adr/0004-derived-passes.md) (mechanism) and
-[`../../Questie/docs/adr/0002-what-survives-the-compiler.md`](../../Questie/docs/adr/0002-what-survives-the-compiler.md)
-(the Questie-side obligations). This file is status, not rationale.
+Provider decisions live in [`adr/0004-derived-passes.md`](./adr/0004-derived-passes.md) and
+[`adr/0007-dynamic-correction-ownership.md`](./adr/0007-dynamic-correction-ownership.md).
+Consumer status in this ledger was checked against Questie's `QuestieTDB-implementation` branch at
+`f51b3edb89f8eb838295072425ba65826484511b`; it does not describe released Questie behavior. This
+file is status, not rationale.
 
 ## Regenerating the evidence
 
@@ -198,47 +200,87 @@ registrar.Set("Npc", "DarkmoonFaire", nil)   -- withdraws when no faire is activ
 
 See "Data-shaped corrections: `Set`" in docs/api.md.
 
+### External translation addons
+
+On the assessed Questie migration branch, `QuestieDBLocale.BuildExternalLocaleCorrections` converts
+legacy `QUESTIE_LOCALES_OVERRIDE` entity lookups (`itemLookup`, `questLookup`, `npcNameLookup`, and
+`objectLookup`) into four function-shaped Dynamic Corrections under owner `Questie`. It filters to
+IDs the composed database already has, withdraws the old locale before filtering a replacement, and
+applies the initial values before `QuestieDB.Initialize`. This is a compatibility path, not the
+target direct-publisher design.
+
+The adapter expects a quest lookup row shaped as `{name, {objectives}}`: slot `[1]` becomes `name`
+and slot `[2]` becomes `objectivesText`. It does not support the older
+`{name, {description}, {objectives}}` shape and does not discard empty strings or tables. As of
+[Jakanis/QuestieUkrainianTranslation commit `0d6e1d3`](https://github.com/Jakanis/QuestieUkrainianTranslation/commit/0d6e1d3474972c54d205e1368689bf31011f2f4b),
+that addon still emits the older three-slot quest rows. The adapter and addon must agree on a shape
+before the migration branch can claim compatibility.
+
+A translation addon can instead publish Correction rows under its own owner. That gives provenance
+to the real source and removes Questie from the entity data path:
+
+```lua
+local registrar = LibQuestieDB.GetRegistrar("QuestieUkrainianTranslation")
+registrar.Set("Item", "names", itemRows)      -- entityId -> numeric field index -> value
+registrar.Set("Quest", "text", questRows)
+registrar.Set("Npc", "names", npcRows)
+registrar.Set("Object", "names", objectRows)
+```
+
+Requirements for that direct-publisher migration:
+
+1. Build Correction rows with the numeric field indexes from `LibQuestieDB.Meta`, not compact lookup
+   tuples.
+2. Publish only when the addon's locale is Questie's effective locale. Withdraw every owned slot
+   with `nil` before building a replacement locale, so an entity added only by the old layer cannot
+   pass the next `Exists` filter.
+3. Filter unknown IDs with `Exists` unless creating an entity is intended; a Correction can add one.
+4. Skip empty strings and `{}` unless a blank name or cleared field is intentional.
+5. Publish before Questie's Login Initialization reads the composed database, so tooltips and caches
+   never see English first.
+6. Keep `QUESTIE_LOCALES_OVERRIDE.locale`, `.localeName`, and `.translations` while Questie still
+   consumes the addon's UI strings.
+
+Once known translation addons publish directly, Questie can stop adapting their entity lookup
+fields.
+
 ## Questie-side checklist
 
-Execute when Questie switches to QuestieTDB. Each item is a thing that would otherwise be
-lost by deleting the compiler and its neighbours.
+Status below reflects the assessed `QuestieTDB-implementation` branch, not released Questie.
+Each item is behavior that would otherwise be lost by deleting the compiler and its neighbours.
 
-- [ ] **Register the gathering-node Dynamic Correction.** 24 object ids, `spawns` cleared with
-      the `{}` idiom, owner `Questie`. Without this, 17,191 gathering-node spawn points start
-      rendering. Shape and measured behaviour in ADR 0004 §5a.
-- [ ] **Delete `l10n:Initialize`'s writes into `questData`/`npcData`/`itemData`/`objectData`**
-      — the six localized fields only. UI translations, zone and category lookups stay.
-- [ ] **Delete `l10n:PostBoot`'s object-name scan and `l10n.objectNameLookup`.** Quest lines on
-      a hovered object come from a set `QuestieTooltips` fills at its own `o_` tooltip
-      registrations; the optional Object ID line reads `LibQuestieDB.Object.IdsByName` behind
-      `enableTooltipsObjectID`, warmed at init and on toggle. Step by step in
-      `QUESTIE-OBJECT-NAME-INDEX.md` at the repo root; the decision is ADR 0008.
-- [ ] **Bind `LibQuestieDB.ObjectiveFirst` before deleting the old correction files.** These
-      five objective-order tables are consumer hints rather than entity fields, so the compiler
-      differential cannot detect losing them. Source/Baked flavor parity is tracked by
-      [#17](https://github.com/Questie/QuestieTDB/issues/17).
-- [ ] **Translate `extraObjectives` descriptions while building Questie's runtime objectives.**
-      QuestieTDB stores row slot `[3]` as the enUS localization key and does not translate
-      structured correction rows.
-- [ ] **Retain Questie's Darkmoon correction tables.** Questie selects and applies them through
-      `LibQuestieDB.GetRegistrar("Questie")` as a generic owner-scoped Dynamic Correction;
-      QuestieTDB owns no Darkmoon-specific runtime API or state.
-- [ ] **Preserve the TBC content-phase prerequisite Correction** for quests 10944 and 11007 as
-      Questie-owned policy. It intentionally does not belong to QuestieTDB's automatic layer.
-- [ ] **Decide whether to retain asynchronous missing-Item repair.** Its runtime state and
-      lifecycle are Questie-owned; if retained, expose the result through owner `Questie` rather
-      than adding repair scheduling or cache knowledge to QuestieTDB.
+- [x] **Register the gathering-node Dynamic Correction.** The migration branch registers
+      `GatheringNodeDisplayPolicy` under owner `Questie`, preserving the 24-object suppression
+      policy without changing QuestieTDB's provider data.
+- [x] **Remove entity writes from `l10n`.** Questie retains UI translations, zone names,
+      categories, and locale selection. `QuestieDBLocale` owns entity-locale orchestration.
+- [x] **Replace the object-name scan with the provider Name index.** Object ID lookup uses
+      `LibQuestieDB.Object.IdsByName`; tooltip registrations retain their consumer-owned set.
+- [x] **Bind `LibQuestieDB.ObjectiveFirst`.** Questie binds all five tables before rich Quest
+      projections run. QuestieTDB scopes their contents by flavor and season as recorded in
+      [ADR 0012](./adr/0012-objective-first-applicability.md).
+- [x] **Translate `extraObjectives` descriptions while building Questie's runtime objectives.**
+      QuestieTDB stores row slot `[3]` as the enUS localization key; Questie translates it in the
+      consumer projection.
+- [x] **Retain Questie's Darkmoon correction tables.** The migration branch selects and applies
+      them through owner `Questie`; QuestieTDB owns no Darkmoon-specific runtime API or state.
+- [x] **Preserve the TBC content-phase prerequisite Correction** for quests 10944 and 11007 as
+      Questie-owned policy.
+- [x] **Retain asynchronous missing-Item repair.** The migration branch publishes its results as
+      `RuntimeItemRepair` under owner `Questie`; scheduling and cache knowledge stay consumer-owned.
+- [ ] **Consume support data through `LibQuestieDB.Support`.** Provider synchronization and drift
+      validation are complete in QuestieTDB, but the migration branch still loads Questie's Zone,
+      XP, Drop, and faction-template data files.
 - [x] **QuestieTDB's waypoint pass is verified at zero divergences** on all five flavours, so
       `QuestieCorrections:PreCompile()` and `OptimizeWaypoints` can be deleted from Questie at
       switch-over. `Modules/Libs/RamerDouglasPeucker.lua` is byte-copied into QuestieTDB
       (`src/derived/RamerDouglasPeucker.lua`) and re-diffed by `tools/port-corrections.lua`, so
       it goes too — but note QuestieTDB *transcribes* `OptimizeWaypoints` itself, and the
       reference differential is the only thing guarding that transcription.
-- [ ] **Do not delete Questie's derived `requiredRaces` patch yet.** QuestieTDB's temporary
-      pass is verified at zero divergences on all five base flavors, while
-      [#1](https://github.com/Questie/QuestieTDB/issues/1) tracks explicit correction data.
-      Questie's copy still handles SoD-specific Dynamic Corrections after composition;
-      [#13](https://github.com/Questie/QuestieTDB/issues/13) must close that gap first.
+- [x] **Consume QuestieTDB's derived `requiredRaces` values.** The migration branch no longer
+      contains Questie's inference pass. Base-flavor output is verified, but active SoD values remain
+      a combined-integration blocker tracked by
+      [#13](https://github.com/Questie/QuestieTDB/issues/13).
 - [ ] **Audit `QuestieCorrections.lua` rather than deleting it.** It is the file where derived
       logic hid; the port copies correction *files* only, so anything in the orchestrator was
       never carried across. This ledger is the audit's output so far — re-read the file before
@@ -253,13 +295,15 @@ cutover audit found provider work outside ordinary entity-field parity:
 
 - Built-in lookup overrides and Titan zhCN corrections need importing
   ([#14](https://github.com/Questie/QuestieTDB/issues/14)).
-- Zone and Drop support data needs synchronizing and a semantic drift gate
-  ([#15](https://github.com/Questie/QuestieTDB/issues/15)).
+- Zone, XP, Drop, and faction-template support data is synchronized and covered by a semantic drift
+  gate ([#15](https://github.com/Questie/QuestieTDB/issues/15)). Questie's migration branch still
+  needs to consume `LibQuestieDB.Support`.
 - Titan corrections require both the Wrath flavor and active season 109
   ([#16](https://github.com/Questie/QuestieTDB/issues/16)). The complete all-flavor matrix and
   accepted-record review passed, and the GitHub issue is closed.
-- `ObjectiveFirst` needs Source/Baked flavor parity and a documented public contract
-  ([#17](https://github.com/Questie/QuestieTDB/issues/17)).
+- `ObjectiveFirst` now has Source, Baked, and stripped-package parity under the documented
+  expansion and season boundary ([#17](https://github.com/Questie/QuestieTDB/issues/17),
+  [ADR 0012](./adr/0012-objective-first-applicability.md)).
 - Differential coverage needs to include side channels and a working SoD oracle
   ([#19](https://github.com/Questie/QuestieTDB/issues/19)).
 
@@ -285,8 +329,8 @@ yet been closed.
 | [#12](https://github.com/Questie/QuestieTDB/issues/12) | Distribution polish: flavor table, wrong-flavor no-op, `builtAt` | Open |
 | [#13](https://github.com/Questie/QuestieTDB/issues/13) | Handle SoD `requiredRaces` inference after dynamic composition | Open |
 | [#14](https://github.com/Questie/QuestieTDB/issues/14) | Import lookup overrides and Titan zhCN corrections | Open |
-| [#15](https://github.com/Questie/QuestieTDB/issues/15) | Synchronize support data and add drift validation | Open |
+| [#15](https://github.com/Questie/QuestieTDB/issues/15) | Synchronize support data and add drift validation | Implemented in `5e0fc2c`; GitHub issue remains open |
 | [#16](https://github.com/Questie/QuestieTDB/issues/16) | Restrict Titan corrections to Wrath | Closed; full all-flavor matrix passed |
-| [#17](https://github.com/Questie/QuestieTDB/issues/17) | Keep `ObjectiveFirst` flavor-scoped in Source mode | Open |
+| [#17](https://github.com/Questie/QuestieTDB/issues/17) | Keep `ObjectiveFirst` flavor-scoped in Source mode | Implemented and validated; GitHub issue remains open |
 | [#18](https://github.com/Questie/QuestieTDB/issues/18) | Former parameterized-correction follow-up | Closed — superseded by ADR 0007 |
 | [#19](https://github.com/Questie/QuestieTDB/issues/19) | Cover correction side channels and SoD in differential tests | Open |

@@ -239,10 +239,20 @@ LibQuestieDB.ObjectiveFirst.spellObjectiveFirst
 ```
 
 Each table has the shape `{ [questId] = true }`. These are consumer-must-not-mutate tables;
-QuestieTDB currently publishes the underlying mutable values directly. Their contents are
-intended to match the active flavor and season. Cross-expansion Source-mode leakage and SoD
-hints leaking into plain Vanilla Baked mode are tracked in
-[#17](https://github.com/Questie/QuestieTDB/issues/17).
+QuestieTDB publishes the underlying mutable values directly.
+
+Base-expansion hints are cumulative: TBC includes Era hints, Wrath includes Era and TBC hints,
+and so on through Mists. Seasonal hints require both their base flavor and active season. SoD
+hints appear only on Vanilla with season 2 active. Titan Reforged hints appear only on Wrath
+with season 109 active. Source, Baked, and static-stripped packaged addons publish the same five
+tables for a given flavor and season.
+
+A seasonal provider file may ship in a base-flavor addon because its Dynamic Corrections must be
+available when that season is active. Loading the file does not publish its objective-ordering
+hints when the season gate is closed. In the pinned Questie source, the Classic TOC lists SoD
+correction files unconditionally, but QuestieTDB deliberately excludes their load-time hints from
+plain Vanilla. [ADR 0012](./adr/0012-objective-first-applicability.md) records this applicability
+boundary and its relationship to pinned-source fidelity.
 
 ---
 
