@@ -329,6 +329,10 @@ function config.bakedFileList(flavor)
   append(files, config.supportFiles(flavor), seen)
   append(files, { "src/read/shared.lua", "src/corrections/registry.lua" }, seen)
   append(files, config.correctionFiles(flavor, "baked"), seen)
+  -- Authored SoD data is owned here, outside the copied-provider manifest.
+  if config.correctionManifest and flavor.expansion == "Classic" then
+    append(files, { "src/corrections/Sod/sodRequiredRaces.lua" }, seen)
+  end
   append(files, config.runtimeFiles.tail, seen)
   return files
 end
@@ -343,6 +347,9 @@ function config.sourceFileList()
   append(files, config.supportFiles(nil), seen)
   append(files, { "src/read/shared.lua", "src/corrections/registry.lua" }, seen)
   append(files, config.correctionFiles(nil, "source"), seen)
+  if config.correctionManifest then
+    append(files, { "src/corrections/Sod/sodRequiredRaces.lua" }, seen)
+  end
   append(files, config.derivedFiles, seen)
   append(files, config.runtimeFiles.tail, seen)
   return files

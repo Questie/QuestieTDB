@@ -9,8 +9,8 @@
 -- corrected function beside it is deliberately unused: it records the conservative policy we
 -- would prefer, but changing results while Questie still uses the old rule would break parity.
 -- The duplicated loops keep those policy differences reviewable without a shared helper hiding
--- them. SoD needs a separate post-composition solution because its data is dynamic; see
--- https://github.com/Questie/QuestieTDB/issues/13.
+-- them. SoD-only gaps are explicit owned rows in corrections/Sod/sodRequiredRaces.lua;
+-- they use normal Dynamic Corrections rather than another inference pass (issue #13).
 
 local _, LibQuestieDB = ...
 

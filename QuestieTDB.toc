@@ -130,6 +130,7 @@ src\corrections\scopes\Shared.lua
 src\corrections\Shared\itemStartFixes.lua
 src\corrections\manifest.lua
 src\corrections\_end.lua
+src\corrections\Sod\sodRequiredRaces.lua
 src\derived\registry.lua
 src\derived\_begin.lua
 src\derived\RamerDouglasPeucker.lua

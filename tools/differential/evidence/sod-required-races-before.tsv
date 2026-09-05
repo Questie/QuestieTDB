@@ -1,0 +1,26 @@
+id	name	origin	pre_requiredRaces	tdb_requiredRaces	oracle_requiredRaces	symbolic_mask	inference_starters	alliance_final_starters	horde_final_starters
+78611	A Waylaid Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+78612	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+78872	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+79100	A Waylaid Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+79101	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+79102	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+79103	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+80307	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+80308	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+80309	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+81764	The Mysterious Merchant	SoD generated base + correction	0	0	77	ALL_ALLIANCE	5492:A	5492:A	5492:A
+82307	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+82308	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+82309	A Full Shipment	SoD generated base + correction	0	0	77	ALL_ALLIANCE	214101:A	213077:A,214099:A,214101:A	214070:H,214096:H,214098:H
+84124	Legacy of Valor	SoD generated base + correction	0	0	77	ALL_ALLIANCE	208841:A	208841:A	208841:A
+84329	The Convocation Assembles	SoD generated base + correction	0	0	77	ALL_ALLIANCE	376:A,211229:<nil>	376:A,211229:<nil>	376:A,211229:<nil>
+90114	Endless Rage	SoD correction-added quest	0	0	178	ALL_HORDE	2478:H	2478:H	2478:H
+90117	Seal of Martyrdom	SoD correction-added quest	0	0	77	ALL_ALLIANCE	205153:A,205278:<nil>	205153:A,205278:<nil>	205153:A,205278:<nil>
+90123	Rebuke	SoD correction-added quest	0	0	77	ALL_ALLIANCE	5570:A	5570:A	5570:A
+90125	Rebuke	SoD correction-added quest	0	0	77	ALL_ALLIANCE	6736:A	6736:A	6736:A
+90236	Chronostatic Preservation	SoD correction-added quest	0	0	178	ALL_HORDE	217703:H	217703:H	217703:H
+90241	Fire Nova: Step 3	SoD correction-added quest	0	0	178	ALL_HORDE	4047:H	4047:H	4047:H
+90242	Fire Nova: Step 4	SoD correction-added quest	0	0	178	ALL_HORDE	5769:H	5769:H	5769:H
+90243	Fire Nova: Step 5	SoD correction-added quest	0	0	178	ALL_HORDE	2995:H	2995:H	2995:H
+90250	Aeonas Whereabouts	SoD correction-added quest	0	0	77	ALL_ALLIANCE	3179:A	3179:A	3179:A

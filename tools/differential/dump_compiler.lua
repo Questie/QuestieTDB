@@ -22,6 +22,8 @@
 -- Options:
 --   --season=SoD             compile with Season of Discovery active
 --   --season=TitanReforged   compile as a Titan Reforged client (Wrath only)
+--   --faction=Horde          Orc Warrior instead of the default Alliance Human Warrior
+--   --only=Quest.requiredRaces  strict focused dump, including nil fields
 --   --verbose                let Questie's own load/compile chatter through
 --
 -- Requires `bit32` on the Lua path: eval "$(luarocks path --bin)"
@@ -29,14 +31,21 @@
 local flavorName = assert(arg[1], "flavor argument required (Vanilla|TBC|Wrath|Cata|Mists)")
 local outPath = assert(arg[2], "output path argument required")
 
-local season, verbose = nil, false
+local season, verbose, faction, only = nil, false, "Alliance", nil
 for i = 3, #arg do
   local value = arg[i]
   local key, val = value:match("^%-%-([%w%-]+)=(.*)$")
   if key == "season" then season = val
+  elseif key == "faction" then faction = val
+  elseif key == "only" then only = val
   elseif value == "--verbose" then verbose = true
   else error("Unknown option: " .. value, 0) end
 end
+
+assert(faction == "Alliance" or faction == "Horde", "unsupported faction")
+assert(not only or only == "Quest.requiredRaces", "--only supports Quest.requiredRaces")
+assert(not season or season == "SoD" or season == "TitanReforged", "unsupported season")
+assert(season ~= "TitanReforged" or flavorName == "Wrath", "TitanReforged requires Wrath")
 
 -- canon.lua sits beside this file; cwd is the Questie checkout, so resolve from arg[0].
 local selfDir = arg[0]:match("^(.*)[/\\][^/\\]*$") or "."
@@ -96,8 +105,11 @@ GetMaxPlayerLevel = function() return flavor.level end
 -- player or every faction fix reads as a divergence. QuestieTDB's offline default persona is
 -- Alliance / Human / Warrior / 60 / plain realm (emulator/client.lua); Questie's apiMocks
 -- default to Horde / Tauren / Druid. These lines make the compiler side match QuestieTDB.
-UnitFactionGroup = function() return "Alliance" end
-UnitRace = function() return "Human", "Human", 1 end
+UnitFactionGroup = function() return faction end
+UnitRace = function()
+  if faction == "Horde" then return "Orc", "Orc", 2 end
+  return "Human", "Human", 1
+end
 UnitClass = function() return "Warrior", "WARRIOR", 1 end
 UnitClassBase = function() return "WARRIOR", 1 end
 UnitName = function() return "QuestieTDBTester" end
@@ -133,7 +145,7 @@ Questie.Debug = function() end
 Questie.Error = function(_, text) log("questie error: " .. tostring(text)) end
 Questie.Warning = function() end
 
-Questie.db = { char = { showEventQuests = false }, global = {}, profile = {} }
+Questie.db = { char = { showEventQuests = false }, global = { sod = {}, titanReforged = {} }, profile = {} }
 QuestieConfig = {}
 
 local QuestieDB = QuestieLoader:ImportModule("QuestieDB")
@@ -192,6 +204,22 @@ if not verbose then print = realPrint end
 -- behind, and they are the surface Questie's own call sites use. Reading the raw DB handles
 -- instead would bypass nothing, but it would also stop being the consumer's view the moment
 -- upstream wraps them.
+-- Fail query errors in the focused gate instead of mistaking a missing line for nil.
+-- Write every quest ID, including those whose requiredRaces is absent.
+if only then
+  local out = assert(io.open(outPath, "w"))
+  local ids = {}
+  for id in pairs(QuestieDB.QuestPointers) do ids[#ids + 1] = id end
+  table.sort(ids)
+  for _, id in ipairs(ids) do
+    local value = QuestieDB.QueryQuestSingle(id, "requiredRaces")
+    out:write("Quest\t", id, "\trequiredRaces\t", value == nil and "nil" or canon(value), "\n")
+  end
+  out:close()
+  log(("compiler %s %s: %d quests"):format(flavorName, only, #ids))
+  return
+end
+
 local TYPES = {
   { name = "Quest",  read = QuestieDB.QueryQuestSingle,  ids = QuestieDB.QuestPointers,  keys = QuestieDB.questKeys },
   { name = "Npc",    read = QuestieDB.QueryNPCSingle,    ids = QuestieDB.NPCPointers,    keys = QuestieDB.npcKeys },

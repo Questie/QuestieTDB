@@ -121,7 +121,7 @@ Entity **id sets match exactly** on all five flavours and all four types — zer
 | Phantom entities from inherited Corrections | 0 / 0 / 1 / 4 / 99 ids, plus inherited fields | The Correction registry derives each file's source expansion and applies Questie's `noNewEntries` rule when a later flavor inherits it. Older Corrections can update surviving rows, but only a field-1/name Correction may create a missing entity. |
 | `Quest.questFlags` value | – / – / 2 / 72 / 72 | Resolved by the pinned Correction re-port. |
 | `Quest.reputationReward` absent-vs-value | – / – / 1 / 1 / 1 | Resolved by the pinned Correction re-port. |
-| `Quest.requiredRaces` value | 1 / 27 / 339 / 693 / 315 | `src/derived/requiredRaces.lua` temporarily transcribes Questie's exact base-flavor inference and reaches zero divergences. Explicit corrections remain the final fix in [#1](https://github.com/Questie/QuestieTDB/issues/1). SoD-specific Dynamic Corrections are outside this inference; the base Classic pass still runs, and [#13](https://github.com/Questie/QuestieTDB/issues/13) tracks the missing post-composition behavior. |
+| `Quest.requiredRaces` value | 1 / 27 / 339 / 693 / 315 | `src/derived/requiredRaces.lua` temporarily transcribes Questie's exact base-flavor inference and reaches zero divergences. Explicit corrections remain the final fix in [#1](https://github.com/Questie/QuestieTDB/issues/1). For active SoD, `src/corrections/Sod/sodRequiredRaces.lua` supplies 25 QuestieTDB-owned Dynamic Correction rows. Alliance and Horde comparisons now match pinned Questie's returned values for all 5,534 SoD quests. |
 | WotLK NPC Static Correction order | – / – / 20 / 20 / 20 | The generated manifest now follows Questie: `LoadAutomatics()` first, then hand-authored `Load()`. This removed 16 wrong-value and four absent-vs-value spawn divergences per affected flavor. A real overlap on NPC 30208 guards the order. |
 | TBC prerequisite fields absent-vs-value | – / 3 / – / – / – | Questie's active TBC content phase advanced from 2 to 3, resolving the three compiler divergences for quests 10944 and 11007. `LoadContentPhaseFixes` remains excluded from QuestieTDB under ADR 0007 because content-phase selection is consumer policy. |
 
@@ -278,9 +278,11 @@ Each item is behavior that would otherwise be lost by deleting the compiler and 
       it goes too — but note QuestieTDB *transcribes* `OptimizeWaypoints` itself, and the
       reference differential is the only thing guarding that transcription.
 - [x] **Consume QuestieTDB's derived `requiredRaces` values.** The migration branch no longer
-      contains Questie's inference pass. Base-flavor output is verified, but active SoD values remain
-      a combined-integration blocker tracked by
-      [#13](https://github.com/Questie/QuestieTDB/issues/13).
+      contains Questie's inference pass. Base-flavor output and active SoD values are verified.
+      QuestieTDB preserves pinned Questie's 25 SoD results as owned Dynamic Corrections, including
+      masks whose gameplay meaning is questionable because Questie inferred them before applying
+      faction-specific starter changes. [#13](https://github.com/Questie/QuestieTDB/issues/13)
+      records the audit; revisiting those masks is deferred unless player reports make it relevant.
 - [ ] **Audit `QuestieCorrections.lua` rather than deleting it.** It is the file where derived
       logic hid; the port copies correction *files* only, so anything in the orchestrator was
       never carried across. This ledger is the audit's output so far — re-read the file before
@@ -327,7 +329,7 @@ yet been closed.
 | [#10](https://github.com/Questie/QuestieTDB/issues/10) | Institutionalize the live-client probe ritual | Open |
 | [#11](https://github.com/Questie/QuestieTDB/issues/11) | Decide the decoded-cache budget | Open |
 | [#12](https://github.com/Questie/QuestieTDB/issues/12) | Distribution polish: flavor table, wrong-flavor no-op, `builtAt` | Open |
-| [#13](https://github.com/Questie/QuestieTDB/issues/13) | Handle SoD `requiredRaces` inference after dynamic composition | Open |
+| [#13](https://github.com/Questie/QuestieTDB/issues/13) | Preserve active-SoD `requiredRaces` values | Implemented with 25 owned Dynamic Correction rows; gameplay-policy review deferred unless relevant |
 | [#14](https://github.com/Questie/QuestieTDB/issues/14) | Import lookup overrides and Titan zhCN corrections | Open |
 | [#15](https://github.com/Questie/QuestieTDB/issues/15) | Synchronize support data and add drift validation | Implemented in `5e0fc2c`; GitHub issue remains open |
 | [#16](https://github.com/Questie/QuestieTDB/issues/16) | Restrict Titan corrections to Wrath | Closed; full all-flavor matrix passed |

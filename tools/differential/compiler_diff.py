@@ -14,7 +14,8 @@ Usage (cwd = the QuestieTDB repo root):
 
     python3 tools/differential/compiler_diff.py Vanilla
     python3 tools/differential/compiler_diff.py all --questie=../Questie
-    python3 tools/differential/compiler_diff.py Vanilla --season=SoD
+    uv run tools/differential/compiler_diff.py Vanilla --season=SoD --only=Quest.requiredRaces
+    uv run tools/differential/compiler_diff.py Vanilla --season=SoD --only=Quest.requiredRaces --faction=Horde
     python3 tools/differential/compiler_diff.py all --update-baseline
     python3 tools/differential/compiler_diff.py Vanilla --self-check
 
@@ -95,20 +96,32 @@ def assert_questie_input(questie, lua):
     return questie_root
 
 
-def dump_both(flavor, questie, lua, season):
+def dump_both(flavor, questie, lua, season, faction="Alliance", only=None):
     os.makedirs(DUMP_DIR, exist_ok=True)
-    tdb = os.path.join(DUMP_DIR, "tdb-%s.tsv" % flavor)
-    comp = os.path.join(DUMP_DIR, "compiler-%s.tsv" % flavor)
+    label = flavor
+    if season:
+        label += "-" + season
+    if faction != "Alliance":
+        label += "-" + faction
+    if only:
+        label += "-" + only
+    tdb = os.path.join(DUMP_DIR, "tdb-%s.tsv" % label)
+    comp = os.path.join(DUMP_DIR, "compiler-%s.tsv" % label)
     env = lua_env(lua)
 
-    run([lua, "tools/differential/dump_a.lua", flavor, tdb, "--compiler-coordinates"],
+    # Both dumpers must see the same persona. A seasonal oracle versus plain Vanilla
+    # measures configuration differences, not data fidelity.
+    options = ["--faction=" + faction]
+    if season:
+        options.append("--season=" + season)
+    if only:
+        options.append("--only=" + only)
+    run([lua, "tools/differential/dump_a.lua", flavor, tdb, "--compiler-coordinates"] + options,
         ROOT, env, "QuestieTDB dump")
 
     questie_root = questie if os.path.isabs(questie) else os.path.join(ROOT, questie)
     script = os.path.join(ROOT, "tools", "differential", "dump_compiler.lua")
-    cmd = [lua, script, flavor, comp]
-    if season:
-        cmd.append("--season=%s" % season)
+    cmd = [lua, script, flavor, comp] + options
     run(cmd, questie_root, env, "compiler dump")
     return tdb, comp
 
@@ -228,7 +241,7 @@ def write_baseline(flavor, counts, existing):
             handle.write("%s\t%s\t%s\t%d\t%s\n" % (key[0], key[1], key[2], n, reason))
 
 
-def report(flavor, rows, compared, a_ids, b_ids, counts, baseline):
+def report(flavor, rows, compared, a_ids, b_ids, counts, baseline, strict=False):
     print("=" * 78)
     print("%s — QuestieTDB vs Questie compiler" % flavor)
     print("=" * 78)
@@ -254,6 +267,10 @@ def report(flavor, rows, compared, a_ids, b_ids, counts, baseline):
                 print("      id %s" % eid.decode())
                 print("        tdb      : %s" % av[:150].decode("utf-8", "replace"))
                 print("        compiler : %s" % bv[:150].decode("utf-8", "replace"))
+
+    if strict:
+        print("\nStrict comparison: %s; no baseline allowances." % ("FAIL" if rows else "PASS"))
+        return 1 if rows else 0
 
     if baseline is None:
         print("\nNo baseline recorded for %s — run with --update-baseline to accept these."
@@ -360,6 +377,8 @@ def main():
     questie = os.environ.get("QUESTIE_PATH", "../Questie")
     lua = os.environ.get("LUA", "lua5.1")
     season = None
+    faction = "Alliance"
+    only = None
     update = False
     self_check = False
     for value in args:
@@ -369,6 +388,10 @@ def main():
             lua = value.split("=", 1)[1]
         elif value.startswith("--season="):
             season = value.split("=", 1)[1]
+        elif value.startswith("--faction="):
+            faction = value.split("=", 1)[1]
+        elif value.startswith("--only="):
+            only = value.split("=", 1)[1]
         elif value == "--update-baseline":
             update = True
         elif value == "--self-check":
@@ -385,13 +408,26 @@ def main():
     if not targets:
         targets = ["Vanilla"]
 
+    if faction not in ("Alliance", "Horde"):
+        sys.exit("--faction must be Alliance or Horde")
+    if only not in (None, "Quest.requiredRaces"):
+        sys.exit("--only currently supports Quest.requiredRaces")
+    if season not in (None, "SoD", "TitanReforged"):
+        sys.exit("--season must be SoD or TitanReforged")
+    if season == "SoD" and any(t != "Vanilla" for t in targets):
+        sys.exit("--season=SoD requires Vanilla")
+    if season == "TitanReforged" and any(t != "Wrath" for t in targets):
+        sys.exit("--season=TitanReforged requires Wrath")
+    if update and (only or season or faction != "Alliance"):
+        sys.exit("Baselines belong to the default base-flavor persona; focused/seasonal/faction runs are strict")
+
     # Validate before either dump starts. Otherwise a direct invocation could compare against
     # a floating Questie commit while reporting it as reviewed input.
     questie = assert_questie_input(questie, lua)
 
     status = 0
     for flavor in targets:
-        tdb_path, comp_path = dump_both(flavor, questie, lua, season)
+        tdb_path, comp_path = dump_both(flavor, questie, lua, season, faction, only)
         rows, compared, a_ids, b_ids = classify(tdb_path, comp_path)
         counts = summarize(rows)
         if update:
@@ -399,7 +435,14 @@ def main():
             print("%s: recorded %d baseline entries (%s divergences)"
                   % (flavor, len(counts), format(len(rows), ",")))
             continue
-        status |= report(flavor, rows, compared, a_ids, b_ids, counts, read_baseline(flavor))
+        strict = only is not None or season is not None or faction != "Alliance"
+        baseline = {} if strict else read_baseline(flavor)
+        label = "%s%s / %s%s" % (flavor, " / " + season if season else "",
+                                   faction, " / " + only if only else "")
+        status |= report(label, rows, compared, a_ids, b_ids, counts, baseline, strict=strict)
+        if only and (compared == 0 or not a_ids.get(b"Quest") or not b_ids.get(b"Quest")):
+            print("Focused comparison is empty; refusing a vacuous pass")
+            status |= 1
         if self_check:
             status |= run_self_check(flavor, tdb_path, comp_path, len(rows))
         print()

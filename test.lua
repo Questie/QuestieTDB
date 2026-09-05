@@ -1618,6 +1618,10 @@ end)
 -- Derived requiredRaces compatibility
 --------------------------------------------------------------------------------------------
 
+suite("sod-required-races", function()
+  dofile("tools/sod-required-races.test.lua")(check, equal)
+end)
+
 suite("derived-required-races", function()
   local runtime = dofile("generator/runtime.lua")
   local Lib = runtime.build()
