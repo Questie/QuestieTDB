@@ -150,15 +150,22 @@ tools/bootstrap.sh "/path/to/Interface/AddOns"
 
 ### Re-syncing with Questie
 
-Two things derive from Questie and are committed here, so drift is a build failure rather than
-a discovery months later. CI runs both and fails on any diff.
+Entity schema, Corrections, and support data derive from Questie and are committed here, so
+drift is a build failure rather than a discovery months later. CI runs their checks and fails
+on any difference.
 
 ```sh
 git -C ../Questie checkout "$(cat QUESTIE_COMMIT)"
 lua5.1 generate.lua meta --questie=../Questie # schema -> src/meta/*Meta.lua
 lua5.1 tools/port-corrections.lua ../Questie  # corrections + constants
 lua5.1 generate.lua toc                      # refresh the committed Source-mode file list
+lua5.1 test.lua support support-fidelity     # check all copied support data and flavor selection
 ```
+
+The 24 support inputs, their pinned Questie paths, published fields, and Lua-source-string
+fields are listed in [`tools/support-inventory.lua`](tools/support-inventory.lua). See
+[`docs/support-data.md`](docs/support-data.md) before changing that inventory or support-file
+selection.
 
 The ported correction files preserve Questie's bytes except for explicit whole-function
 ownership exclusions in `tools/port-corrections.lua`; a compat shim supplies the module surface
@@ -218,6 +225,7 @@ lists; Baked mode also exposes scalar rows and table producers for its cache fas
 | --- | --- |
 | [`docs/api.md`](docs/api.md) | the public surface, for consumers |
 | [`docs/storage-format.md`](docs/storage-format.md) | the on-disk contract and the nil/empty rules |
+| [`docs/support-data.md`](docs/support-data.md) | support-data selection, shapes, inventory, and drift checks |
 | [`DESIGN.md`](DESIGN.md) | architecture, locked decisions, rejected alternatives |
 | [`CONTEXT.md`](CONTEXT.md) | vocabulary |
 | [`docs/adr/`](docs/adr/) | decision records |

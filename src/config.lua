@@ -193,9 +193,8 @@ config.derivedFiles = {
 -- Support data
 --------------------------------------------------------------------------------------------
 --
--- Per-flavor selection happens here and nowhere else: every flavor lists a different variant
--- and all of them assign to the same module field, so there is no runtime selection to get
--- wrong. Taken from Questie's own per-flavor TOCs rather than guessed.
+-- Baked TOCs select one flavor here. The base Source TOC lists each payload once,
+-- bracketed by applicability markers so other flavors cannot overwrite its support modules.
 
 config.supportData = {
   shared = {
@@ -236,9 +235,39 @@ config.supportData = {
   },
 }
 
---- The support-data block for one flavor, bracketed by the shim install and removal.
---- With no flavor — the base TOC — every variant is listed; later assignments to the same
---- module field win, which is why Source mode still needs the flavor to pick correctly.
+---Source groups keep shared payloads unique in the TOC. These are deliberately separate
+---from perFlavor: Source needs load-time scopes, whereas Baked needs only applicable files.
+---Cata's drop file comes last so Mists retains Questie's MoP-then-Cata load order.
+config.supportSourceGroups = {
+  { scope = "preMists", files = {
+    "support/Zones/areaIdToUiMapId.lua", "support/Zones/uiMapIdToAreaId.lua",
+  } },
+  { scope = "Vanilla", files = {
+    "support/QuestXP/xpDB-classic.lua", "support/FactionTemplates/factionTemplateClassic.lua",
+    "support/DropTables/classicItemDrops.lua",
+  } },
+  { scope = "TBC", files = {
+    "support/QuestXP/xpDB-tbc.lua", "support/FactionTemplates/factionTemplateTBC.lua",
+    "support/DropTables/tbcItemDrops.lua",
+  } },
+  { scope = "Wrath", files = {
+    "support/QuestXP/xpDB-wotlk.lua", "support/FactionTemplates/factionTemplateWotlk.lua",
+    "support/DropTables/wotlkItemDrops.lua",
+  } },
+  { scope = "Cata", files = {
+    "support/QuestXP/xpDB-cata.lua", "support/FactionTemplates/factionTemplateCata.lua",
+  } },
+  { scope = "Mists", files = {
+    "support/Zones/MoP/areaIdToUiMapId.lua", "support/Zones/MoP/uiMapIdToAreaId.lua",
+    "support/QuestXP/xpDB-mop.lua", "support/FactionTemplates/factionTemplateMoP.lua",
+    "support/DropTables/mopItemDrops.lua",
+  } },
+  { scope = "CataMists", files = { "support/DropTables/cataItemDrops.lua" } },
+}
+
+---The support block selects a flavor in Baked mode or scopes every variant in Source mode.
+---@param flavor table? Nil selects the base Source TOC.
+---@return string[] files
 function config.supportFiles(flavor)
   -- The extracted constants come first: the support shim seeds `DropDB.correctionKeys` from
   -- them before `itemDropCorrections.lua` runs.
@@ -250,17 +279,10 @@ function config.supportFiles(flavor)
       files[#files + 1] = file
     end
   else
-    -- The base TOC lists every variant, sorted so the order is stable across runs. Sorting is
-    -- confined to the data files: the bracket files that install and remove the shim have to
-    -- keep their positions, and sorting the whole list once moved them.
-    local seen, variants = {}, {}
-    for _, name in ipairs({ "Vanilla", "TBC", "Wrath", "Cata", "Mists" }) do
-      for _, file in ipairs(config.supportData.perFlavor[name] or {}) do
-        if not seen[file] then seen[file] = true; variants[#variants + 1] = file end
-      end
+    for _, group in ipairs(config.supportSourceGroups) do
+      files[#files + 1] = "src/support/scopes/" .. group.scope .. ".lua"
+      for _, file in ipairs(group.files) do files[#files + 1] = file end
     end
-    table.sort(variants)
-    for _, file in ipairs(variants) do files[#files + 1] = file end
   end
   files[#files + 1] = "src/support/_end.lua"
   return files

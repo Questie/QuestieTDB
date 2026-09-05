@@ -447,8 +447,33 @@ LibQuestieDB.Support.Get("DropDB")
 LibQuestieDB.Support.Get("QuestieDB").factionTemplate
 ```
 
-The modules that wrap this data — zone lookup, XP calculation, drop resolution — stay with the
-consumer. Only the data ships from here.
+The modules that wrap this data, including zone lookup, XP calculation, and drop resolution,
+stay with the consumer. Only the data ships from here.
+
+`Support.Get` and `Support.GetAll` expose the module set selected by the active flavor in both
+Source and Baked mode. Source mode uses the running flavor to admit applicable assignments from
+the shared base TOC. Baked TOCs list only applicable files. Loading another flavor in the
+emulator replaces the published modules rather than retaining modules from inapplicable variant
+files.
+
+Mists uses its own area/UI map tables. Its drop data intentionally combines the MoP table and
+then the Cata table, in the same effective order as Questie.
+
+Some zone maps and drop tables remain Lua source strings because the consumer's existing logic
+calls `loadstring` on them. Their public type is part of the contract. Other fields, including
+`QuestXP.db` and faction templates, are ordinary tables. Dungeon entries use this positional
+shape:
+
+```lua
+{
+    name,                         -- string
+    alternativeAreaIds,           -- dense AreaId[] or nil
+    parentZone,                    -- AreaId
+    dungeonLocations,             -- { { areaId, x, y }, ... }
+}
+```
+
+See [`support-data.md`](./support-data.md) for flavor selection and copied-data maintenance.
 
 ---
 

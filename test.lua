@@ -3498,59 +3498,159 @@ end)
 -- Support data
 --------------------------------------------------------------------------------------------
 
-suite("support", function()
+suite("support-fidelity", function()
+  local fidelity = dofile("tools/support-fidelity.lua")
+  fidelity.run(check, QUESTIE_PATH)
+
+  -- Mutate a temporary copy of real pinned input, never the oracle checkout. This proves
+  -- source loading plus semantic comparison sees additions, removals, changes, and reshaping.
+  local sourcePath = QUESTIE_PATH .. "/Database/QuestXP/DB/xpDB-classic.lua"
+  local source = lib.readAll(sourcePath)
   local flavor = config.flavorByName.Vanilla
-  local tocPath = config.tocPath(flavor)
-  if not lib.fileExists(tocPath) then
-    io.write("  SKIP support: ", tocPath, " not generated\n")
-    return
+  local expected = fidelity.materialize(fidelity.loadInputs({ sourcePath }, flavor, "Alliance", {}))
+  local cases = {
+    { name = "addition", replacement = "[2] = {30, 2450}, [2147483647] = {1, 10}", differs = true },
+    { name = "removal", replacement = "[2] = nil", differs = true },
+    { name = "change", replacement = "[2] = {30, 9999}", differs = true },
+    { name = "shape", replacement = "[2] = 2450", differs = true },
+    { name = "formatting", replacement = "[2] = { 30, 2450, }", differs = false },
+  }
+  lib.mkdirp(".out/support-fidelity")
+  local controlPath = ".out/support-fidelity/xp-control.lua"
+  for _, case in ipairs(cases) do
+    local changed, count = source:gsub("%[2%]%s*=%s*%b{}", case.replacement)
+    equal(count, 1, case.name .. " control changes exactly one pinned XP row")
+    lib.writeAll(controlPath, changed)
+    local actual = fidelity.materialize(fidelity.loadInputs({ controlPath }, flavor, "Alliance", {}))
+    equal(fidelity.difference(actual, expected) ~= nil, case.differs,
+      case.name .. " control has the expected drift result")
+  end
+  os.remove(controlPath)
+end)
+
+suite("support", function()
+  local fidelity = dofile("tools/support-fidelity.lua")
+
+  -- The semantic comparator ignores formatting inside embedded Lua source, but rejects
+  -- every kind of data drift. These controls exercise the same comparison used by the oracle.
+  local reference = { ZoneDB = { private = { dungeons = { [209] = { "Shadowfang Keep", { 236 } } } } } }
+  equal(fidelity.difference(reference, reference), nil, "identical support values match")
+  check(fidelity.difference({ added = true }, {}) ~= nil, "added values fail drift comparison")
+  check(fidelity.difference({}, { removed = true }) ~= nil, "removed values fail drift comparison")
+  check(fidelity.difference({ rate = 10 }, { rate = 20 }) ~= nil, "changed values fail drift comparison")
+  check(fidelity.difference({ alternatives = 236 }, { alternatives = { 236 } }) ~= nil,
+    "reshaped values fail drift comparison")
+  local luaField = "ZoneDB.private.areaIdToUiMapId"
+  local embedded = fidelity.materialize("return { [1] = 2 }", luaField)
+  equal(embedded, fidelity.materialize("-- leading comment\nreturn { [1] = 2 }", luaField),
+    "leading comments in embedded Lua do not cause drift")
+  equal(embedded, fidelity.materialize("return -- interstitial comment\n{ [1]=2, }", luaField),
+    "comments between return and the table do not cause drift")
+  check(fidelity.difference(embedded, fidelity.materialize({ [1] = 2 }, luaField)) ~= nil,
+    "replacing a published Lua string with an equivalent table causes drift")
+  equal(fidelity.materialize({ name = "return { [1] = 2 }" }), { name = "return { [1] = 2 }" },
+    "ordinary strings that resemble Lua are not decoded")
+  equal(fidelity.dungeonShape({ [209] = { "Shadowfang Keep", { 236 } } }), nil,
+    "dungeon alternative areas accept integer lists")
+  check(fidelity.dungeonShape({ [209] = { "Shadowfang Keep", 236 } }) ~= nil,
+    "dungeon alternative areas reject the old scalar shape")
+  check(fidelity.dungeonShape({ [209] = { "Shadowfang Keep", { "236" } } }) ~= nil,
+    "dungeon alternative areas reject nonnumeric entries")
+  check(fidelity.dungeonShape({ [209] = { "Shadowfang Keep", { [2] = 236 } } }) ~= nil,
+    "dungeon alternative areas reject sparse lists")
+
+  -- Loading the largest flavor before the smallest exposes leaked modules and map variants.
+  local sourceFiles = config.sourceFileList()
+  local positions = {}
+  for index, file in ipairs(sourceFiles) do positions[file] = index end
+  check(positions["support/DropTables/mopItemDrops.lua"] < positions["support/DropTables/cataItemDrops.lua"],
+    "Source preserves the cumulative MoP-then-Cata drop load order")
+  -- Reuse both the environment and Support singleton across complete load blocks. A fresh
+  -- library per flavor would hide stale state in Install/Remove and the scope markers.
+  local previousLoader = {}
+  local env = setmetatable({ QuestieLoader = previousLoader }, { __index = _G })
+  env._G = env
+  local namespace = { config = config }
+  setfenv(assert(loadfile("src/corrections/enum/constants.lua")), env)("QuestieTDB", namespace)
+  setfenv(assert(loadfile("src/support/data.lua")), env)("QuestieTDB", namespace)
+  local support = namespace.Support
+
+  ---@param flavor table
+  ---@param faction string
+  ---@return table modules
+  local function loadSupportBlock(flavor, faction)
+    namespace.flavor = flavor
+    env.UnitFactionGroup = function() return faction end
+    for _, file in ipairs(config.supportFiles(nil)) do
+      if file ~= "src/corrections/enum/constants.lua" and file ~= "src/support/data.lua" then
+        setfenv(assert(loadfile(file)), env)("QuestieTDB", namespace)
+      end
+    end
+    return support.GetAll()
   end
 
-  client.reset()
-  client.install({ expansion = "Classic" })
-  emulator.install(config.addonName, emulator.parse(tocPath))
-  local Lib = emulator.loadAddon(tocPath, config.addonName)
-  local Support = Lib.Support
+  local mists = loadSupportBlock(config.flavorByName.Mists, "Horde")
+  check(env.QuestieLoader == previousLoader, "Mists loading restores the existing QuestieLoader")
+  local vanilla = loadSupportBlock(config.flavorByName.Vanilla, "Alliance")
+  check(env.QuestieLoader == previousLoader, "Vanilla reloading restores the existing QuestieLoader")
+  check(namespace.Support == support, "both flavors used the same Support singleton")
+  check(mists.QuestieMopItemDrops ~= nil and mists.QuestieCataItemDrops ~= nil,
+    "Mists retains both MoP and Cata drop modules")
+  check(vanilla.QuestieClassicItemDrops ~= nil and vanilla.QuestieMopItemDrops == nil and
+    vanilla.QuestieCataItemDrops == nil, "Vanilla retains no drop modules from the preceding Mists load")
+  check(type(vanilla.ZoneDB.private.areaIdToUiMapId) == "string",
+    "support publication preserves authored Lua source strings")
 
-  -- Each area is exposed for consumption as a whole table.
-  check(Support.Get("ZoneDB") ~= nil, "zone data ships from this addon")
-  check(Support.Get("QuestXP") ~= nil, "quest XP data ships from this addon")
-  check(Support.Get("DropDB") ~= nil, "drop table data ships from this addon")
-  check(Support.Get("QuestieDB") ~= nil, "faction template data ships from this addon")
+  -- Weak references prove discarded payloads are released at scope changes and removal.
+  env.QuestieLoader = nil
+  support.Install(config.flavorByName.Vanilla)
+  support.SelectScope(false)
+  local rejected = setmetatable({ env.QuestieLoader:ImportModule("RejectedAtScope") }, { __mode = "v" })
+  check(support.Get("RejectedAtScope") == nil, "rejected scope modules are never published")
+  support.SelectScope(true)
+  collectgarbage("collect")
+  equal(rejected[1], nil, "switching scope releases rejected modules")
+  support.SelectScope(false)
+  rejected[1] = env.QuestieLoader:ImportModule("RejectedAtRemove")
+  support.Remove()
+  collectgarbage("collect")
+  equal(rejected[1], nil, "removing the shim releases rejected modules")
+  equal(rawget(env, "QuestieLoader"), nil, "removal restores an originally absent QuestieLoader")
 
-  local zoneIds = Support.Get("ZoneDB").zoneIDs
-  check(type(zoneIds) == "table" and zoneIds.DUN_MOROGH ~= nil, "zone IDs are populated")
-
-  local xp = Support.Get("QuestXP").db
-  local xpCount = 0
-  for _ in pairs(xp or {}) do xpCount = xpCount + 1 end
-  check(xpCount > 1000, "quest XP table is populated (" .. xpCount .. " entries)")
-
-  check(Support.Get("QuestieDB").factionTemplate ~= nil, "faction templates are populated")
-
-  -- The drop-table corrections file is reconciled rather than left stray: it reads
-  -- `DropDB.correctionKeys`, which the support shim seeds from the extracted constants.
-  local dropKeys = Support.Get("DropDB").correctionKeys
-  check(type(dropKeys) == "table" and next(dropKeys) ~= nil,
-    "DropDB.correctionKeys is seeded so itemDropCorrections can load")
-  check(Support.Get("QuestieItemDropCorrections") ~= nil, "drop-table corrections loaded")
-
-  -- Per-flavor data is selected by which file the TOC lists, never at runtime.
-  local vanillaFiles, mistsFiles = config.supportFiles(flavor), config.supportFiles(config.flavorByName.Mists)
-  local function has(list, name)
-    for _, file in ipairs(list) do if file:find(name, 1, true) then return true end end
-    return false
+  ---@param actual table
+  ---@param expected table
+  ---@param message string
+  ---@return nil
+  local function supportEqual(actual, expected, message)
+    local difference = fidelity.difference(actual, expected)
+    check(difference == nil, message .. ": " .. (difference or "matches"))
   end
-  check(has(vanillaFiles, "xpDB-classic.lua"), "Vanilla lists its own quest XP table")
-  check(has(mistsFiles, "xpDB-mop.lua"), "Mists lists its own quest XP table")
-  check(not has(vanillaFiles, "xpDB-mop.lua"), "Vanilla does not list MoP's quest XP table")
-  check(has(mistsFiles, "MoP/areaIdToUiMapId.lua"), "Mists lists its own zone maps")
-  check(has(mistsFiles, "cataItemDrops.lua"),
-    "Mists loads Cata's drop table alongside its own, as Questie-Mists.toc does")
 
-  check(rawget(_G, "QuestieLoader") == nil, "the support shim handed QuestieLoader back")
-
-  client.reset()
+  -- Known missing blocks: five Era items and four TBC items, with all 37 NPC pairs.
+  local drops = vanilla.QuestieItemDropCorrections
+  local wowhead = vanilla.DropDB.correctionKeys.WOWHEAD
+  supportEqual(drops.Era[5030], {
+    [3272] = wowhead, [3273] = wowhead, [3274] = wowhead, [3275] = wowhead,
+    [3394] = wowhead, [3395] = wowhead, [3396] = wowhead, [3397] = wowhead,
+    [5837] = wowhead, [5838] = wowhead, [5841] = wowhead, [9456] = wowhead,
+    [9523] = wowhead, [9524] = wowhead,
+  }, "Centaur Bracers use Wowhead rates for all fourteen NPCs")
+  supportEqual(drops.Era[5062], { [3254] = wowhead, [3255] = wowhead, [3256] = wowhead,
+    [3257] = wowhead, [5842] = wowhead }, "Raptor Heads use Wowhead rates")
+  supportEqual(drops.Era[5086], { [3242] = wowhead, [3426] = wowhead, [3466] = wowhead,
+    [5831] = wowhead }, "Zhevra Hooves use Wowhead rates")
+  supportEqual(drops.Era[10551], { [5839] = 50, [5840] = 50, [5843] = 50, [5844] = 50,
+    [5846] = 50, [8337] = 50, [8504] = 50, [8566] = 50, [8637] = 50 },
+    "Thorium Plated Daggers have fifty-percent rates")
+  supportEqual(drops.Era[11725], { [5856] = wowhead }, "Solid Crystal Leg Shaft uses Wowhead rates")
+  supportEqual(drops.Tbc[25767], { [18585] = 100 }, "Raliq's Debt is guaranteed")
+  supportEqual(drops.Tbc[25768], { [18586] = 100 }, "Coosh'coosh's Debt is guaranteed")
+  supportEqual(drops.Tbc[25769], { [18588] = 100 }, "Floon's Debt is guaranteed")
+  supportEqual(drops.Tbc[31957], { [20520] = 100 }, "Ethereum Prisoner I.D. Tag is guaranteed")
+  supportEqual(vanilla.ZoneDB.private.dungeons[209][2], {10014,10015,10016,10017,10018,10019},
+    "Shadowfang Keep publishes all alternative areas as a list")
+  supportEqual(vanilla.ZoneDB.private.dungeons[3959][4], {{3520, 71, 46.4}},
+    "Black Temple preserves the pinned entrance coordinates")
 end)
 
 --------------------------------------------------------------------------------------------

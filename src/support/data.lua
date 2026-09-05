@@ -11,9 +11,8 @@
 -- `dropDB.lua` — are `QuestieLoader` modules with runtime behaviour and stay with the
 -- consumer. They read what this file publishes.
 --
--- Per-flavor selection is done entirely by *which file the TOC lists*: every flavor's TOC names
--- a different variant and all of them assign to the same module field, so there is no runtime
--- selection to get wrong.
+-- Baked TOCs list only applicable files. Source scope markers switch admission before
+-- variant files load; rejected modules never enter the public module table.
 
 local _, LibQuestieDB = ...
 
@@ -24,6 +23,8 @@ local support = {}
 support.modules = {}
 
 local saved
+local admitted = true
+local discarded = {}
 
 local EXPANSION_ORDER = { Classic = 1, TBC = 2, Wotlk = 3, Cata = 4, MoP = 5 }
 
@@ -36,12 +37,17 @@ local EXPANSION_ORDER = { Classic = 1, TBC = 2, Wotlk = 3, Cata = 4, MoP = 5 }
 ---@param flavor table? An entry from config.flavors
 function support.Install(flavor)
   saved = rawget(_G, "QuestieLoader")
+  support.modules = {}
+  admitted, discarded = true, {}
 
+  ---@param name string
+  ---@return table module
   local function moduleFor(name)
-    local module = support.modules[name]
+    local modules = admitted and support.modules or discarded
+    local module = modules[name]
     if not module then
       module = { private = {} }
-      support.modules[name] = module
+      modules[name] = module
     end
     return module
   end
@@ -66,9 +72,18 @@ function support.Install(flavor)
   }
 end
 
+---Source markers admit only their applicable variant assignments. Keep rejected data
+---out of GetAll as well as Get; switching scope releases the previous discarded payloads.
+---@param applies boolean
+---@return nil
+function support.SelectScope(applies)
+  admitted, discarded = applies, {}
+end
+
 function support.Remove()
   _G.QuestieLoader = saved
   saved = nil
+  admitted, discarded = true, {}
 end
 
 --- Whole-table access, which is the entire point of keeping this out of metadata.
